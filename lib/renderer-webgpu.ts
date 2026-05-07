@@ -241,6 +241,77 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
 `;
 
 // ---------------------------------------------------------------------------
+// CURSOR_SHADER
+// ---------------------------------------------------------------------------
+
+const CURSOR_SHADER = /* wgsl */ `
+struct GridUBO {
+  gridSize: vec2<u32>,
+  cellSize: vec2<f32>,
+  dpr: f32,
+  cursorVisible: u32,
+  cursorPos: vec2<u32>,
+  cursorStyle: u32,
+  _pad0: f32,
+  atlasSize: u32,
+  _pad1: vec3<u32>,
+};
+
+struct PaletteUBO {
+  ansi: array<vec4<f32>, 16>,
+  defaultFg: vec4<f32>,
+  defaultBg: vec4<f32>,
+  cursorBg: vec4<f32>,
+  cursorFg: vec4<f32>,
+  selectionBg: vec4<f32>,
+  selectionFg: vec4<f32>,
+  linkUnderlineColor: vec4<f32>,
+  _pad: vec4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> grid: GridUBO;
+@group(0) @binding(1) var<uniform> pal: PaletteUBO;
+
+struct VOut {
+  @builtin(position) clip: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vsMain(@builtin(vertex_index) vid: u32) -> VOut {
+  let corners = array<vec2<f32>, 6>(
+    vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0),
+    vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0),
+  );
+  let local = corners[vid];
+  let cssX = (f32(grid.cursorPos.x) + local.x) * grid.cellSize.x;
+  let cssY = (f32(grid.cursorPos.y) + local.y) * grid.cellSize.y;
+  let canvasW = f32(grid.gridSize.x) * grid.cellSize.x;
+  let canvasH = f32(grid.gridSize.y) * grid.cellSize.y;
+  var out: VOut;
+  out.clip = vec4<f32>((cssX / canvasW) * 2.0 - 1.0, 1.0 - (cssY / canvasH) * 2.0, 0.0, 1.0);
+  out.uv = local;
+  return out;
+}
+
+@fragment
+fn fsMain(in: VOut) -> @location(0) vec4<f32> {
+  if (grid.cursorVisible == 0u) { return vec4<f32>(0.0); }
+  // style: 0 = block (handled by textPass), 1 = underline, 2 = bar
+  if (grid.cursorStyle == 0u) { return vec4<f32>(0.0); }
+  if (grid.cursorStyle == 1u) {
+    if (in.uv.y >= 0.85) { return pal.cursorBg; }
+    return vec4<f32>(0.0);
+  }
+  if (grid.cursorStyle == 2u) {
+    if (in.uv.x < 0.15) { return pal.cursorBg; }
+    return vec4<f32>(0.0);
+  }
+  return vec4<f32>(0.0);
+}
+`;
+
+// ---------------------------------------------------------------------------
 // GlyphAtlas
 // ---------------------------------------------------------------------------
 
@@ -440,6 +511,11 @@ export class WebGPURenderer implements Renderer {
   private textBindGroupLayout?: GPUBindGroupLayout;
   private textBindGroup?: GPUBindGroup;
 
+  // Cursor pipeline
+  private cursorPipeline?: GPURenderPipeline;
+  private cursorBindGroupLayout?: GPUBindGroupLayout;
+  private cursorBindGroup?: GPUBindGroup;
+
   static async create(
     canvas: HTMLCanvasElement,
     device: GPUDevice,
@@ -529,6 +605,43 @@ export class WebGPURenderer implements Renderer {
       },
       primitive: { topology: 'triangle-list' },
       label: 'textPipeline',
+    });
+
+    this.cursorBindGroupLayout = this.device.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'uniform' },
+        },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      ],
+    });
+    const cursorModule = this.device.createShaderModule({
+      code: CURSOR_SHADER,
+      label: 'cursorShader',
+    });
+    const cursorLayout = this.device.createPipelineLayout({
+      bindGroupLayouts: [this.cursorBindGroupLayout],
+    });
+    this.cursorPipeline = this.device.createRenderPipeline({
+      layout: cursorLayout,
+      vertex: { module: cursorModule, entryPoint: 'vsMain' },
+      fragment: {
+        module: cursorModule,
+        entryPoint: 'fsMain',
+        targets: [
+          {
+            format: this.preferredFormat,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
+          },
+        ],
+      },
+      primitive: { topology: 'triangle-list' },
+      label: 'cursorPipeline',
     });
 
     this.metrics = this.measureFont();
@@ -644,6 +757,15 @@ export class WebGPURenderer implements Renderer {
         { binding: 4, resource: this.atlasSampler },
       ],
     });
+    if (this.cursorBindGroupLayout) {
+      this.cursorBindGroup = this.device.createBindGroup({
+        layout: this.cursorBindGroupLayout,
+        entries: [
+          { binding: 0, resource: { buffer: this.gridUBO } },
+          { binding: 1, resource: { buffer: this.paletteUBO } },
+        ],
+      });
+    }
   }
 
   private encodeCells(buffer: IRenderable, viewportY: number, sb?: IScrollbackProvider): void {
@@ -813,6 +935,11 @@ export class WebGPURenderer implements Renderer {
       pass.setPipeline(this.textPipeline);
       pass.setBindGroup(0, this.textBindGroup);
       pass.draw(6, this.cols * this.rows);
+    }
+    if (this.cursorPipeline && this.cursorBindGroup) {
+      pass.setPipeline(this.cursorPipeline);
+      pass.setBindGroup(0, this.cursorBindGroup);
+      pass.draw(6);
     }
     pass.end();
     this.device.queue.submit([encoder.finish()]);
