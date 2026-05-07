@@ -3,6 +3,7 @@
  */
 
 import type { Ghostty } from './ghostty';
+import type { RendererBackend } from './renderer-types';
 
 export interface ITerminalOptions {
   cols?: number; // Default: 80
@@ -21,6 +22,9 @@ export interface ITerminalOptions {
 
   // Scrolling options
   smoothScrollDuration?: number; // Duration in ms for smooth scroll animation (default: 100, 0 = instant)
+
+  /** Renderer backend. 'auto' probes WebGPU, falls back to Canvas2D. Default: 'auto'. */
+  renderer?: RendererBackend;
 
   // Internal: Ghostty WASM instance (optional, for test isolation)
   // If not provided, uses the module-level instance from init()

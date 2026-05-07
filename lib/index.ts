@@ -107,3 +107,9 @@ export { OSC8LinkProvider } from './providers/osc8-link-provider';
 export { UrlRegexProvider } from './providers/url-regex-provider';
 export { LinkDetector } from './link-detector';
 export type { ILink, ILinkProvider, IBufferCellPosition } from './types';
+
+// Renderer factory + WebGPU stub
+export { WebGPURenderer } from './renderer-webgpu';
+export { pickRenderer } from './renderer-factory';
+export { ScrollbarOverlay } from './scrollbar-overlay';
+export { CursorBlink } from './cursor-blink';

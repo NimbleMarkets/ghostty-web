@@ -49,7 +49,7 @@
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
 
-      term.open(document.getElementById('terminal'));
+      await term.open(document.getElementById('terminal'));
       fitAddon.fit();
 
       // Write lots of lines to create scrollback

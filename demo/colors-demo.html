@@ -204,7 +204,7 @@
 
           // Open terminal
           const container = document.getElementById('terminal-container');
-          term.open(container);
+          await term.open(container);
           fitAddon.fit();
 
           // Handle resize

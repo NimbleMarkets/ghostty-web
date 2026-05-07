@@ -170,7 +170,7 @@
         fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
 
-        term.open(document.getElementById('terminal-container'));
+        await term.open(document.getElementById('terminal-container'));
         fitAddon.fit();
         fitAddon.observeResize(); // Auto-fit when container resizes
 

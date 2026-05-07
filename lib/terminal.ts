@@ -35,6 +35,7 @@ import { LinkDetector } from './link-detector';
 import { OSC8LinkProvider } from './providers/osc8-link-provider';
 import { UrlRegexProvider } from './providers/url-regex-provider';
 import { CanvasRenderer } from './renderer';
+import { pickRenderer } from './renderer-factory';
 import type { Renderer } from './renderer-types';
 import { ScrollbarOverlay } from './scrollbar-overlay';
 import { SelectionManager } from './selection-manager';
@@ -156,6 +157,7 @@ export class Terminal implements ITerminalCore {
       convertEol: options.convertEol ?? false,
       disableStdin: options.disableStdin ?? false,
       smoothScrollDuration: options.smoothScrollDuration ?? 100, // Default: 100ms smooth scroll
+      renderer: options.renderer ?? 'auto',
     };
 
     // Wrap in Proxy to intercept runtime changes (xterm.js compatibility)
@@ -352,13 +354,21 @@ export class Terminal implements ITerminalCore {
    *
    * Initializes all components and starts rendering.
    * Requires a pre-loaded Ghostty instance passed to the constructor.
+   *
+   * Returns a Promise<void> for xterm.js API compatibility and to support
+   * the WebGPU backend (which requires async device acquisition). For the
+   * default Canvas2D path the promise resolves in the same call stack so
+   * callers that omit `await` still work correctly.
    */
-  open(parent: HTMLElement): void {
+  open(parent?: HTMLElement): Promise<void> {
     if (this.isOpen) {
       throw new Error('Terminal is already open');
     }
     if (this.isDisposed) {
       throw new Error('Terminal has been disposed');
+    }
+    if (!parent) {
+      throw new Error('open() requires a parent HTMLElement');
     }
 
     // Store parent element
@@ -445,18 +455,55 @@ export class Terminal implements ITerminalCore {
       this.scrollbarCanvas = scrollbarCanvas;
       this.scrollbarOverlay = new ScrollbarOverlay(scrollbarCanvas, window.devicePixelRatio || 1);
 
-      // Create renderer
-      this.renderer = new CanvasRenderer(this.canvas, {
+      const rendererOpts = {
         fontSize: this.options.fontSize,
         fontFamily: this.options.fontFamily,
         cursorStyle: this.options.cursorStyle,
         cursorBlink: this.options.cursorBlink,
         theme: this.options.theme,
-      });
+      };
 
+      // Resolve the renderer. For canvas2d and auto-without-GPU we build the
+      // CanvasRenderer synchronously so callers that don't await open() still
+      // work. Only for explicit 'webgpu' (or 'auto' with a real GPU present)
+      // do we need the async pickRenderer path.
+      const backend = this.options.renderer ?? 'auto';
+      const gpu = (navigator as any).gpu;
+      const needsAsync = backend === 'webgpu' || (backend === 'auto' && !!gpu);
+
+      if (!needsAsync) {
+        // Synchronous fast path — CanvasRenderer constructor is sync.
+        this.renderer = new CanvasRenderer(this.canvas, rendererOpts);
+        this._finishOpen(parent);
+        return Promise.resolve();
+      }
+
+      // Async path — WebGPU init or auto+GPU probe.
+      return pickRenderer(backend, this.canvas, rendererOpts).then((renderer) => {
+        this.renderer = renderer;
+        this._finishOpen(parent);
+      }).catch((error) => {
+        this.isOpen = false;
+        this.cleanupComponents();
+        throw new Error(`Failed to open terminal: ${error}`);
+      });
+    } catch (error) {
+      // Clean up on error (sync path throws)
+      this.isOpen = false;
+      this.cleanupComponents();
+      throw new Error(`Failed to open terminal: ${error}`);
+    }
+  }
+
+  /**
+   * Complete terminal initialization after the renderer is ready.
+   * Called from both the sync and async open() paths.
+   */
+  private _finishOpen(parent: HTMLElement): void {
+    try {
       // Size canvas to terminal dimensions (use renderer.resize for proper DPI scaling)
-      this.renderer.resize(this.cols, this.rows);
-      const m0 = this.renderer.getMetrics();
+      this.renderer!.resize(this.cols, this.rows);
+      const m0 = this.renderer!.getMetrics();
       this.scrollbarOverlay?.resize(this.cols * m0.width, this.rows * m0.height);
 
       // Push initial cell pixel dims into the WASM terminal — needed for
@@ -464,8 +511,8 @@ export class Terminal implements ITerminalCore {
       this.updateWasmPixelSize();
 
       // Create mouse tracking configuration
-      const canvas = this.canvas;
-      const renderer = this.renderer;
+      const canvas = this.canvas!;
+      const renderer = this.renderer!;
       const wasmTerm = this.wasmTerm;
       const mouseConfig: MouseTrackingConfig = {
         hasMouseTracking: () => wasmTerm?.hasMouseTracking() ?? false,
@@ -511,20 +558,20 @@ export class Terminal implements ITerminalCore {
           // Handle Cmd+C copy - returns true if there was a selection to copy
           return this.copySelection();
         },
-        this.textarea,
+        this.textarea!,
         mouseConfig
       );
 
       // Create selection manager (pass textarea for context menu positioning)
       this.selectionManager = new SelectionManager(
         this,
-        this.renderer,
-        this.wasmTerm,
-        this.textarea
+        this.renderer!,
+        this.wasmTerm!,
+        this.textarea!
       );
 
       // Connect selection manager to renderer
-      this.renderer.setSelectionManager(this.selectionManager);
+      this.renderer!.setSelectionManager(this.selectionManager);
 
       // Forward selection change events
       this.selectionManager.onSelectionChange(() => {
@@ -557,8 +604,8 @@ export class Terminal implements ITerminalCore {
       parent.addEventListener('wheel', this.handleWheel, { passive: false, capture: true });
 
       // Render initial blank screen (force full redraw)
-      this.renderer.invalidate();
-      this.renderer.render(this.wasmTerm, this.viewportY, this);
+      this.renderer!.invalidate();
+      this.renderer!.render(this.wasmTerm!, this.viewportY, this);
       this.scrollbarOverlay?.render({
         viewportY: this.viewportY,
         scrollbackLength: this.getScrollbackLength(),
@@ -568,7 +615,7 @@ export class Terminal implements ITerminalCore {
 
       // Wire the renderer back to the render scheduler so internal
       // state changes (cursor blink) wake the loop on demand.
-      this.renderer.setOnRequestRender(() => this.requestRender());
+      this.renderer!.setOnRequestRender(() => this.requestRender());
 
       // Run one synchronous render+cursor-poll to mirror the prior
       // loop's first iteration. Some downstream callers
