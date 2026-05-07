@@ -27,7 +27,7 @@ import type {
   RendererOptions,
 } from './renderer-types';
 
-const PREFERRED_FORMAT: GPUTextureFormat = 'bgra8unorm';
+const warnedUnparseableColors = new Set<string>();
 
 export class WebGPURenderer implements Renderer {
   public readonly backend = 'webgpu' as const;
@@ -35,6 +35,7 @@ export class WebGPURenderer implements Renderer {
 
   private device!: GPUDevice;
   private context!: GPUCanvasContext;
+  private preferredFormat!: GPUTextureFormat;
   private theme: Required<ITheme> = DEFAULT_THEME;
   private fontSize: number;
   private fontFamily: string;
@@ -77,9 +78,10 @@ export class WebGPURenderer implements Renderer {
     const ctx = this.canvas.getContext('webgpu') as GPUCanvasContext | null;
     if (!ctx) throw new Error('WebGPURenderer: failed to acquire webgpu context');
     this.context = ctx;
+    this.preferredFormat = navigator.gpu.getPreferredCanvasFormat();
     this.context.configure({
       device: this.device,
-      format: PREFERRED_FORMAT,
+      format: this.preferredFormat,
       alphaMode: 'premultiplied',
     });
 
@@ -89,7 +91,7 @@ export class WebGPURenderer implements Renderer {
       if (this.destroyed) return;
       console.error('[ghostty-web] GPUDevice lost:', info.reason, info.message);
       // Task 17 wires this to the Terminal-level fallback.
-      this.deviceLostListeners.forEach((fn) => fn(info));
+      for (const fn of this.deviceLostListeners) fn(info);
     });
   }
 
@@ -158,8 +160,17 @@ export class WebGPURenderer implements Renderer {
 
   private parseHexColor(hex: string): [number, number, number] {
     const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
-    if (!m) return [0, 0, 0];
-    return [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16)];
+    if (!m) {
+      if (!warnedUnparseableColors.has(hex)) {
+        warnedUnparseableColors.add(hex);
+        console.warn(
+          '[ghostty-web] WebGPURenderer: unparseable theme color, falling back to black:',
+          hex
+        );
+      }
+      return [0, 0, 0];
+    }
+    return [Number.parseInt(m[1]!, 16), Number.parseInt(m[2]!, 16), Number.parseInt(m[3]!, 16)];
   }
 
   setTheme(theme: ITheme): void {
