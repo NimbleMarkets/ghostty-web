@@ -271,7 +271,12 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
     f32((cell.atlasSize >> 16u) & 0xffffu),
   );
   let texCoord = (auv + in.uv * asz) / f32(grid.atlasSize);
-  let mask = textureSample(atlasTex, atlasSamp, texCoord).a;
+  // textureSampleLevel (not textureSample) so this remains valid after
+  // upstream non-uniform branches (block-element, kitty placeholder) make
+  // the surrounding control flow non-uniform. Chrome's WGSL validator
+  // rejects textureSample under non-uniform CF; Safari was lenient.
+  // The atlas has no mips, so explicit LOD 0 is correct.
+  let mask = textureSampleLevel(atlasTex, atlasSamp, texCoord, 0.0).a;
 
   let alpha = select(mask, mask * 0.5, (flags & FLAG_FAINT) != 0u);
   let outRgb = mix(bg, fg, alpha);
