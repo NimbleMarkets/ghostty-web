@@ -46,8 +46,17 @@ describe('pickRenderer', () => {
         throw new Error('no gpu');
       },
     };
-    const canvas = document.createElement('canvas');
-    const r = await pickRenderer('auto', canvas, {});
-    expect(r.backend).toBe('canvas2d');
+    // Silence the factory's one-time fallback console.warn so it doesn't
+    // pollute test output. The behavior we care about is the Canvas2D
+    // fallback itself, asserted below.
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const canvas = document.createElement('canvas');
+      const r = await pickRenderer('auto', canvas, {});
+      expect(r.backend).toBe('canvas2d');
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });
