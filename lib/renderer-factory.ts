@@ -38,7 +38,17 @@ export async function pickRenderer(
         if (!adapter) {
           if (backend === 'webgpu') throw new Error('WebGPU adapter unavailable');
         } else {
-          const device = await adapter.requestDevice();
+          // textPass binds 1 glyph atlas + 16 kitty textures = 17 sampled
+          // textures per fragment stage. Default device limit is 16, so the
+          // pipeline silently fails to validate without raising the limit.
+          // Request as much as the adapter exposes (most desktops report
+          // ≥32; mobile may report exactly 16, which would fail).
+          const adapterMax = adapter.limits?.maxSampledTexturesPerShaderStage ?? 16;
+          const requiredLimits: Record<string, number> = {};
+          if (adapterMax >= 17) {
+            requiredLimits.maxSampledTexturesPerShaderStage = Math.min(32, adapterMax);
+          }
+          const device = await adapter.requestDevice({ requiredLimits });
           return await WebGPURenderer.create(canvas, device, opts);
         }
       } catch (e) {

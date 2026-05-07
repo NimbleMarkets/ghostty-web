@@ -1080,6 +1080,7 @@ export class WebGPURenderer implements Renderer {
       }
     }
 
+    const defaultEmptyFlags = (FLAG_USE_THEME_FG | FLAG_USE_THEME_BG) >>> 0;
     for (let y = 0; y < dims.rows; y++) {
       let line: ReturnType<IRenderable['getLine']> = null;
       if (viewportY > 0) {
@@ -1092,11 +1093,16 @@ export class WebGPURenderer implements Renderer {
       } else {
         line = buffer.getLine(y);
       }
-      if (!line) continue;
-      for (let x = 0; x < line.length && x < dims.cols; x++) {
-        const c = line[x];
-        if (!c || c.width === 0) continue;
+      // Walk every column even when line is missing or short — empty cells
+      // need FLAG_USE_THEME_FG|BG set so the shader picks up theme.background
+      // instead of rendering solid black (the zeroed packed-fg/bg).
+      for (let x = 0; x < dims.cols; x++) {
         const i = (y * dims.cols + x) * CELL_U32S;
+        const c = line && x < line.length ? line[x] : null;
+        if (!c || c.width === 0) {
+          arr[i + 4] = defaultEmptyFlags;
+          continue;
+        }
         let flags = 0;
         if (c.flags & CellFlags.BOLD) flags |= FLAG_BOLD;
         if (c.flags & CellFlags.ITALIC) flags |= FLAG_ITALIC;
