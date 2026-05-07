@@ -1478,7 +1478,7 @@ describe('Terminal Config', () => {
 
       // Get first cell - should have red foreground
       const line = term.wasmTerm!.getLine(0);
-      const firstCell = line[0];
+      const firstCell = line![0];
 
       // The foreground should be red (0xFF0000)
       expect(firstCell.fg_r).toBe(255);

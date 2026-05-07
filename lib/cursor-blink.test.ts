@@ -14,13 +14,11 @@ describe('CursorBlink', () => {
     nextId = 1;
     originalSetInterval = globalThis.setInterval;
     originalClearInterval = globalThis.clearInterval;
-    // @ts-expect-error fake setInterval
     globalThis.setInterval = ((fn: () => void, delay: number) => {
       const id = nextId++;
       intervals.push({ id, fn, delay, nextFire: now + delay });
       return id;
     }) as any;
-    // @ts-expect-error fake clearInterval
     globalThis.clearInterval = ((id: number) => {
       intervals = intervals.filter((i) => i.id !== id);
     }) as any;
