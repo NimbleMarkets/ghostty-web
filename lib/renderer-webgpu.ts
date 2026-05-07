@@ -312,10 +312,68 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
 `;
 
 // ---------------------------------------------------------------------------
+// KITTY_SHADER
+// ---------------------------------------------------------------------------
+
+const KITTY_SHADER = /* wgsl */ `
+struct KittyParams {
+  srcOrigin: vec2<f32>,
+  srcSize: vec2<f32>,
+  dstOrigin: vec2<f32>,
+  dstSize: vec2<f32>,
+  imgSize: vec2<f32>,
+  canvasSize: vec2<f32>,
+};
+
+@group(0) @binding(0) var<uniform> params: KittyParams;
+@group(0) @binding(1) var imgTex: texture_2d<f32>;
+@group(0) @binding(2) var imgSamp: sampler;
+
+struct VOut {
+  @builtin(position) clip: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vsMain(@builtin(vertex_index) vid: u32) -> VOut {
+  let corners = array<vec2<f32>, 6>(
+    vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0),
+    vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0),
+  );
+  let local = corners[vid];
+  let cssX = params.dstOrigin.x + local.x * params.dstSize.x;
+  let cssY = params.dstOrigin.y + local.y * params.dstSize.y;
+  var out: VOut;
+  out.clip = vec4<f32>(
+    (cssX / params.canvasSize.x) * 2.0 - 1.0,
+    1.0 - (cssY / params.canvasSize.y) * 2.0,
+    0.0, 1.0,
+  );
+  out.uv = (params.srcOrigin + local * params.srcSize) / params.imgSize;
+  return out;
+}
+
+@fragment
+fn fsMain(in: VOut) -> @location(0) vec4<f32> {
+  return textureSample(imgTex, imgSamp, in.uv);
+}
+`;
+
+// ---------------------------------------------------------------------------
 // GlyphAtlas
 // ---------------------------------------------------------------------------
 
 type AtlasSlot = { u: number; v: number; w: number; h: number };
+
+type KittyTextureEntry = {
+  texture: GPUTexture;
+  view: GPUTextureView;
+  width: number;
+  height: number;
+  format: number;        // KittyImageFormat enum value
+  dataPtr: number;
+  dataLen: number;
+};
 
 class GlyphAtlas {
   private device: GPUDevice;
@@ -516,6 +574,13 @@ export class WebGPURenderer implements Renderer {
   private cursorBindGroupLayout?: GPUBindGroupLayout;
   private cursorBindGroup?: GPUBindGroup;
 
+  // Kitty pipeline
+  private kittyTextures = new Map<number, KittyTextureEntry>();
+  private kittySampler?: GPUSampler;
+  private kittyPipeline?: GPURenderPipeline;
+  private kittyBindGroupLayout?: GPUBindGroupLayout;
+  private kittyParamsRing: GPUBuffer[] = [];
+
   static async create(
     canvas: HTMLCanvasElement,
     device: GPUDevice,
@@ -644,6 +709,50 @@ export class WebGPURenderer implements Renderer {
       label: 'cursorPipeline',
     });
 
+    this.kittySampler = this.device.createSampler({
+      magFilter: 'linear',
+      minFilter: 'linear',
+      label: 'kittySampler',
+    });
+
+    this.kittyBindGroupLayout = this.device.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'uniform' },
+        },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+      ],
+    });
+    const kittyModule = this.device.createShaderModule({
+      code: KITTY_SHADER,
+      label: 'kittyShader',
+    });
+    const kittyLayout = this.device.createPipelineLayout({
+      bindGroupLayouts: [this.kittyBindGroupLayout],
+    });
+    this.kittyPipeline = this.device.createRenderPipeline({
+      layout: kittyLayout,
+      vertex: { module: kittyModule, entryPoint: 'vsMain' },
+      fragment: {
+        module: kittyModule,
+        entryPoint: 'fsMain',
+        targets: [
+          {
+            format: this.preferredFormat,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
+          },
+        ],
+      },
+      primitive: { topology: 'triangle-list' },
+      label: 'kittyPipeline',
+    });
+
     this.metrics = this.measureFont();
 
     this.device.lost.then((info) => {
@@ -765,6 +874,103 @@ export class WebGPURenderer implements Renderer {
           { binding: 1, resource: { buffer: this.paletteUBO } },
         ],
       });
+    }
+  }
+
+  private getOrUploadKittyTexture(
+    graphics: number,
+    imageId: number,
+    buffer: IRenderable,
+  ): KittyTextureEntry | null {
+    const pixels = buffer.getKittyImagePixels?.(graphics, imageId);
+    if (!pixels) return this.kittyTextures.get(imageId) ?? null;
+
+    const cached = this.kittyTextures.get(imageId);
+    const sigMatches =
+      cached &&
+      cached.width === pixels.width &&
+      cached.height === pixels.height &&
+      cached.format === pixels.format &&
+      cached.dataPtr === pixels.data.byteOffset &&
+      cached.dataLen === pixels.data.length;
+    if (sigMatches) return cached;
+
+    if (cached) cached.texture.destroy();
+
+    const { width, height, format, data } = pixels;
+    if (width === 0 || height === 0) return null;
+    const rgba = new Uint8Array(width * height * 4);
+    // KittyImageFormat: 0=RGBA, 1=RGB, 2=GRAY, 3=GRAY_ALPHA, others=PNG/unknown
+    switch (format) {
+      case 0:
+        rgba.set(data);
+        break;
+      case 1:
+        for (let i = 0, o = 0; i < data.length; i += 3, o += 4) {
+          rgba[o] = data[i]!;
+          rgba[o + 1] = data[i + 1]!;
+          rgba[o + 2] = data[i + 2]!;
+          rgba[o + 3] = 255;
+        }
+        break;
+      case 2:
+        for (let i = 0, o = 0; i < data.length; i++, o += 4) {
+          const v = data[i]!;
+          rgba[o] = v;
+          rgba[o + 1] = v;
+          rgba[o + 2] = v;
+          rgba[o + 3] = 255;
+        }
+        break;
+      case 3:
+        for (let i = 0, o = 0; i < data.length; i += 2, o += 4) {
+          const v = data[i]!;
+          rgba[o] = v;
+          rgba[o + 1] = v;
+          rgba[o + 2] = v;
+          rgba[o + 3] = data[i + 1]!;
+        }
+        break;
+      default:
+        return null; // PNG / unknown
+    }
+
+    const texture = this.device.createTexture({
+      size: { width, height },
+      format: 'rgba8unorm',
+      usage:
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.RENDER_ATTACHMENT,
+      label: `kittyImg#${imageId}`,
+    });
+    this.device.queue.writeTexture(
+      { texture },
+      rgba.buffer,
+      { bytesPerRow: width * 4, rowsPerImage: height },
+      { width, height },
+    );
+    const entry: KittyTextureEntry = {
+      texture,
+      view: texture.createView(),
+      width,
+      height,
+      format,
+      dataPtr: pixels.data.byteOffset,
+      dataLen: pixels.data.length,
+    };
+    this.kittyTextures.set(imageId, entry);
+    return entry;
+  }
+
+  private ensureKittyRingSize(n: number): void {
+    while (this.kittyParamsRing.length < n) {
+      const buf = this.device.createBuffer({
+        size: 64,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: `kittyParams[${this.kittyParamsRing.length}]`,
+      });
+      this.kittyParamsRing.push(buf);
     }
   }
 
@@ -918,6 +1124,54 @@ export class WebGPURenderer implements Renderer {
     this.encodeCells(buffer, viewportY, sb);
     this.uploadGridUBO(viewportY, cursor);
 
+    // Collect kitty direct placements (must happen before beginRenderPass — writeBuffer
+    // during a render pass is a validation error).
+    const directPlacements: Array<{ params: Float32Array; view: GPUTextureView }> = [];
+    if (this.kittyPipeline && buffer.getKittyGraphics && buffer.iterPlacements) {
+      const graphics = buffer.getKittyGraphics();
+      if (graphics !== null) {
+        const cssW = this.cols * this.metrics.width;
+        const cssH = this.rows * this.metrics.height;
+        for (const p of buffer.iterPlacements(graphics, true)) {
+          if (p.isVirtual) continue;
+          const tex = this.getOrUploadKittyTexture(graphics, p.imageId, buffer);
+          if (!tex) continue;
+          const params = new Float32Array(16);
+          params[0] = p.sourceX;
+          params[1] = p.sourceY;
+          params[2] = p.sourceWidth;
+          params[3] = p.sourceHeight;
+          params[4] = p.viewportCol * this.metrics.width;
+          params[5] = p.viewportRow * this.metrics.height;
+          params[6] = p.pixelWidth;
+          params[7] = p.pixelHeight;
+          params[8] = tex.width;
+          params[9] = tex.height;
+          params[10] = cssW;
+          params[11] = cssH;
+          directPlacements.push({ params, view: tex.view });
+        }
+      }
+    }
+    this.ensureKittyRingSize(directPlacements.length);
+    for (let i = 0; i < directPlacements.length; i++) {
+      this.device.queue.writeBuffer(
+        this.kittyParamsRing[i]!,
+        0,
+        directPlacements[i]!.params.buffer,
+      );
+    }
+    const kittyBindGroups: GPUBindGroup[] = directPlacements.map((p, i) =>
+      this.device.createBindGroup({
+        layout: this.kittyBindGroupLayout!,
+        entries: [
+          { binding: 0, resource: { buffer: this.kittyParamsRing[i]! } },
+          { binding: 1, resource: p.view },
+          { binding: 2, resource: this.kittySampler! },
+        ],
+      }),
+    );
+
     const view = this.context.getCurrentTexture().createView();
     const [r, g, b] = this.parseHexColor(this.theme.background);
     const encoder = this.device.createCommandEncoder();
@@ -939,6 +1193,11 @@ export class WebGPURenderer implements Renderer {
     if (this.cursorPipeline && this.cursorBindGroup) {
       pass.setPipeline(this.cursorPipeline);
       pass.setBindGroup(0, this.cursorBindGroup);
+      pass.draw(6);
+    }
+    for (let i = 0; i < kittyBindGroups.length; i++) {
+      pass.setPipeline(this.kittyPipeline!);
+      pass.setBindGroup(0, kittyBindGroups[i]!);
       pass.draw(6);
     }
     pass.end();
