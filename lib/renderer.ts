@@ -12,65 +12,25 @@
 
 import type { ITheme } from './interfaces';
 import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
+import type {
+  FontMetrics,
+  IRenderable,
+  IScrollbackProvider,
+  LinkRange,
+  Renderer,
+  RendererOptions,
+} from './renderer-types';
 import type { SelectionManager } from './selection-manager';
 import type { GhosttyCell, ILink, KittyImagePixels, KittyPlacementInfo } from './types';
 import { CellFlags, KittyImageFormat } from './types';
 import { CursorBlink } from './cursor-blink';
 
-// Interface for objects that can be rendered
-export interface IRenderable {
-  getLine(y: number): GhosttyCell[] | null;
-  getCursor(): { x: number; y: number; visible: boolean };
-  getDimensions(): { cols: number; rows: number };
-  isRowDirty(y: number): boolean;
-  /** Returns true if a full redraw is needed (e.g., screen change) */
-  needsFullRedraw?(): boolean;
-  clearDirty(): void;
-  /**
-   * Get the full grapheme string for a cell at (row, col).
-   * For cells with grapheme_len > 0, this returns all codepoints combined.
-   * For simple cells, returns the single character.
-   */
-  getGraphemeString?(row: number, col: number): string;
-
-  // Kitty graphics — optional. When implemented, the renderer composites
-  // images onto the canvas after text rendering. GhosttyTerminal provides
-  // these; other IRenderable implementations (e.g. test fakes) can omit.
-  getKittyGraphics?(): number | null;
-  iterPlacements?(graphics: number, onlyVisible?: boolean): Iterable<KittyPlacementInfo>;
-  getKittyImagePixels?(graphics: number, imageId: number): KittyImagePixels | null;
-  /**
-   * Returns the full codepoint sequence for the cell at (row, col) in
-   * the active screen — the base codepoint followed by any combining
-   * marks. Used to decode unicode-placeholder cells (U+10EEEE plus
-   * combining diacritics that encode row/column slice positions).
-   */
-  getGrapheme?(row: number, col: number): number[] | null;
-}
-
-export interface IScrollbackProvider {
-  getScrollbackLine(offset: number): GhosttyCell[] | null;
-  getScrollbackLength(): number;
-}
-
-// ============================================================================
-// Type Definitions
-// ============================================================================
-
-export interface RendererOptions {
-  fontSize?: number; // Default: 15
-  fontFamily?: string; // Default: 'monospace'
-  cursorStyle?: 'block' | 'underline' | 'bar'; // Default: 'block'
-  cursorBlink?: boolean; // Default: false
-  theme?: ITheme;
-  devicePixelRatio?: number; // Default: window.devicePixelRatio
-}
-
-export interface FontMetrics {
-  width: number; // Character cell width in CSS pixels
-  height: number; // Character cell height in CSS pixels
-  baseline: number; // Distance from top to text baseline
-}
+export type {
+  FontMetrics,
+  IRenderable,
+  IScrollbackProvider,
+  RendererOptions,
+} from './renderer-types';
 
 // ============================================================================
 // Default Theme
@@ -133,8 +93,9 @@ function cachedMatchesPixels(
   );
 }
 
-export class CanvasRenderer {
-  private canvas: HTMLCanvasElement;
+export class CanvasRenderer implements Renderer {
+  public readonly backend = 'canvas2d' as const;
+  private canvasEl: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private fontSize: number;
   private fontFamily: string;
@@ -267,7 +228,7 @@ export class CanvasRenderer {
   } | null = null;
 
   constructor(canvas: HTMLCanvasElement, options: RendererOptions = {}) {
-    this.canvas = canvas;
+    this.canvasEl = canvas;
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) {
       throw new Error('Failed to get 2D rendering context');
@@ -364,12 +325,12 @@ export class CanvasRenderer {
     const cssHeight = rows * this.metrics.height;
 
     // Set CSS size (what user sees)
-    this.canvas.style.width = `${cssWidth}px`;
-    this.canvas.style.height = `${cssHeight}px`;
+    this.canvasEl.style.width = `${cssWidth}px`;
+    this.canvasEl.style.height = `${cssHeight}px`;
 
     // Set actual canvas size (scaled for DPI)
-    this.canvas.width = cssWidth * this.devicePixelRatio;
-    this.canvas.height = cssHeight * this.devicePixelRatio;
+    this.canvasEl.width = cssWidth * this.devicePixelRatio;
+    this.canvasEl.height = cssHeight * this.devicePixelRatio;
 
     // Scale context to match DPI (setting canvas.width/height resets the context)
     this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
@@ -387,15 +348,23 @@ export class CanvasRenderer {
   // Main Rendering
   // ==========================================================================
 
+  private invalidateNext = false;
+
+  public invalidate(): void {
+    this.invalidateNext = true;
+  }
+
   /**
    * Render the terminal buffer to canvas
    */
   public render(
     buffer: IRenderable,
-    forceAll: boolean = false,
     viewportY: number = 0,
     scrollbackProvider?: IScrollbackProvider,
   ): void {
+    const forceAll = this.invalidateNext;
+    this.invalidateNext = false;
+
     // Store buffer reference for grapheme lookups in renderCell
     this.currentBuffer = buffer;
     this.currentRenderBuffer = buffer;
@@ -415,23 +384,24 @@ export class CanvasRenderer {
     const scrollbackLength = scrollbackProvider ? scrollbackProvider.getScrollbackLength() : 0;
 
     // Check if buffer needs full redraw (e.g., screen change between normal/alternate)
+    let forceAllMut = forceAll;
     if (buffer.needsFullRedraw?.()) {
-      forceAll = true;
+      forceAllMut = true;
     }
 
     // Resize canvas if dimensions changed
     const needsResize =
-      this.canvas.width !== dims.cols * this.metrics.width * this.devicePixelRatio ||
-      this.canvas.height !== dims.rows * this.metrics.height * this.devicePixelRatio;
+      this.canvasEl.width !== dims.cols * this.metrics.width * this.devicePixelRatio ||
+      this.canvasEl.height !== dims.rows * this.metrics.height * this.devicePixelRatio;
 
     if (needsResize) {
       this.resize(dims.cols, dims.rows);
-      forceAll = true; // Force full render after resize
+      forceAllMut = true; // Force full render after resize
     }
 
     // Force re-render when viewport changes (scrolling)
     if (viewportY !== this.lastViewportY) {
-      forceAll = true;
+      forceAllMut = true;
       this.lastViewportY = viewportY;
     }
 
@@ -440,7 +410,7 @@ export class CanvasRenderer {
       cursor.x !== this.lastCursorPosition.x || cursor.y !== this.lastCursorPosition.y;
     if (cursorMoved || this.cursorBlink) {
       // Mark cursor lines as needing redraw
-      if (!forceAll && !buffer.isRowDirty(cursor.y)) {
+      if (!forceAllMut && !buffer.isRowDirty(cursor.y)) {
         // Need to redraw cursor line
         const line = buffer.getLine(cursor.y);
         if (line) {
@@ -449,7 +419,7 @@ export class CanvasRenderer {
       }
       if (cursorMoved && this.lastCursorPosition.y !== cursor.y) {
         // Also redraw old cursor line if cursor moved to different line
-        if (!forceAll && !buffer.isRowDirty(this.lastCursorPosition.y)) {
+        if (!forceAllMut && !buffer.isRowDirty(this.lastCursorPosition.y)) {
           const line = buffer.getLine(this.lastCursorPosition.y);
           if (line) {
             this.renderLine(line, this.lastCursorPosition.y, dims.cols);
@@ -565,7 +535,7 @@ export class CanvasRenderer {
       const needsRender =
         viewportY > 0
           ? true
-          : forceAll ||
+          : forceAllMut ||
             buffer.isRowDirty(y) ||
             selectionRows.has(y) ||
             hyperlinkRows.has(y) ||
@@ -1438,11 +1408,8 @@ export class CanvasRenderer {
     return { ...this.metrics };
   }
 
-  /**
-   * Get canvas element (needed by SelectionManager)
-   */
-  public getCanvas(): HTMLCanvasElement {
-    return this.canvas;
+  public get canvas(): HTMLCanvasElement {
+    return this.canvasEl;
   }
 
   /**
@@ -1531,15 +1498,20 @@ export class CanvasRenderer {
   public clear(): void {
     // clearRect first because fillRect composites rather than replaces,
     // so transparent/translucent backgrounds wouldn't clear previous content.
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.clearRect(0, 0, this.canvasEl.width, this.canvasEl.height);
     this.ctx.fillStyle = this.theme.background;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillRect(0, 0, this.canvasEl.width, this.canvasEl.height);
   }
 
   /**
    * Cleanup resources
    */
-  public dispose(): void {
+  public destroy(): void {
     this.cursorBlink_.destroy();
+  }
+
+  /** @deprecated Use destroy() */
+  public dispose(): void {
+    this.destroy();
   }
 }

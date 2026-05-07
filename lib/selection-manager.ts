@@ -13,7 +13,7 @@
 import { EventEmitter } from './event-emitter';
 import type { GhosttyTerminal } from './ghostty';
 import type { IEvent } from './interfaces';
-import type { CanvasRenderer } from './renderer';
+import type { Renderer } from './renderer-types';
 import type { Terminal } from './terminal';
 import type { GhosttyCell } from './types';
 
@@ -34,7 +34,7 @@ export interface SelectionCoordinates {
 
 export class SelectionManager {
   private terminal: Terminal;
-  private renderer: CanvasRenderer;
+  private renderer: Renderer;
   private wasmTerm: GhosttyTerminal;
   private textarea: HTMLTextAreaElement;
 
@@ -101,7 +101,7 @@ export class SelectionManager {
 
   constructor(
     terminal: Terminal,
-    renderer: CanvasRenderer,
+    renderer: Renderer,
     wasmTerm: GhosttyTerminal,
     textarea: HTMLTextAreaElement
   ) {
@@ -350,7 +350,7 @@ export class SelectionManager {
    * Focus the terminal (make it receive keyboard input)
    */
   focus(): void {
-    const canvas = this.renderer.getCanvas();
+    const canvas = this.renderer.canvas;
     if (canvas.parentElement) {
       canvas.parentElement.focus();
     }
@@ -407,7 +407,7 @@ export class SelectionManager {
 
     // Clean up context menu event listener
     if (this.boundContextMenuHandler) {
-      const canvas = this.renderer.getCanvas();
+      const canvas = this.renderer.canvas;
       canvas.removeEventListener('contextmenu', this.boundContextMenuHandler);
       this.boundContextMenuHandler = null;
     }
@@ -429,7 +429,7 @@ export class SelectionManager {
    * Attach mouse event listeners to canvas
    */
   private attachEventListeners(): void {
-    const canvas = this.renderer.getCanvas();
+    const canvas = this.renderer.canvas;
 
     // Mouse down - start selection or clear existing
     canvas.addEventListener('mousedown', (e: MouseEvent) => {
@@ -663,7 +663,7 @@ export class SelectionManager {
     // This allows Copy/Paste options to appear in the context menu
     this.boundContextMenuHandler = (e: MouseEvent) => {
       // Position textarea at mouse cursor
-      const canvas = this.renderer.getCanvas();
+      const canvas = this.renderer.canvas;
       const rect = canvas.getBoundingClientRect();
 
       this.textarea.style.position = 'fixed';

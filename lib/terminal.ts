@@ -35,6 +35,7 @@ import { LinkDetector } from './link-detector';
 import { OSC8LinkProvider } from './providers/osc8-link-provider';
 import { UrlRegexProvider } from './providers/url-regex-provider';
 import { CanvasRenderer } from './renderer';
+import type { Renderer } from './renderer-types';
 import { ScrollbarOverlay } from './scrollbar-overlay';
 import { SelectionManager } from './selection-manager';
 import type { ILink, ILinkProvider } from './types';
@@ -66,7 +67,8 @@ export class Terminal implements ITerminalCore {
   // Components (created on open())
   private ghostty?: Ghostty;
   public wasmTerm?: GhosttyTerminal; // Made public for link providers
-  public renderer?: CanvasRenderer; // Made public for FitAddon
+  public renderer?: Renderer; // Made public for FitAddon
+  private previousHoveredHyperlinkId = 0;
   private inputHandler?: InputHandler;
   private selectionManager?: SelectionManager;
   private canvas?: HTMLCanvasElement;
@@ -259,7 +261,8 @@ export class Terminal implements ITerminalCore {
     this.updateWasmPixelSize();
 
     // Force full re-render with new font
-    this.renderer.render(this.wasmTerm, true, this.viewportY, this);
+    this.renderer.invalidate();
+    this.renderer.render(this.wasmTerm, this.viewportY, this);
     this.scrollbarOverlay?.render({
       viewportY: this.viewportY,
       scrollbackLength: this.getScrollbackLength(),
@@ -467,10 +470,10 @@ export class Terminal implements ITerminalCore {
       const mouseConfig: MouseTrackingConfig = {
         hasMouseTracking: () => wasmTerm?.hasMouseTracking() ?? false,
         hasSgrMouseMode: () => wasmTerm?.getMode(1006, false) ?? true, // SGR extended mode
-        getCellDimensions: () => ({
-          width: renderer.charWidth,
-          height: renderer.charHeight,
-        }),
+        getCellDimensions: () => {
+          const m = renderer.getMetrics();
+          return { width: m.width, height: m.height };
+        },
         getCanvasOffset: () => {
           const rect = canvas.getBoundingClientRect();
           return { left: rect.left, top: rect.top };
@@ -554,7 +557,8 @@ export class Terminal implements ITerminalCore {
       parent.addEventListener('wheel', this.handleWheel, { passive: false, capture: true });
 
       // Render initial blank screen (force full redraw)
-      this.renderer.render(this.wasmTerm, true, this.viewportY, this);
+      this.renderer.invalidate();
+      this.renderer.render(this.wasmTerm, this.viewportY, this);
       this.scrollbarOverlay?.render({
         viewportY: this.viewportY,
         scrollbackLength: this.getScrollbackLength(),
@@ -749,7 +753,8 @@ export class Terminal implements ITerminalCore {
       this.resizeEmitter.fire({ cols, rows });
 
       // Force full render
-      this.renderer!.render(this.wasmTerm!, true, this.viewportY, this);
+      this.renderer!.invalidate();
+      this.renderer!.render(this.wasmTerm!, this.viewportY, this);
       this.scrollbarOverlay?.render({
         viewportY: this.viewportY,
         scrollbackLength: this.getScrollbackLength(),
@@ -793,8 +798,8 @@ export class Terminal implements ITerminalCore {
     // until a font/resize event re-pushed them. Reapply now.
     this.updateWasmPixelSize();
 
-    // Clear renderer
-    this.renderer!.clear();
+    // Clear renderer (force full repaint on next render)
+    this.renderer!.invalidate();
 
     // Reset title
     this.currentTitle = '';
@@ -1286,7 +1291,7 @@ export class Terminal implements ITerminalCore {
     // 1. Calls update() once to sync state and check dirty flags
     // 2. Only redraws dirty rows when forceAll=false
     // 3. Always calls clearDirty() at the end
-    this.renderer!.render(this.wasmTerm!, false, this.viewportY, this);
+    this.renderer!.render(this.wasmTerm!, this.viewportY, this);
     this.scrollbarOverlay?.render({
       viewportY: this.viewportY,
       scrollbackLength: this.getScrollbackLength(),
@@ -1343,7 +1348,7 @@ export class Terminal implements ITerminalCore {
 
     // Dispose renderer
     if (this.renderer) {
-      this.renderer.dispose();
+      this.renderer.destroy();
       this.renderer = undefined;
     }
 
@@ -1464,8 +1469,9 @@ export class Terminal implements ITerminalCore {
 
     // Convert mouse coordinates to terminal cell position
     const rect = this.canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / this.renderer.charWidth);
-    const y = Math.floor((e.clientY - rect.top) / this.renderer.charHeight);
+    const { width: cellW, height: cellH } = this.renderer.getMetrics();
+    const x = Math.floor((e.clientX - rect.left) / cellW);
+    const y = Math.floor((e.clientY - rect.top) / cellH);
 
     // Get hyperlink_id directly from the cell at this position
     // Must account for viewportY (scrollback position)
@@ -1501,9 +1507,10 @@ export class Terminal implements ITerminalCore {
     }
 
     // Update renderer for underline rendering
-    const previousHyperlinkId = (this.renderer as any).hoveredHyperlinkId || 0;
+    const previousHyperlinkId = this.previousHoveredHyperlinkId;
     if (hyperlinkId !== previousHyperlinkId) {
       this.renderer.setHoveredHyperlinkId(hyperlinkId);
+      this.previousHoveredHyperlinkId = hyperlinkId;
 
       // The 60fps render loop will pick up the change automatically
       // No need to force a render - this keeps performance smooth
@@ -1599,9 +1606,10 @@ export class Terminal implements ITerminalCore {
   private handleMouseLeave = (): void => {
     // Clear hyperlink underline
     if (this.renderer && this.wasmTerm) {
-      const previousHyperlinkId = (this.renderer as any).hoveredHyperlinkId || 0;
+      const previousHyperlinkId = this.previousHoveredHyperlinkId;
       if (previousHyperlinkId > 0) {
         this.renderer.setHoveredHyperlinkId(0);
+        this.previousHoveredHyperlinkId = 0;
 
         // The 60fps render loop will pick up the change automatically
       }
@@ -1636,8 +1644,9 @@ export class Terminal implements ITerminalCore {
 
     // Get click position
     const rect = this.canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / this.renderer.charWidth);
-    const y = Math.floor((e.clientY - rect.top) / this.renderer.charHeight);
+    const { width: cellW, height: cellH } = this.renderer.getMetrics();
+    const x = Math.floor((e.clientX - rect.left) / cellW);
+    const y = Math.floor((e.clientY - rect.top) / cellH);
 
     // Calculate buffer row (same logic as processMouseMove)
     const viewportRow = y;
@@ -1896,7 +1905,7 @@ export class Terminal implements ITerminalCore {
 
       // Trigger render to show updated opacity
       if (this.renderer && this.wasmTerm) {
-        this.renderer.render(this.wasmTerm, false, this.viewportY, this);
+        this.renderer.render(this.wasmTerm, this.viewportY, this);
         this.scrollbarOverlay?.render({
           viewportY: this.viewportY,
           scrollbackLength: this.getScrollbackLength(),
@@ -1925,7 +1934,7 @@ export class Terminal implements ITerminalCore {
 
       // Trigger render to show updated opacity
       if (this.renderer && this.wasmTerm) {
-        this.renderer.render(this.wasmTerm, false, this.viewportY, this);
+        this.renderer.render(this.wasmTerm, this.viewportY, this);
         this.scrollbarOverlay?.render({
           viewportY: this.viewportY,
           scrollbackLength: this.getScrollbackLength(),
@@ -1941,7 +1950,7 @@ export class Terminal implements ITerminalCore {
         this.scrollbarOpacity = 0;
         // Final render to clear scrollbar completely
         if (this.renderer && this.wasmTerm) {
-          this.renderer.render(this.wasmTerm, false, this.viewportY, this);
+          this.renderer.render(this.wasmTerm, this.viewportY, this);
           this.scrollbarOverlay?.render({
             viewportY: this.viewportY,
             scrollbackLength: this.getScrollbackLength(),
