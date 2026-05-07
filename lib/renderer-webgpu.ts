@@ -82,6 +82,8 @@ const FLAG_INVERSE: u32 = 1u << 4u;
 const FLAG_FAINT: u32 = 1u << 5u;
 const FLAG_INVISIBLE: u32 = 1u << 6u;
 const FLAG_IS_SELECTED: u32 = 1u << 7u;
+const FLAG_IS_HYPERLINK_HOVERED: u32 = 1u << 8u;
+const FLAG_IS_LINK_RANGE_HOVERED: u32 = 1u << 9u;
 const FLAG_USE_THEME_FG: u32 = 1u << 12u;
 const FLAG_USE_THEME_BG: u32 = 1u << 13u;
 const FLAG_IS_CURSOR_CELL: u32 = 1u << 14u;
@@ -164,6 +166,12 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
   // Underline (thin line near baseline) and strikethrough (mid-cell).
   let baselineFrac = 0.85;       // matches CanvasRenderer's renderCellText
   let underlineThickness = 1.0 / grid.cellSize.y;
+  let hoverActive = (flags & (FLAG_IS_HYPERLINK_HOVERED | FLAG_IS_LINK_RANGE_HOVERED)) != 0u;
+  if (hoverActive) {
+    if (in.uv.y >= baselineFrac && in.uv.y < baselineFrac + underlineThickness * 2.0) {
+      return pal.linkUnderlineColor;
+    }
+  }
   if ((flags & FLAG_UNDERLINE) != 0u) {
     if (in.uv.y >= baselineFrac && in.uv.y < baselineFrac + underlineThickness * 2.0) {
       return vec4<f32>(fg, 1.0);
@@ -632,6 +640,14 @@ export class WebGPURenderer implements Renderer {
         if (inSel(x, y)) flags |= FLAG_IS_SELECTED;
         if (c.hyperlink_id !== 0 && c.hyperlink_id === this.hoveredHyperlinkId) {
           flags |= FLAG_IS_HYPERLINK_HOVERED;
+        }
+        if (this.hoveredLinkRange) {
+          const r = this.hoveredLinkRange;
+          const inRange =
+            (y === r.startY && x >= r.startX && (y < r.endY || x <= r.endX)) ||
+            (y > r.startY && y < r.endY) ||
+            (y === r.endY && x <= r.endX && (y > r.startY || x >= r.startX));
+          if (inRange) flags |= FLAG_IS_LINK_RANGE_HOVERED;
         }
         // Pack colors as little-endian rgba8.
         arr[i + 0] = c.fg_r | (c.fg_g << 8) | (c.fg_b << 16);
