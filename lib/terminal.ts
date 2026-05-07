@@ -35,6 +35,7 @@ import { LinkDetector } from './link-detector';
 import { OSC8LinkProvider } from './providers/osc8-link-provider';
 import { UrlRegexProvider } from './providers/url-regex-provider';
 import { CanvasRenderer } from './renderer';
+import { ScrollbarOverlay } from './scrollbar-overlay';
 import { SelectionManager } from './selection-manager';
 import type { ILink, ILinkProvider } from './types';
 
@@ -69,6 +70,8 @@ export class Terminal implements ITerminalCore {
   private inputHandler?: InputHandler;
   private selectionManager?: SelectionManager;
   private canvas?: HTMLCanvasElement;
+  private scrollbarCanvas?: HTMLCanvasElement;
+  private scrollbarOverlay?: ScrollbarOverlay;
 
   // Link detection system
   private linkDetector?: LinkDetector;
@@ -242,9 +245,10 @@ export class Terminal implements ITerminalCore {
 
     // Resize canvas to match new font metrics
     this.renderer.resize(this.cols, this.rows);
+    const metrics = this.renderer.getMetrics();
+    this.scrollbarOverlay?.resize(this.cols * metrics.width, this.rows * metrics.height);
 
     // Update canvas element dimensions to match renderer
-    const metrics = this.renderer.getMetrics();
     this.canvas.width = metrics.width * this.cols;
     this.canvas.height = metrics.height * this.rows;
     this.canvas.style.width = `${metrics.width * this.cols}px`;
@@ -256,6 +260,12 @@ export class Terminal implements ITerminalCore {
 
     // Force full re-render with new font
     this.renderer.render(this.wasmTerm, true, this.viewportY, this);
+    this.scrollbarOverlay?.render({
+      viewportY: this.viewportY,
+      scrollbackLength: this.getScrollbackLength(),
+      visibleRows: this.rows,
+      opacity: this.scrollbarOpacity,
+    });
   }
 
   /**
@@ -420,6 +430,18 @@ export class Terminal implements ITerminalCore {
         textarea.focus();
       });
 
+      // Create scrollbar overlay canvas (sibling, pointer-events: none)
+      const scrollbarCanvas = document.createElement('canvas');
+      scrollbarCanvas.style.position = 'absolute';
+      scrollbarCanvas.style.left = '0';
+      scrollbarCanvas.style.top = '0';
+      scrollbarCanvas.style.pointerEvents = 'none';
+      scrollbarCanvas.style.zIndex = '2';
+      parent.style.position = parent.style.position || 'relative';
+      parent.appendChild(scrollbarCanvas);
+      this.scrollbarCanvas = scrollbarCanvas;
+      this.scrollbarOverlay = new ScrollbarOverlay(scrollbarCanvas, window.devicePixelRatio || 1);
+
       // Create renderer
       this.renderer = new CanvasRenderer(this.canvas, {
         fontSize: this.options.fontSize,
@@ -431,6 +453,8 @@ export class Terminal implements ITerminalCore {
 
       // Size canvas to terminal dimensions (use renderer.resize for proper DPI scaling)
       this.renderer.resize(this.cols, this.rows);
+      const m0 = this.renderer.getMetrics();
+      this.scrollbarOverlay?.resize(this.cols * m0.width, this.rows * m0.height);
 
       // Push initial cell pixel dims into the WASM terminal — needed for
       // size reports and kitty graphics from the very first vt_write.
@@ -530,7 +554,13 @@ export class Terminal implements ITerminalCore {
       parent.addEventListener('wheel', this.handleWheel, { passive: false, capture: true });
 
       // Render initial blank screen (force full redraw)
-      this.renderer.render(this.wasmTerm, true, this.viewportY, this, this.scrollbarOpacity);
+      this.renderer.render(this.wasmTerm, true, this.viewportY, this);
+      this.scrollbarOverlay?.render({
+        viewportY: this.viewportY,
+        scrollbackLength: this.getScrollbackLength(),
+        visibleRows: this.rows,
+        opacity: this.scrollbarOpacity,
+      });
 
       // Wire the renderer back to the render scheduler so internal
       // state changes (cursor blink) wake the loop on demand.
@@ -701,9 +731,10 @@ export class Terminal implements ITerminalCore {
 
       // Resize renderer
       this.renderer!.resize(cols, rows);
+      const metrics = this.renderer!.getMetrics();
+      this.scrollbarOverlay?.resize(cols * metrics.width, rows * metrics.height);
 
       // Update canvas dimensions
-      const metrics = this.renderer!.getMetrics();
       this.canvas!.width = metrics.width * cols;
       this.canvas!.height = metrics.height * rows;
       this.canvas!.style.width = `${metrics.width * cols}px`;
@@ -719,6 +750,12 @@ export class Terminal implements ITerminalCore {
 
       // Force full render
       this.renderer!.render(this.wasmTerm!, true, this.viewportY, this);
+      this.scrollbarOverlay?.render({
+        viewportY: this.viewportY,
+        scrollbackLength: this.getScrollbackLength(),
+        visibleRows: this.rows,
+        opacity: this.scrollbarOpacity,
+      });
     } catch (e) {
       console.error('Terminal resize failed:', e);
     }
@@ -1249,7 +1286,13 @@ export class Terminal implements ITerminalCore {
     // 1. Calls update() once to sync state and check dirty flags
     // 2. Only redraws dirty rows when forceAll=false
     // 3. Always calls clearDirty() at the end
-    this.renderer!.render(this.wasmTerm!, false, this.viewportY, this, this.scrollbarOpacity);
+    this.renderer!.render(this.wasmTerm!, false, this.viewportY, this);
+    this.scrollbarOverlay?.render({
+      viewportY: this.viewportY,
+      scrollbackLength: this.getScrollbackLength(),
+      visibleRows: this.rows,
+      opacity: this.scrollbarOpacity,
+    });
 
     // Check for cursor movement (Phase 2: onCursorMove event)
     // Note: getCursor() reads from already-updated render state (from render() above)
@@ -1303,6 +1346,14 @@ export class Terminal implements ITerminalCore {
       this.renderer.dispose();
       this.renderer = undefined;
     }
+
+    // Dispose scrollbar overlay
+    this.scrollbarOverlay?.destroy();
+    this.scrollbarOverlay = undefined;
+    if (this.scrollbarCanvas?.parentElement) {
+      this.scrollbarCanvas.parentElement.removeChild(this.scrollbarCanvas);
+    }
+    this.scrollbarCanvas = undefined;
 
     // Remove canvas from DOM
     if (this.canvas && this.canvas.parentNode) {
@@ -1697,22 +1748,16 @@ export class Terminal implements ITerminalCore {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Calculate scrollbar dimensions (match renderer's logic)
-    // Use rect dimensions which are already in CSS pixels
-    const canvasWidth = rect.width;
-    const canvasHeight = rect.height;
-    const scrollbarWidth = 8;
-    const scrollbarX = canvasWidth - scrollbarWidth - 4;
-    const scrollbarPadding = 4;
-
-    // Check if click is in scrollbar area
-    if (mouseX >= scrollbarX && mouseX <= scrollbarX + scrollbarWidth) {
+    // Check if click is in scrollbar area via overlay hit-test
+    if (this.scrollbarOverlay!.hitTest(mouseX, mouseY, scrollbackLength, this.rows) !== null) {
       // Prevent default and stop propagation to prevent text selection
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation(); // Stop SelectionManager from seeing this event
 
-      // Calculate scrollbar thumb position and size
+      // Calculate scrollbar thumb position and size (for thumb vs track detection)
+      const canvasHeight = rect.height;
+      const scrollbarPadding = 4;
       const scrollbarTrackHeight = canvasHeight - scrollbarPadding * 2;
       const visibleRows = this.rows;
       const totalLines = scrollbackLength + visibleRows;
@@ -1851,7 +1896,13 @@ export class Terminal implements ITerminalCore {
 
       // Trigger render to show updated opacity
       if (this.renderer && this.wasmTerm) {
-        this.renderer.render(this.wasmTerm, false, this.viewportY, this, this.scrollbarOpacity);
+        this.renderer.render(this.wasmTerm, false, this.viewportY, this);
+        this.scrollbarOverlay?.render({
+          viewportY: this.viewportY,
+          scrollbackLength: this.getScrollbackLength(),
+          visibleRows: this.rows,
+          opacity: this.scrollbarOpacity,
+        });
       }
 
       if (progress < 1) {
@@ -1874,7 +1925,13 @@ export class Terminal implements ITerminalCore {
 
       // Trigger render to show updated opacity
       if (this.renderer && this.wasmTerm) {
-        this.renderer.render(this.wasmTerm, false, this.viewportY, this, this.scrollbarOpacity);
+        this.renderer.render(this.wasmTerm, false, this.viewportY, this);
+        this.scrollbarOverlay?.render({
+          viewportY: this.viewportY,
+          scrollbackLength: this.getScrollbackLength(),
+          visibleRows: this.rows,
+          opacity: this.scrollbarOpacity,
+        });
       }
 
       if (progress < 1) {
@@ -1884,7 +1941,13 @@ export class Terminal implements ITerminalCore {
         this.scrollbarOpacity = 0;
         // Final render to clear scrollbar completely
         if (this.renderer && this.wasmTerm) {
-          this.renderer.render(this.wasmTerm, false, this.viewportY, this, 0);
+          this.renderer.render(this.wasmTerm, false, this.viewportY, this);
+          this.scrollbarOverlay?.render({
+            viewportY: this.viewportY,
+            scrollbackLength: this.getScrollbackLength(),
+            visibleRows: this.rows,
+            opacity: 0,
+          });
         }
       }
     };
