@@ -248,16 +248,12 @@ export class Terminal implements ITerminalCore {
       this.selectionManager.clearSelection();
     }
 
-    // Resize canvas to match new font metrics
+    // Resize canvas to match new font metrics. The renderer owns the
+    // canvas's device-pixel and CSS sizes (it scales by devicePixelRatio
+    // for crisp output); don't overwrite them here.
     this.renderer.resize(this.cols, this.rows);
     const metrics = this.renderer.getMetrics();
     this.scrollbarOverlay?.resize(this.cols * metrics.width, this.rows * metrics.height);
-
-    // Update canvas element dimensions to match renderer
-    this.canvas.width = metrics.width * this.cols;
-    this.canvas.height = metrics.height * this.rows;
-    this.canvas.style.width = `${metrics.width * this.cols}px`;
-    this.canvas.style.height = `${metrics.height * this.rows}px`;
 
     // Push the new per-cell pixel size into the WASM terminal so size
     // reports / kitty graphics see the updated metrics.
@@ -797,16 +793,11 @@ export class Terminal implements ITerminalCore {
       // Resize WASM terminal (may reallocate buffers, invalidating TypedArray views)
       this.wasmTerm!.resize(cols, rows);
 
-      // Resize renderer
+      // Resize renderer (it manages canvas device-pixel + CSS sizing,
+      // including DPR scaling — don't overwrite afterwards).
       this.renderer!.resize(cols, rows);
       const metrics = this.renderer!.getMetrics();
       this.scrollbarOverlay?.resize(cols * metrics.width, rows * metrics.height);
-
-      // Update canvas dimensions
-      this.canvas!.width = metrics.width * cols;
-      this.canvas!.height = metrics.height * rows;
-      this.canvas!.style.width = `${metrics.width * cols}px`;
-      this.canvas!.style.height = `${metrics.height * rows}px`;
 
       // Refresh WASM cell pixel dims after the resize. Cell metrics
       // typically don't change on a logical resize, but this handles
