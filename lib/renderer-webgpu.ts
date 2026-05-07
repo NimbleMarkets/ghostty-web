@@ -30,6 +30,147 @@ import { CellFlags } from './types';
 
 const warnedUnparseableColors = new Set<string>();
 
+// ---------------------------------------------------------------------------
+// GlyphAtlas
+// ---------------------------------------------------------------------------
+
+type AtlasSlot = { u: number; v: number; w: number; h: number };
+
+class GlyphAtlas {
+  private device: GPUDevice;
+  private texture: GPUTexture;
+  private size: number; // square; powers of 2
+  private nextX = 0;
+  private nextY = 0;
+  private rowHeight = 0;
+  private cache = new Map<string, AtlasSlot>();
+  private cellW: number;
+  private cellH: number;
+  private fontSize: number;
+  private fontFamily: string;
+  private offscreen = document.createElement('canvas');
+  private offCtx: CanvasRenderingContext2D;
+
+  constructor(
+    device: GPUDevice,
+    cellW: number,
+    cellH: number,
+    fontSize: number,
+    fontFamily: string,
+  ) {
+    this.device = device;
+    this.cellW = cellW;
+    this.cellH = cellH;
+    this.fontSize = fontSize;
+    this.fontFamily = fontFamily;
+    this.size = 1024;
+    this.texture = device.createTexture({
+      size: { width: this.size, height: this.size },
+      format: 'rgba8unorm',
+      usage:
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.COPY_SRC |
+        GPUTextureUsage.RENDER_ATTACHMENT,
+      label: 'glyphAtlas',
+    });
+    this.offscreen.width = cellW;
+    this.offscreen.height = cellH;
+    this.offCtx = this.offscreen.getContext('2d', { willReadFrequently: true })!;
+  }
+
+  view(): GPUTextureView {
+    return this.texture.createView();
+  }
+
+  reset(cellW: number, cellH: number, fontSize: number, fontFamily: string): void {
+    this.cellW = cellW;
+    this.cellH = cellH;
+    this.fontSize = fontSize;
+    this.fontFamily = fontFamily;
+    this.cache.clear();
+    this.nextX = 0;
+    this.nextY = 0;
+    this.rowHeight = 0;
+    this.offscreen.width = cellW;
+    this.offscreen.height = cellH;
+    // Texture stays allocated; we just zero it conceptually by overwriting on demand.
+  }
+
+  /** Returns slot UV in pixels. Rasterizes + uploads on miss. */
+  getOrRaster(grapheme: string, styleBits: number, baseline: number): AtlasSlot {
+    const key = `${styleBits}|${grapheme}`;
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+
+    // Allocate slot.
+    const w = this.cellW;
+    const h = this.cellH;
+    if (this.nextX + w > this.size) {
+      this.nextX = 0;
+      this.nextY += this.rowHeight;
+      this.rowHeight = 0;
+    }
+    if (this.nextY + h > this.size) {
+      this.grow();
+    }
+    const slot: AtlasSlot = { u: this.nextX, v: this.nextY, w, h };
+    this.nextX += w;
+    if (h > this.rowHeight) this.rowHeight = h;
+    this.cache.set(key, slot);
+
+    // Rasterize.
+    const ctx = this.offCtx;
+    ctx.clearRect(0, 0, w, h);
+    let style = '';
+    if (styleBits & 1) style += 'bold ';
+    if (styleBits & 2) style += 'italic ';
+    ctx.font = `${style}${this.fontSize}px ${this.fontFamily}`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = styleBits & 4 ? 'rgba(255, 255, 255, 0.5)' : '#ffffff'; // FAINT
+    ctx.fillText(grapheme, 0, baseline);
+
+    const img = ctx.getImageData(0, 0, w, h);
+    this.device.queue.writeTexture(
+      { texture: this.texture, origin: { x: slot.u, y: slot.v } },
+      img.data.buffer,
+      { bytesPerRow: w * 4, rowsPerImage: h },
+      { width: w, height: h },
+    );
+
+    return slot;
+  }
+
+  private grow(): void {
+    const newSize = this.size * 2;
+    const newTex = this.device.createTexture({
+      size: { width: newSize, height: newSize },
+      format: 'rgba8unorm',
+      usage:
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.COPY_SRC |
+        GPUTextureUsage.RENDER_ATTACHMENT,
+      label: 'glyphAtlas',
+    });
+    const enc = this.device.createCommandEncoder();
+    enc.copyTextureToTexture(
+      { texture: this.texture },
+      { texture: newTex },
+      { width: this.size, height: this.size },
+    );
+    this.device.queue.submit([enc.finish()]);
+    this.texture.destroy();
+    this.texture = newTex;
+    this.size = newSize;
+  }
+
+  get atlasSize(): number {
+    return this.size;
+  }
+}
+
 // Cell encoding — see plan §"Cell Encoding Reference".
 const CELL_BYTES = 32;
 const CELL_U32S = 8;
@@ -81,8 +222,8 @@ export class WebGPURenderer implements Renderer {
   private paletteUBO?: GPUBuffer; // 384 B
   private gridUBO?: GPUBuffer;    // 80 B
   private cellArray = new Uint32Array(0); // staging
-  // Placeholder for Task 8's GlyphAtlas; replaced in Task 8.
-  private atlas?: { atlasSize: number };
+  private atlas?: GlyphAtlas;
+  private atlasSampler?: GPUSampler;
 
   static async create(
     canvas: HTMLCanvasElement,
@@ -127,6 +268,13 @@ export class WebGPURenderer implements Renderer {
       label: 'gridUBO',
     });
     this.uploadPaletteUBO();
+
+    this.atlasSampler = this.device.createSampler({
+      magFilter: 'nearest',
+      minFilter: 'nearest',
+      label: 'atlasSampler',
+    });
+    // atlas itself constructed lazily in resize() once we have metrics
 
     this.metrics = this.measureFont();
 
@@ -271,8 +419,20 @@ export class WebGPURenderer implements Renderer {
         // Pack colors as little-endian rgba8.
         arr[i + 0] = c.fg_r | (c.fg_g << 8) | (c.fg_b << 16);
         arr[i + 1] = c.bg_r | (c.bg_g << 8) | (c.bg_b << 16);
-        // arr[i + 2] = atlasUV — Task 8
-        // arr[i + 3] = atlasSize — Task 8
+        // Skip atlas lookup for invisible / kitty-placeholder / block-element cells.
+        const skipAtlas =
+          (flags & (FLAG_INVISIBLE | FLAG_IS_KITTY_PLACEHOLDER | FLAG_IS_BLOCK_ELEMENT)) !== 0;
+        if (!skipAtlas && this.atlas) {
+          const grapheme =
+            c.grapheme_len > 0 && buffer.getGraphemeString
+              ? buffer.getGraphemeString(y, x)
+              : String.fromCodePoint(c.codepoint || 32);
+          const styleBits =
+            (flags & FLAG_BOLD ? 1 : 0) | (flags & FLAG_ITALIC ? 2 : 0) | (flags & FLAG_FAINT ? 4 : 0);
+          const slot = this.atlas.getOrRaster(grapheme, styleBits, this.metrics.baseline);
+          arr[i + 2] = (slot.u & 0xffff) | ((slot.v & 0xffff) << 16);
+          arr[i + 3] = (slot.w & 0xffff) | ((slot.h & 0xffff) << 16);
+        }
         arr[i + 4] = flags >>> 0;
         // arr[i + 5] = blockOrSliceCode — Task 13/16
         // arr[i + 6] = kittyTexIndex — Task 16
@@ -324,6 +484,18 @@ export class WebGPURenderer implements Renderer {
       this.cellArray = new Uint32Array(cols * rows * CELL_U32S);
     } else if (this.cellArray.length !== cols * rows * CELL_U32S) {
       this.cellArray = new Uint32Array(cols * rows * CELL_U32S);
+    }
+
+    if (!this.atlas) {
+      this.atlas = new GlyphAtlas(
+        this.device,
+        this.metrics.width,
+        this.metrics.height,
+        this.fontSize,
+        this.fontFamily,
+      );
+    } else {
+      this.atlas.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     }
   }
 
@@ -378,6 +550,7 @@ export class WebGPURenderer implements Renderer {
   setFontSize(size: number): void {
     this.fontSize = size;
     this.metrics = this.measureFont();
+    this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     this.invalidateNext = true;
     this.onRequestRender?.();
   }
@@ -385,6 +558,7 @@ export class WebGPURenderer implements Renderer {
   setFontFamily(family: string): void {
     this.fontFamily = family;
     this.metrics = this.measureFont();
+    this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     this.invalidateNext = true;
     this.onRequestRender?.();
   }
@@ -428,6 +602,7 @@ export class WebGPURenderer implements Renderer {
 
   remeasureFont(): void {
     this.metrics = this.measureFont();
+    this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     this.invalidateNext = true;
   }
 
