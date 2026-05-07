@@ -109,24 +109,31 @@ const FLAG_USE_THEME_FG: u32 = 1u << 12u;
 const FLAG_USE_THEME_BG: u32 = 1u << 13u;
 const FLAG_IS_CURSOR_CELL: u32 = 1u << 14u;
 
+// Use textureSampleLevel(..., 0.0) instead of textureSample so this works in
+// the divergent-control-flow switch below. textureSample has a "uniform
+// control flow" requirement (it derives mip level from screen-space
+// derivatives); switching on a per-fragment index that selects different
+// texture bindings violates that and produces undefined behavior on Apple
+// Metal in particular. textureSampleLevel takes an explicit LOD and has no
+// such requirement. Our kitty textures have no mips, so LOD 0 is correct.
 fn samplePlaceholder(idx: u32, uv: vec2<f32>) -> vec4<f32> {
   switch idx {
-    case 0u: { return textureSample(kittyTex0, placeholderSamp, uv); }
-    case 1u: { return textureSample(kittyTex1, placeholderSamp, uv); }
-    case 2u: { return textureSample(kittyTex2, placeholderSamp, uv); }
-    case 3u: { return textureSample(kittyTex3, placeholderSamp, uv); }
-    case 4u: { return textureSample(kittyTex4, placeholderSamp, uv); }
-    case 5u: { return textureSample(kittyTex5, placeholderSamp, uv); }
-    case 6u: { return textureSample(kittyTex6, placeholderSamp, uv); }
-    case 7u: { return textureSample(kittyTex7, placeholderSamp, uv); }
-    case 8u: { return textureSample(kittyTex8, placeholderSamp, uv); }
-    case 9u: { return textureSample(kittyTex9, placeholderSamp, uv); }
-    case 10u: { return textureSample(kittyTex10, placeholderSamp, uv); }
-    case 11u: { return textureSample(kittyTex11, placeholderSamp, uv); }
-    case 12u: { return textureSample(kittyTex12, placeholderSamp, uv); }
-    case 13u: { return textureSample(kittyTex13, placeholderSamp, uv); }
-    case 14u: { return textureSample(kittyTex14, placeholderSamp, uv); }
-    case 15u: { return textureSample(kittyTex15, placeholderSamp, uv); }
+    case 0u: { return textureSampleLevel(kittyTex0, placeholderSamp, uv, 0.0); }
+    case 1u: { return textureSampleLevel(kittyTex1, placeholderSamp, uv, 0.0); }
+    case 2u: { return textureSampleLevel(kittyTex2, placeholderSamp, uv, 0.0); }
+    case 3u: { return textureSampleLevel(kittyTex3, placeholderSamp, uv, 0.0); }
+    case 4u: { return textureSampleLevel(kittyTex4, placeholderSamp, uv, 0.0); }
+    case 5u: { return textureSampleLevel(kittyTex5, placeholderSamp, uv, 0.0); }
+    case 6u: { return textureSampleLevel(kittyTex6, placeholderSamp, uv, 0.0); }
+    case 7u: { return textureSampleLevel(kittyTex7, placeholderSamp, uv, 0.0); }
+    case 8u: { return textureSampleLevel(kittyTex8, placeholderSamp, uv, 0.0); }
+    case 9u: { return textureSampleLevel(kittyTex9, placeholderSamp, uv, 0.0); }
+    case 10u: { return textureSampleLevel(kittyTex10, placeholderSamp, uv, 0.0); }
+    case 11u: { return textureSampleLevel(kittyTex11, placeholderSamp, uv, 0.0); }
+    case 12u: { return textureSampleLevel(kittyTex12, placeholderSamp, uv, 0.0); }
+    case 13u: { return textureSampleLevel(kittyTex13, placeholderSamp, uv, 0.0); }
+    case 14u: { return textureSampleLevel(kittyTex14, placeholderSamp, uv, 0.0); }
+    case 15u: { return textureSampleLevel(kittyTex15, placeholderSamp, uv, 0.0); }
     default: { return vec4<f32>(0.0); }
   }
 }
