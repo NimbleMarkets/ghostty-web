@@ -805,6 +805,7 @@ export class WebGPURenderer implements Renderer {
 
   setSelectionManager(mgr: SelectionManager): void {
     this.selectionManager = mgr;
+    this.invalidateNext = true;
   }
 
   setHoveredHyperlinkId(id: number): void {
