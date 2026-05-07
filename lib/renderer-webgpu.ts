@@ -1183,7 +1183,15 @@ export class WebGPURenderer implements Renderer {
       }
     }
 
-    if (cursor.visible && this.cursorBlink_.isVisible()) {
+    // Only block-style cursor is rendered inline in textPass via the
+    // cursor-cell flag (it swaps fg/bg cell-wide). Underline and bar
+    // styles are drawn as separate quads by cursorPipeline; tagging the
+    // cell would incorrectly fill the whole cell with cursor bg.
+    if (
+      cursor.visible &&
+      this.cursorBlink_.isVisible() &&
+      this.cursorStyle === 'block'
+    ) {
       const ci = (cursor.y * dims.cols + cursor.x) * CELL_U32S;
       arr[ci + 4] = (arr[ci + 4]! | FLAG_IS_CURSOR_CELL) >>> 0;
     }
