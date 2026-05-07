@@ -104,7 +104,7 @@ describe('Terminal', () => {
 
     test('cannot write after disposal', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
       term.dispose();
 
       expect(() => term.write('test')).toThrow('Terminal has been disposed');
@@ -112,9 +112,9 @@ describe('Terminal', () => {
 
     test('cannot open twice', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
-      // open() is synchronous and throws immediately
+      // open() throws synchronously before doing any async work
       expect(() => term.open(container!)).toThrow('already open');
 
       term.dispose();
@@ -124,7 +124,7 @@ describe('Terminal', () => {
       const term = await createIsolatedTerminal();
       term.dispose();
 
-      // open() is synchronous and throws immediately
+      // open() throws synchronously before doing any async work
       expect(() => term.open(container!)).toThrow('has been disposed');
     });
   });
@@ -140,7 +140,7 @@ describe('Terminal', () => {
       const term = await createIsolatedTerminal();
       expect(term.element).toBeUndefined();
 
-      term.open(container!);
+      await term.open(container!);
       expect(term.element).toBe(container);
 
       term.dispose();
@@ -174,7 +174,7 @@ describe('Terminal', () => {
 
     test('onResize fires when terminal is resized', async () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container!);
+      await term.open(container!);
 
       let resizeEvent: { cols: number; rows: number } | null = null;
       term.onResize((e) => {
@@ -192,7 +192,7 @@ describe('Terminal', () => {
 
     test('onBell fires on bell character', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       let bellFired = false;
       term.onBell(() => {
@@ -213,7 +213,7 @@ describe('Terminal', () => {
   describe('Writing', () => {
     test('write() does not throw after open', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       expect(() => term.write('Hello, World!')).not.toThrow();
 
@@ -222,7 +222,7 @@ describe('Terminal', () => {
 
     test('write() accepts string', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       expect(() => term.write('test string')).not.toThrow();
 
@@ -231,7 +231,7 @@ describe('Terminal', () => {
 
     test('write() accepts Uint8Array', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       const data = new TextEncoder().encode('test');
       expect(() => term.write(data)).not.toThrow();
@@ -241,7 +241,7 @@ describe('Terminal', () => {
 
     test('writeln() adds newline', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       expect(() => term.writeln('test line')).not.toThrow();
 
@@ -252,7 +252,7 @@ describe('Terminal', () => {
   describe('Resizing', () => {
     test('resize() updates dimensions', async () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container!);
+      await term.open(container!);
 
       term.resize(100, 30);
 
@@ -264,7 +264,7 @@ describe('Terminal', () => {
 
     test('resize() with same dimensions is no-op', async () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container!);
+      await term.open(container!);
 
       let resizeCount = 0;
       term.onResize(() => resizeCount++);
@@ -285,7 +285,7 @@ describe('Terminal', () => {
   describe('Control Methods', () => {
     test('clear() does not throw', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       expect(() => term.clear()).not.toThrow();
 
@@ -294,7 +294,7 @@ describe('Terminal', () => {
 
     test('reset() does not throw', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       expect(() => term.reset()).not.toThrow();
 
@@ -303,7 +303,7 @@ describe('Terminal', () => {
 
     test('focus() does not throw', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       expect(() => term.focus()).not.toThrow();
 
@@ -319,7 +319,7 @@ describe('Terminal', () => {
   describe('Addons', () => {
     test('loadAddon() accepts addon', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       const mockAddon = {
         activate: (terminal: any) => {
@@ -337,7 +337,7 @@ describe('Terminal', () => {
 
     test('loadAddon() calls activate', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       let activateCalled = false;
       const mockAddon = {
@@ -356,7 +356,7 @@ describe('Terminal', () => {
 
     test('dispose() calls addon dispose', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       let disposeCalled = false;
       const mockAddon = {
@@ -376,7 +376,7 @@ describe('Terminal', () => {
   describe('Integration', () => {
     test('can write ANSI sequences', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       // Should not throw on ANSI escape sequences
       expect(() => term.write('\x1b[1;31mRed bold text\x1b[0m')).not.toThrow();
@@ -388,7 +388,7 @@ describe('Terminal', () => {
 
     test('can handle cursor movement sequences', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       expect(() => term.write('\x1b[5;10H')).not.toThrow(); // Move cursor
       expect(() => term.write('\x1b[2A')).not.toThrow(); // Move up 2
@@ -399,7 +399,7 @@ describe('Terminal', () => {
 
     test('multiple write calls work', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       expect(() => {
         term.write('Line 1\r\n');
@@ -414,7 +414,7 @@ describe('Terminal', () => {
   describe('Disposal', () => {
     test('dispose() can be called multiple times', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       term.dispose();
       expect(() => term.dispose()).not.toThrow();
@@ -422,7 +422,7 @@ describe('Terminal', () => {
 
     test('dispose() cleans up canvas element', async () => {
       const term = await createIsolatedTerminal();
-      term.open(container!);
+      await term.open(container!);
 
       const initialChildCount = container.children.length;
       expect(initialChildCount).toBeGreaterThan(0);
@@ -457,7 +457,7 @@ describe('paste()', () => {
       if (!container) return;
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let receivedData = '';
       term.onData((data) => {
@@ -474,7 +474,7 @@ describe('paste()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, disableStdin: true });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let receivedData = '';
       term.onData((data) => {
@@ -517,7 +517,7 @@ describe('blur()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       expect(() => term.blur()).not.toThrow();
       term.dispose();
@@ -533,7 +533,7 @@ describe('blur()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       const blurSpy = { called: false };
       if (term.element) {
@@ -573,7 +573,7 @@ describe('input()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       term.input('test data');
 
@@ -587,7 +587,7 @@ describe('input()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let receivedData = '';
       term.onData((data) => {
@@ -604,7 +604,7 @@ describe('input()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let receivedData = '';
       term.onData((data) => {
@@ -621,7 +621,7 @@ describe('input()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, disableStdin: true });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let receivedData = '';
       term.onData((data) => {
@@ -658,7 +658,7 @@ describe('select()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       term.select(0, 0, 10);
 
@@ -670,7 +670,7 @@ describe('select()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       // Select 100 chars starting at column 0 (wraps to next line)
       term.select(0, 0, 100);
@@ -686,7 +686,7 @@ describe('select()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let fired = false;
       term.onSelectionChange(() => {
@@ -703,7 +703,7 @@ describe('select()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       // Create a selection
       term.select(0, 0, 10);
@@ -746,7 +746,7 @@ describe('selectLines()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       term.selectLines(0, 2);
 
@@ -763,7 +763,7 @@ describe('selectLines()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       term.selectLines(5, 2); // End before start
 
@@ -778,7 +778,7 @@ describe('selectLines()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let fired = false;
       term.onSelectionChange(() => {
@@ -815,7 +815,7 @@ describe('getSelectionPosition()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       const pos = term.getSelectionPosition();
 
@@ -827,7 +827,7 @@ describe('getSelectionPosition()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       term.select(5, 3, 10);
       const pos = term.getSelectionPosition();
@@ -842,7 +842,7 @@ describe('getSelectionPosition()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       term.select(0, 0, 10);
       term.clearSelection();
@@ -876,7 +876,7 @@ describe('onKey event', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       expect(term.onKey).toBeTruthy();
       expect(typeof term.onKey).toBe('function');
@@ -887,7 +887,7 @@ describe('onKey event', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let keyEvent: any = null;
       term.onKey((e) => {
@@ -928,7 +928,7 @@ describe('onTitleChange event', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       expect(term.onTitleChange).toBeTruthy();
       expect(typeof term.onTitleChange).toBe('function');
@@ -939,7 +939,7 @@ describe('onTitleChange event', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let receivedTitle = '';
       term.onTitleChange((title) => {
@@ -957,7 +957,7 @@ describe('onTitleChange event', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let receivedTitle = '';
       term.onTitleChange((title) => {
@@ -975,7 +975,7 @@ describe('onTitleChange event', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let receivedTitle = '';
       term.onTitleChange((title) => {
@@ -1013,7 +1013,7 @@ describe('attachCustomKeyEventHandler()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       const handler = (e: KeyboardEvent) => false;
       expect(() => term.attachCustomKeyEventHandler(handler)).not.toThrow();
@@ -1024,7 +1024,7 @@ describe('attachCustomKeyEventHandler()', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       const handler = (e: KeyboardEvent) => false;
       expect(() => term.attachCustomKeyEventHandler(handler)).not.toThrow();
@@ -1055,7 +1055,7 @@ describe('Terminal Options', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, convertEol: true });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       term.write('line1\nline2');
 
@@ -1070,7 +1070,7 @@ describe('Terminal Options', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, disableStdin: true });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let received = false;
       term.onData(() => {
@@ -1087,7 +1087,7 @@ describe('Terminal Options', () => {
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, disableStdin: true });
       // Using shared container from beforeEach
       if (!container) return;
-      term.open(container!);
+      await term.open(container!);
 
       let received = false;
       term.onData(() => {
@@ -1124,14 +1124,14 @@ describe('Buffer Access API', () => {
   test('isAlternateScreen() starts false', async () => {
     if (!container) throw new Error('DOM environment not available - check happydom setup');
 
-    term.open(container!);
+    await term.open(container!);
     expect(term.wasmTerm?.isAlternateScreen()).toBe(false);
   });
 
   test('isAlternateScreen() detects alternate screen mode', async () => {
     if (!container) throw new Error('DOM environment not available - check happydom setup');
 
-    term.open(container!);
+    await term.open(container!);
 
     // Enter alternate screen (DEC Private Mode 1049 - like vim does)
     term.write('\x1b[?1049h');
@@ -1145,7 +1145,7 @@ describe('Buffer Access API', () => {
   test('alternate screen exit triggers full redraw (vim exit fix)', async () => {
     if (!container) throw new Error('DOM environment not available - check happydom setup');
 
-    term.open(container!);
+    await term.open(container!);
 
     // Write content to main screen
     term.write('Main screen content line 1\r\n');
@@ -1197,7 +1197,7 @@ describe('Buffer Access API', () => {
   test('dirty state is cleared after markClean() following screen switch', async () => {
     if (!container) throw new Error('DOM environment not available - check happydom setup');
 
-    term.open(container!);
+    await term.open(container!);
 
     // Enter and exit alternate screen
     term.write('\x1b[?1049h');
@@ -1216,7 +1216,7 @@ describe('Buffer Access API', () => {
   test('multiple screen switches are handled correctly', async () => {
     if (!container) throw new Error('DOM environment not available - check happydom setup');
 
-    term.open(container!);
+    await term.open(container!);
     term.write('Initial content\r\n');
     term.wasmTerm?.clearDirty();
 
@@ -1245,7 +1245,7 @@ describe('Buffer Access API', () => {
   test('viewport content is correct after alternate screen exit', async () => {
     if (!container) throw new Error('DOM environment not available - check happydom setup');
 
-    term.open(container!);
+    await term.open(container!);
 
     // Write distinct content to main screen
     term.write('MAIN_LINE_1\r\n');
@@ -1310,7 +1310,7 @@ describe('Buffer Access API', () => {
   test('background colors are correctly restored after alternate screen exit', async () => {
     if (!container) throw new Error('DOM environment not available - check happydom setup');
 
-    term.open(container!);
+    await term.open(container!);
 
     // Write to main screen (default background = black)
     term.write('MAIN\r\n');
@@ -1355,7 +1355,7 @@ describe('Buffer Access API', () => {
   test('isRowWrapped() returns false for normal line breaks', async () => {
     if (!container) throw new Error('DOM environment not available - check happydom setup');
 
-    term.open(container!);
+    await term.open(container!);
     term.write('Line 1\r\nLine 2\r\n');
 
     expect(term.wasmTerm?.isRowWrapped(0)).toBe(false);
@@ -1369,7 +1369,7 @@ describe('Buffer Access API', () => {
     // Create narrow terminal to force wrapping
     const narrowTerm = await createIsolatedTerminal({ cols: 20, rows: 10 });
     const narrowContainer = document.createElement('div');
-    narrowTerm.open(narrowContainer);
+    await narrowTerm.open(narrowContainer);
 
     try {
       // Write text longer than terminal width (no newline)
@@ -1388,7 +1388,7 @@ describe('Buffer Access API', () => {
   test('isRowWrapped() handles edge cases', async () => {
     if (!container) throw new Error('DOM environment not available - check happydom setup');
 
-    term.open(container!);
+    await term.open(container!);
 
     // Row 0 can never be wrapped (nothing to wrap from)
     expect(term.wasmTerm?.isRowWrapped(0)).toBe(false);
@@ -1406,7 +1406,7 @@ describe('Terminal Config', () => {
     // Create terminal with custom scrollback
     const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 500 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     try {
       // Write enough lines to fill scrollback
@@ -1438,7 +1438,7 @@ describe('Terminal Config', () => {
       },
     });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     try {
       // Get the default colors from render state
@@ -1470,7 +1470,7 @@ describe('Terminal Config', () => {
       },
     });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     try {
       // Write red text using ANSI escape code
@@ -1495,7 +1495,7 @@ describe('Terminal Config', () => {
     // Create terminal with no config
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     try {
       // Should still work and have reasonable defaults
@@ -1515,7 +1515,7 @@ describe('Terminal Modes', () => {
     if (typeof document === 'undefined') return;
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container!);
+    await term.open(container!);
 
     expect(term.hasBracketedPaste()).toBe(false);
     term.write('\x1b[?2004h');
@@ -1530,7 +1530,7 @@ describe('Terminal Modes', () => {
     if (typeof document === 'undefined') return;
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container!);
+    await term.open(container!);
 
     let receivedData = '';
     term.onData((data) => {
@@ -1551,7 +1551,7 @@ describe('Terminal Modes', () => {
     if (typeof document === 'undefined') return;
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container!);
+    await term.open(container!);
 
     expect(term.getMode(25)).toBe(true); // Cursor visible
     term.write('\x1b[?25l');
@@ -1564,7 +1564,7 @@ describe('Terminal Modes', () => {
     if (typeof document === 'undefined') return;
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container!);
+    await term.open(container!);
 
     expect(term.hasFocusEvents()).toBe(false);
     term.write('\x1b[?1004h');
@@ -1577,7 +1577,7 @@ describe('Terminal Modes', () => {
     if (typeof document === 'undefined') return;
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container!);
+    await term.open(container!);
 
     expect(term.hasMouseTracking()).toBe(false);
     term.write('\x1b[?1000h');
@@ -1590,7 +1590,7 @@ describe('Terminal Modes', () => {
     if (typeof document === 'undefined') return;
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container!);
+    await term.open(container!);
 
     expect(term.getMode(4, true)).toBe(false); // Insert mode
     term.write('\x1b[4h');
@@ -1603,7 +1603,7 @@ describe('Terminal Modes', () => {
     if (typeof document === 'undefined') return;
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container!);
+    await term.open(container!);
 
     term.write('\x1b[?2004h\x1b[?1004h\x1b[?1000h');
     expect(term.hasBracketedPaste()).toBe(true);
@@ -1627,7 +1627,7 @@ describe('Terminal Modes', () => {
     if (typeof document === 'undefined') return;
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container!);
+    await term.open(container!);
 
     expect(term.getMode(1049)).toBe(false);
     term.write('\x1b[?1049h');
@@ -1677,7 +1677,7 @@ describe('Alternate Screen Rendering', () => {
   test('BUG REPRO: getLine and getViewport should return same data after partial updates', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     // Enter alternate screen
     term.write('\x1b[?1049h');
@@ -1732,7 +1732,7 @@ describe('Alternate Screen Rendering', () => {
   test('BUG REPRO: cells should have correct codepoints after clearing', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
 
@@ -1763,7 +1763,7 @@ describe('Alternate Screen Rendering', () => {
   test('BUG REPRO: multiple render cycles should not lose data', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
 
@@ -1816,7 +1816,7 @@ describe('Alternate Screen Rendering', () => {
   test('can enter alternate screen and write content', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     expect(term.wasmTerm?.isAlternateScreen()).toBe(true);
@@ -1830,7 +1830,7 @@ describe('Alternate Screen Rendering', () => {
   test('writing to line 0 should not affect content on line 10', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     term.write('\x1b[11;1HMIDDLE_CONTENT');
@@ -1849,7 +1849,7 @@ describe('Alternate Screen Rendering', () => {
   test('erasing display should clear all content including middle', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     term.write('\x1b[11;1HMIDDLE_CONTENT');
@@ -1865,7 +1865,7 @@ describe('Alternate Screen Rendering', () => {
   test('simulating vim-like behavior: welcome screen then typing', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     term.write('\x1b[2J');
@@ -1888,7 +1888,7 @@ describe('Alternate Screen Rendering', () => {
   test('REGRESSION: middle content persists incorrectly after partial updates', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     term.write('\x1b[11;1HMIDDLE_LINE');
@@ -1913,7 +1913,7 @@ describe('Alternate Screen Rendering', () => {
   test('getLine returns fresh data after each update', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     term.write('INITIAL');
@@ -1928,7 +1928,7 @@ describe('Alternate Screen Rendering', () => {
   test('full viewport retrieval reflects actual terminal state', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     term.write('\x1b[2J');
@@ -1954,7 +1954,7 @@ describe('Alternate Screen Rendering', () => {
   test('ED (Erase Display) sequences work correctly in alternate screen', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     for (let i = 0; i < 24; i++) {
@@ -1978,7 +1978,7 @@ describe('Alternate Screen Rendering', () => {
   test('ED 0 (erase from cursor to end) works correctly', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     for (let i = 0; i < 24; i++) {
@@ -2001,7 +2001,7 @@ describe('Alternate Screen Rendering', () => {
   test('multiple update/clearDirty cycles maintain correct state', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
 
@@ -2032,7 +2032,7 @@ describe('Alternate Screen Rendering', () => {
   test('clearing a line marks it dirty', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     term.write('\x1b[11;1HMIDDLE');
@@ -2052,7 +2052,7 @@ describe('Alternate Screen Rendering', () => {
   test('ED sequence marks all affected rows dirty', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     for (let i = 0; i < 24; i++) {
@@ -2077,7 +2077,7 @@ describe('Alternate Screen Rendering', () => {
   test('getViewport and getLine return consistent data', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');
-    term.open(container);
+    await term.open(container);
 
     term.write('\x1b[?1049h');
     term.write('\x1b[5;1HVIEWPORT_TEST');
@@ -2118,7 +2118,7 @@ describe('Selection with Scrollback', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-    term.open(container!);
+    await term.open(container!);
 
     // Write 100 lines with unique identifiable content
     // Lines 0-99, where each line has "Line XXX: content"
@@ -2171,7 +2171,7 @@ describe('Selection with Scrollback', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-    term.open(container!);
+    await term.open(container!);
 
     // Write 100 lines
     for (let i = 0; i < 100; i++) {
@@ -2211,7 +2211,7 @@ describe('Selection with Scrollback', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-    term.open(container!);
+    await term.open(container!);
 
     // Write 100 lines
     for (let i = 0; i < 100; i++) {
@@ -2242,7 +2242,7 @@ describe('Selection with Scrollback', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-    term.open(container!);
+    await term.open(container!);
 
     // Write 100 simple numbered lines
     for (let i = 0; i < 100; i++) {
@@ -2284,7 +2284,7 @@ describe('Selection with Scrollback', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-    term.open(container!);
+    await term.open(container!);
 
     // Write 100 lines
     for (let i = 0; i < 100; i++) {
@@ -2367,7 +2367,7 @@ describe('Options Proxy handleOptionChange', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cursorStyle: 'block' });
-    term.open(container);
+    await term.open(container);
 
     // Verify initial state
     expect(term.options.cursorStyle).toBe('block');
@@ -2392,7 +2392,7 @@ describe('Options Proxy handleOptionChange', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cursorBlink: false });
-    term.open(container);
+    await term.open(container);
 
     // Verify initial state
     expect(term.options.cursorBlink).toBe(false);
@@ -2421,7 +2421,7 @@ describe('Options Proxy handleOptionChange', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-    term.open(container);
+    await term.open(container);
 
     let resizeEventFired = false;
     let resizedCols = 0;
@@ -2467,7 +2467,7 @@ describe('Options Proxy handleOptionChange', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ fontSize: 15, cols: 80, rows: 24 });
-    term.open(container);
+    await term.open(container);
 
     // @ts-ignore - accessing private for test
     const renderer = term.renderer;
@@ -2499,7 +2499,7 @@ describe('Options Proxy handleOptionChange', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ fontFamily: 'monospace', cols: 80, rows: 24 });
-    term.open(container);
+    await term.open(container);
 
     // @ts-ignore - accessing private for test
     const renderer = term.renderer;
@@ -2521,7 +2521,7 @@ describe('Options Proxy handleOptionChange', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ fontSize: 15, cols: 80, rows: 24 });
-    term.open(container);
+    await term.open(container);
 
     // Write some text and select it
     term.write('Hello World');
@@ -2541,7 +2541,7 @@ describe('Options Proxy handleOptionChange', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ fontSize: 15, cols: 80, rows: 24 });
-    term.open(container);
+    await term.open(container);
 
     const initialCols = term.cols;
     const initialRows = term.rows;
@@ -2582,7 +2582,7 @@ describe('disableStdin', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     const receivedData: string[] = [];
     term.onData((data) => receivedData.push(data));
@@ -2604,7 +2604,7 @@ describe('disableStdin', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     const receivedData: string[] = [];
     term.onData((data) => receivedData.push(data));
@@ -2624,7 +2624,7 @@ describe('disableStdin', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     const receivedData: string[] = [];
     term.onData((data) => receivedData.push(data));
@@ -2651,7 +2651,7 @@ describe('disableStdin', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     const receivedData: string[] = [];
     term.onData((data) => receivedData.push(data));
@@ -2679,7 +2679,7 @@ describe('disableStdin', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     const receivedData: string[] = [];
     term.onData((data) => receivedData.push(data));
@@ -2707,7 +2707,7 @@ describe('disableStdin', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     const receivedData: string[] = [];
     term.onData((data) => receivedData.push(data));
@@ -2786,7 +2786,7 @@ describe('Grapheme Cluster Support', () => {
 
   test('cell grapheme_len is 0 for simple ASCII characters', async () => {
     const term = await createIsolatedTerminal();
-    term.open(container!);
+    await term.open(container!);
     term.write('Hello');
 
     // Get the viewport and check the first cell
@@ -2799,7 +2799,7 @@ describe('Grapheme Cluster Support', () => {
 
   test('getGraphemeString returns simple characters correctly', async () => {
     const term = await createIsolatedTerminal();
-    term.open(container!);
+    await term.open(container!);
     term.write('Test');
 
     // Test basic ASCII
@@ -2811,7 +2811,7 @@ describe('Grapheme Cluster Support', () => {
 
   test('getGrapheme returns null for invalid coordinates', async () => {
     const term = await createIsolatedTerminal();
-    term.open(container!);
+    await term.open(container!);
     term.write('Test');
 
     // Test out of bounds
@@ -2823,7 +2823,7 @@ describe('Grapheme Cluster Support', () => {
 
   test('getGrapheme returns array of codepoints', async () => {
     const term = await createIsolatedTerminal();
-    term.open(container!);
+    await term.open(container!);
     term.write('A');
 
     const codepoints = term.wasmTerm!.getGrapheme(0, 0);
@@ -2836,7 +2836,7 @@ describe('Grapheme Cluster Support', () => {
 
   test('grapheme cluster mode 2027 is enabled by default', async () => {
     const term = await createIsolatedTerminal();
-    term.open(container!);
+    await term.open(container!);
 
     // Mode 2027 should be enabled by default for proper Unicode handling
     // This is a DEC private mode, not ANSI
@@ -2872,7 +2872,7 @@ describe('Write Behavior', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     term.write('Line1\r\n');
     term.write('Line2\r\n');
@@ -2893,7 +2893,7 @@ describe('Write Behavior', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     const callbackOrder: number[] = [];
 
@@ -2947,7 +2947,7 @@ describe('Synchronous open()', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     expect(term.element).toBe(container);
 
@@ -2958,7 +2958,7 @@ describe('Synchronous open()', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cols: 100, rows: 50 });
-    term.open(container);
+    await term.open(container);
 
     expect(term.cols).toBe(100);
     expect(term.rows).toBe(50);
@@ -2970,7 +2970,7 @@ describe('Synchronous open()', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal();
-    term.open(container);
+    await term.open(container);
 
     expect(term.wasmTerm).toBeDefined();
 
@@ -2981,7 +2981,7 @@ describe('Synchronous open()', () => {
     if (!container) return;
 
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-    term.open(container);
+    await term.open(container);
 
     term.resize(120, 40);
 

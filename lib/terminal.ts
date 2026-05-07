@@ -355,12 +355,16 @@ export class Terminal implements ITerminalCore {
    * Initializes all components and starts rendering.
    * Requires a pre-loaded Ghostty instance passed to the constructor.
    *
-   * Returns a Promise<void> for xterm.js API compatibility and to support
-   * the WebGPU backend (which requires async device acquisition). For the
-   * default Canvas2D path the promise resolves in the same call stack so
-   * callers that omit `await` still work correctly.
+   * Returns a Promise<void> that resolves once the renderer (Canvas2D or
+   * WebGPU) is fully wired. `isOpen` is only set to true after the
+   * renderer is ready and `_finishOpen()` has run, so callers that hit
+   * `assertOpen()` (e.g. via write()) before the await resolves will see
+   * a clean "Terminal must be opened" error rather than a renderer NPE.
+   *
+   * Synchronous validation (already-open / disposed / missing parent) runs
+   * before the first await and still throws synchronously.
    */
-  open(parent?: HTMLElement): Promise<void> {
+  public async open(parent?: HTMLElement): Promise<void> {
     if (this.isOpen) {
       throw new Error('Terminal is already open');
     }
@@ -373,7 +377,6 @@ export class Terminal implements ITerminalCore {
 
     // Store parent element
     this.element = parent;
-    this.isOpen = true;
 
     try {
       // Make parent focusable if it isn't already
@@ -455,40 +458,19 @@ export class Terminal implements ITerminalCore {
       this.scrollbarCanvas = scrollbarCanvas;
       this.scrollbarOverlay = new ScrollbarOverlay(scrollbarCanvas, window.devicePixelRatio || 1);
 
-      const rendererOpts = {
+      // Resolve the renderer (canvas2d or webgpu, with auto-fallback).
+      this.renderer = await pickRenderer(this.options.renderer ?? 'auto', this.canvas, {
         fontSize: this.options.fontSize,
         fontFamily: this.options.fontFamily,
         cursorStyle: this.options.cursorStyle,
         cursorBlink: this.options.cursorBlink,
         theme: this.options.theme,
-      };
-
-      // Resolve the renderer. For canvas2d and auto-without-GPU we build the
-      // CanvasRenderer synchronously so callers that don't await open() still
-      // work. Only for explicit 'webgpu' (or 'auto' with a real GPU present)
-      // do we need the async pickRenderer path.
-      const backend = this.options.renderer ?? 'auto';
-      const gpu = (navigator as any).gpu;
-      const needsAsync = backend === 'webgpu' || (backend === 'auto' && !!gpu);
-
-      if (!needsAsync) {
-        // Synchronous fast path — CanvasRenderer constructor is sync.
-        this.renderer = new CanvasRenderer(this.canvas, rendererOpts);
-        this._finishOpen(parent);
-        return Promise.resolve();
-      }
-
-      // Async path — WebGPU init or auto+GPU probe.
-      return pickRenderer(backend, this.canvas, rendererOpts).then((renderer) => {
-        this.renderer = renderer;
-        this._finishOpen(parent);
-      }).catch((error) => {
-        this.isOpen = false;
-        this.cleanupComponents();
-        throw new Error(`Failed to open terminal: ${error}`);
       });
+
+      // Wire up renderer-dependent components (selection, links, listeners).
+      // _finishOpen() sets `this.isOpen = true` once all wiring is complete.
+      this._finishOpen(parent);
     } catch (error) {
-      // Clean up on error (sync path throws)
       this.isOpen = false;
       this.cleanupComponents();
       throw new Error(`Failed to open terminal: ${error}`);
@@ -497,7 +479,7 @@ export class Terminal implements ITerminalCore {
 
   /**
    * Complete terminal initialization after the renderer is ready.
-   * Called from both the sync and async open() paths.
+   * Called from open() once `this.renderer` has been resolved.
    */
   private _finishOpen(parent: HTMLElement): void {
     try {
@@ -616,6 +598,11 @@ export class Terminal implements ITerminalCore {
       // Wire the renderer back to the render scheduler so internal
       // state changes (cursor blink) wake the loop on demand.
       this.renderer!.setOnRequestRender(() => this.requestRender());
+
+      // Mark as open NOW (before renderTick/focus, both of which gate on
+      // isOpen) — at this point all renderer-dependent components are wired,
+      // so concurrent assertOpen() callers will see a fully-initialized term.
+      this.isOpen = true;
 
       // Run one synchronous render+cursor-poll to mirror the prior
       // loop's first iteration. Some downstream callers

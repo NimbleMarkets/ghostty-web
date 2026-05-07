@@ -71,7 +71,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       const selMgr = (term as any).selectionManager;
       expect(typeof selMgr.getSelection).toBe('function');
@@ -92,7 +92,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       const selMgr = (term as any).selectionManager;
       expect(selMgr.hasSelection()).toBe(false);
@@ -104,7 +104,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Hello World\r\n');
 
@@ -121,7 +121,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       // Programmatic single-cell selection should be valid
       // (e.g., triple-click on single-char line, or select(col, row, 1))
@@ -137,7 +137,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Line 1\r\nLine 2\r\nLine 3\r\n');
 
@@ -163,7 +163,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       const selMgr = (term as any).selectionManager;
       expect(selMgr.getSelection()).toBe('');
@@ -175,7 +175,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Hello World\r\n');
 
@@ -193,7 +193,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Line 1\r\nLine 2\r\nLine 3\r\n');
 
@@ -215,7 +215,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-      term.open(container);
+      await term.open(container);
 
       // Write enough lines to create scrollback
       for (let i = 0; i < 50; i++) {
@@ -242,7 +242,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-      term.open(container);
+      await term.open(container);
 
       // Write enough lines to fill scrollback and screen
       for (let i = 0; i < 50; i++) {
@@ -270,7 +270,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-      term.open(container);
+      await term.open(container);
 
       // Write content
       for (let i = 0; i < 50; i++) {
@@ -301,7 +301,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-      term.open(container);
+      await term.open(container);
 
       // Write content
       for (let i = 0; i < 50; i++) {
@@ -337,7 +337,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-      term.open(container);
+      await term.open(container);
 
       // Write content
       for (let i = 0; i < 100; i++) {
@@ -370,7 +370,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       const selMgr = (term as any).selectionManager;
       expect(selMgr.getDirtySelectionRows().size).toBe(0);
@@ -382,7 +382,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Test content\r\n');
 
@@ -402,7 +402,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Test\r\n');
 
@@ -427,7 +427,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Hello World\r\n');
 
@@ -447,7 +447,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Line 1\r\nLine 2\r\nLine 3\r\n');
 
@@ -471,7 +471,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Hello\r\nWorld\r\n');
 
@@ -495,7 +495,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Hello World\r\n');
 
@@ -514,7 +514,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Line 1\r\nLine 2\r\nLine 3\r\n');
 
@@ -539,7 +539,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       // Write 50 lines to push content into scrollback (terminal has 24 rows)
       for (let i = 0; i < 50; i++) {
@@ -579,7 +579,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       term.write('Hello World\r\n');
 
@@ -602,7 +602,7 @@ describe('SelectionManager', () => {
       if (!container) return;
 
       const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
 
       // Write enough lines to create scrollback
       for (let i = 0; i < 50; i++) {

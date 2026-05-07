@@ -19,7 +19,7 @@ describe('Buffer API', () => {
       container = document.createElement('div');
       document.body.appendChild(container);
       term = await createIsolatedTerminal({ cols: 80, rows: 24 });
-      term.open(container);
+      await term.open(container);
     }
   });
 

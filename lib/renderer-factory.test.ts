@@ -31,9 +31,20 @@ describe('pickRenderer', () => {
     await expect(pickRenderer('webgpu', canvas, {})).rejects.toThrow(/WebGPU not available/);
   });
 
-  test("falls back under 'auto' when requestAdapter rejects", async () => {
+  test("falls back under 'auto' when requestAdapter returns null", async () => {
     (navigator as any).gpu = {
       requestAdapter: async () => null,
+    };
+    const canvas = document.createElement('canvas');
+    const r = await pickRenderer('auto', canvas, {});
+    expect(r.backend).toBe('canvas2d');
+  });
+
+  test("falls back under 'auto' when requestAdapter throws", async () => {
+    (navigator as any).gpu = {
+      requestAdapter: async () => {
+        throw new Error('no gpu');
+      },
     };
     const canvas = document.createElement('canvas');
     const r = await pickRenderer('auto', canvas, {});

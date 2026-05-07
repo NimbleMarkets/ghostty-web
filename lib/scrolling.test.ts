@@ -17,7 +17,7 @@ describe('Terminal Scrolling', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     terminal = await createIsolatedTerminal({ cols: 80, rows: 24 });
-    terminal.open(container);
+    await terminal.open(container);
   });
 
   afterEach(() => {
@@ -346,7 +346,7 @@ describe('Scrolling Methods', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-    term.open(container);
+    await term.open(container);
   });
 
   afterEach(() => {
@@ -500,7 +500,7 @@ describe('Scroll Events', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-    term.open(container);
+    await term.open(container);
   });
 
   afterEach(() => {
@@ -597,7 +597,7 @@ describe('Custom Wheel Event Handler', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     term = await createIsolatedTerminal({ cols: 80, rows: 24, scrollback: 1000 });
-    term.open(container);
+    await term.open(container);
   });
 
   afterEach(() => {
