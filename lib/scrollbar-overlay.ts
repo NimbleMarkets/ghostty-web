@@ -90,12 +90,7 @@ export class ScrollbarOverlay {
   }
 
   /** Hit-test helper (Terminal's drag handler uses this). */
-  hitTest(
-    cssX: number,
-    cssY: number,
-    scrollbackLength: number,
-    visibleRows: number
-  ): 'thumb' | 'track' | null {
+  hitTest(cssX: number, cssY: number, scrollbackLength: number): 'thumb' | null {
     if (scrollbackLength === 0) return null;
     const cssW = this.canvas.width / this.dpr;
     const cssH = this.canvas.height / this.dpr;

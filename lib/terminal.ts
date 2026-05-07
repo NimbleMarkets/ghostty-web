@@ -1749,7 +1749,7 @@ export class Terminal implements ITerminalCore {
     const mouseY = e.clientY - rect.top;
 
     // Check if click is in scrollbar area via overlay hit-test
-    if (this.scrollbarOverlay!.hitTest(mouseX, mouseY, scrollbackLength, this.rows) !== null) {
+    if (this.scrollbarOverlay?.hitTest(mouseX, mouseY, scrollbackLength) === 'thumb') {
       // Prevent default and stop propagation to prevent text selection
       e.preventDefault();
       e.stopPropagation();
