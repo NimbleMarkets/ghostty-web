@@ -37,6 +37,7 @@ import { UrlRegexProvider } from './providers/url-regex-provider';
 import { CanvasRenderer } from './renderer';
 import { pickRenderer } from './renderer-factory';
 import type { Renderer } from './renderer-types';
+import type { WebGPURenderer } from './renderer-webgpu';
 import { ScrollbarOverlay } from './scrollbar-overlay';
 import { SelectionManager } from './selection-manager';
 import type { ILink, ILinkProvider } from './types';
@@ -598,6 +599,35 @@ export class Terminal implements ITerminalCore {
       // Wire the renderer back to the render scheduler so internal
       // state changes (cursor blink) wake the loop on demand.
       this.renderer!.setOnRequestRender(() => this.requestRender());
+
+      // If using WebGPU, register a device-lost handler to gracefully fall
+      // back to Canvas2D if the GPU device is lost (e.g. driver crash, tab
+      // backgrounded too long, GPU process killed).
+      if (this.renderer && this.renderer.backend === 'webgpu') {
+        (this.renderer as WebGPURenderer).onDeviceLost(async (info) => {
+          if (this.isDisposed) return;
+          console.warn(
+            '[ghostty-web] GPU device lost; falling back to Canvas2D:',
+            info.reason,
+          );
+          if (!this.canvas) return;
+          this.renderer?.destroy();
+          this.renderer = await pickRenderer('canvas2d', this.canvas, {
+            fontSize: this.options.fontSize,
+            fontFamily: this.options.fontFamily,
+            cursorStyle: this.options.cursorStyle,
+            cursorBlink: this.options.cursorBlink,
+            theme: this.options.theme,
+          });
+          this.renderer.resize(this.cols, this.rows);
+          this.renderer.setOnRequestRender(() => this.requestRender());
+          if (this.selectionManager) {
+            this.renderer.setSelectionManager(this.selectionManager);
+          }
+          this.renderer.invalidate();
+          this.requestRender();
+        });
+      }
 
       // Mark as open NOW (before renderTick/focus, both of which gate on
       // isOpen) — at this point all renderer-dependent components are wired,
