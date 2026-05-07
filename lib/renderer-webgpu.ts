@@ -475,7 +475,9 @@ class GlyphAtlas {
         GPUTextureUsage.RENDER_ATTACHMENT,
       label: 'glyphAtlas',
     });
-    this.offscreen.width = cellW;
+    // Offscreen sized for the widest glyph we support (2 cells for CJK /
+    // emoji). Narrow glyphs only use the left half; we crop the read.
+    this.offscreen.width = cellW * 2;
     this.offscreen.height = cellH;
     this.offCtx = this.offscreen.getContext('2d', { willReadFrequently: true })!;
   }
@@ -493,19 +495,28 @@ class GlyphAtlas {
     this.nextX = 0;
     this.nextY = 0;
     this.rowHeight = 0;
-    this.offscreen.width = cellW;
+    this.offscreen.width = cellW * 2;
     this.offscreen.height = cellH;
     // Texture stays allocated; we just zero it conceptually by overwriting on demand.
   }
 
-  /** Returns slot UV in pixels. Rasterizes + uploads on miss. */
-  getOrRaster(grapheme: string, styleBits: number, baseline: number): AtlasSlot {
-    const key = `${styleBits}|${grapheme}`;
+  /**
+   * Returns slot UV in pixels. Rasterizes + uploads on miss.
+   * `widthInCells` is 1 for normal glyphs, 2 for CJK / emoji that occupy
+   * two terminal cells. The slot's pixel width is widthInCells * cellW.
+   */
+  getOrRaster(
+    grapheme: string,
+    styleBits: number,
+    baseline: number,
+    widthInCells: number = 1,
+  ): AtlasSlot {
+    const key = `${widthInCells}|${styleBits}|${grapheme}`;
     const cached = this.cache.get(key);
     if (cached) return cached;
 
     // Allocate slot.
-    const w = this.cellW;
+    const w = this.cellW * widthInCells;
     const h = this.cellH;
     if (this.nextX + w > this.size) {
       this.nextX = 0;
@@ -1089,6 +1100,8 @@ export class WebGPURenderer implements Renderer {
     }
 
     const defaultEmptyFlags = (FLAG_USE_THEME_FG | FLAG_USE_THEME_BG) >>> 0;
+    const cellW = this.metrics.width;
+    const cellH = this.metrics.height;
     for (let y = 0; y < dims.rows; y++) {
       let line: ReturnType<IRenderable['getLine']> = null;
       if (viewportY > 0) {
@@ -1101,6 +1114,18 @@ export class WebGPURenderer implements Renderer {
       } else {
         line = buffer.getLine(y);
       }
+      // Pending right-half of a wide glyph from the previous column. Carries
+      // the wide cell's atlas slot + fg/bg/flags so the spacer cell can
+      // render the right half of the same glyph with consistent styling.
+      // Reset per-row — a wide glyph never bleeds across rows.
+      let pendingRightHalf: {
+        slotU: number;
+        slotV: number;
+        slotH: number;
+        fgPacked: number;
+        bgPacked: number;
+        flags: number;
+      } | null = null;
       // Walk every column even when line is missing or short — empty cells
       // need FLAG_USE_THEME_FG|BG set so the shader picks up theme.background
       // instead of rendering solid black (the zeroed packed-fg/bg).
@@ -1108,9 +1133,23 @@ export class WebGPURenderer implements Renderer {
         const i = (y * dims.cols + x) * CELL_U32S;
         const c = line && x < line.length ? line[x] : null;
         if (!c || c.width === 0) {
-          arr[i + 4] = defaultEmptyFlags;
+          if (pendingRightHalf) {
+            // Spacer cell: render the right half of the preceding wide glyph
+            // with the wide cell's fg/bg/flags so colors and selection match.
+            arr[i + 0] = pendingRightHalf.fgPacked;
+            arr[i + 1] = pendingRightHalf.bgPacked;
+            arr[i + 2] =
+              ((pendingRightHalf.slotU + cellW) & 0xffff) |
+              ((pendingRightHalf.slotV & 0xffff) << 16);
+            arr[i + 3] = (cellW & 0xffff) | ((pendingRightHalf.slotH & 0xffff) << 16);
+            arr[i + 4] = pendingRightHalf.flags;
+            pendingRightHalf = null;
+          } else {
+            arr[i + 4] = defaultEmptyFlags;
+          }
           continue;
         }
+        pendingRightHalf = null;
         let flags = 0;
         if (c.flags & CellFlags.BOLD) flags |= FLAG_BOLD;
         if (c.flags & CellFlags.ITALIC) flags |= FLAG_ITALIC;
@@ -1174,11 +1213,34 @@ export class WebGPURenderer implements Renderer {
               : String.fromCodePoint(c.codepoint || 32);
           const styleBits =
             (flags & FLAG_BOLD ? 1 : 0) | (flags & FLAG_ITALIC ? 2 : 0) | (flags & FLAG_FAINT ? 4 : 0);
-          const slot = this.atlas.getOrRaster(grapheme, styleBits, this.metrics.baseline);
+          const widthInCells = c.width === 2 ? 2 : 1;
+          const slot = this.atlas.getOrRaster(
+            grapheme,
+            styleBits,
+            this.metrics.baseline,
+            widthInCells,
+          );
+          // The cell's quad is always 1 cell wide. For wide glyphs we sample
+          // only the LEFT half of the 2-cell-wide slot here; the spacer cell
+          // (next iteration) will sample the right half via pendingRightHalf.
           arr[i + 2] = (slot.u & 0xffff) | ((slot.v & 0xffff) << 16);
-          arr[i + 3] = (slot.w & 0xffff) | ((slot.h & 0xffff) << 16);
+          arr[i + 3] =
+            widthInCells === 2
+              ? (cellW & 0xffff) | ((cellH & 0xffff) << 16)
+              : (slot.w & 0xffff) | ((slot.h & 0xffff) << 16);
+          if (widthInCells === 2) {
+            pendingRightHalf = {
+              slotU: slot.u,
+              slotV: slot.v,
+              slotH: slot.h,
+              fgPacked: arr[i + 0]!,
+              bgPacked: arr[i + 1]!,
+              flags: 0, // patched below after `arr[i + 4] = flags`
+            };
+          }
         }
         arr[i + 4] = flags >>> 0;
+        if (pendingRightHalf) pendingRightHalf.flags = flags >>> 0;
         // arr[i + 6] = kittyTexIndex — Task 16
       }
     }
