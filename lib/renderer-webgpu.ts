@@ -27,6 +27,8 @@ import type {
   RendererOptions,
 } from './renderer-types';
 import { CellFlags } from './types';
+import type { KittyPlacementInfo } from './types';
+import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
 
 const warnedUnparseableColors = new Set<string>();
 
@@ -75,6 +77,23 @@ struct Cell {
 @group(0) @binding(2) var<storage, read> cells: array<Cell>;
 @group(0) @binding(3) var atlasTex: texture_2d<f32>;
 @group(0) @binding(4) var atlasSamp: sampler;
+@group(0) @binding(5) var kittyTex0: texture_2d<f32>;
+@group(0) @binding(6) var kittyTex1: texture_2d<f32>;
+@group(0) @binding(7) var kittyTex2: texture_2d<f32>;
+@group(0) @binding(8) var kittyTex3: texture_2d<f32>;
+@group(0) @binding(9) var kittyTex4: texture_2d<f32>;
+@group(0) @binding(10) var kittyTex5: texture_2d<f32>;
+@group(0) @binding(11) var kittyTex6: texture_2d<f32>;
+@group(0) @binding(12) var kittyTex7: texture_2d<f32>;
+@group(0) @binding(13) var kittyTex8: texture_2d<f32>;
+@group(0) @binding(14) var kittyTex9: texture_2d<f32>;
+@group(0) @binding(15) var kittyTex10: texture_2d<f32>;
+@group(0) @binding(16) var kittyTex11: texture_2d<f32>;
+@group(0) @binding(17) var kittyTex12: texture_2d<f32>;
+@group(0) @binding(18) var kittyTex13: texture_2d<f32>;
+@group(0) @binding(19) var kittyTex14: texture_2d<f32>;
+@group(0) @binding(20) var kittyTex15: texture_2d<f32>;
+@group(0) @binding(21) var placeholderSamp: sampler;
 
 const FLAG_UNDERLINE: u32 = 1u << 2u;
 const FLAG_STRIKETHROUGH: u32 = 1u << 3u;
@@ -84,10 +103,33 @@ const FLAG_INVISIBLE: u32 = 1u << 6u;
 const FLAG_IS_SELECTED: u32 = 1u << 7u;
 const FLAG_IS_HYPERLINK_HOVERED: u32 = 1u << 8u;
 const FLAG_IS_LINK_RANGE_HOVERED: u32 = 1u << 9u;
+const FLAG_IS_BLOCK_ELEMENT: u32 = 1u << 10u;
+const FLAG_IS_KITTY_PLACEHOLDER: u32 = 1u << 11u;
 const FLAG_USE_THEME_FG: u32 = 1u << 12u;
 const FLAG_USE_THEME_BG: u32 = 1u << 13u;
 const FLAG_IS_CURSOR_CELL: u32 = 1u << 14u;
-const FLAG_IS_BLOCK_ELEMENT: u32 = 1u << 10u;
+
+fn samplePlaceholder(idx: u32, uv: vec2<f32>) -> vec4<f32> {
+  switch idx {
+    case 0u: { return textureSample(kittyTex0, placeholderSamp, uv); }
+    case 1u: { return textureSample(kittyTex1, placeholderSamp, uv); }
+    case 2u: { return textureSample(kittyTex2, placeholderSamp, uv); }
+    case 3u: { return textureSample(kittyTex3, placeholderSamp, uv); }
+    case 4u: { return textureSample(kittyTex4, placeholderSamp, uv); }
+    case 5u: { return textureSample(kittyTex5, placeholderSamp, uv); }
+    case 6u: { return textureSample(kittyTex6, placeholderSamp, uv); }
+    case 7u: { return textureSample(kittyTex7, placeholderSamp, uv); }
+    case 8u: { return textureSample(kittyTex8, placeholderSamp, uv); }
+    case 9u: { return textureSample(kittyTex9, placeholderSamp, uv); }
+    case 10u: { return textureSample(kittyTex10, placeholderSamp, uv); }
+    case 11u: { return textureSample(kittyTex11, placeholderSamp, uv); }
+    case 12u: { return textureSample(kittyTex12, placeholderSamp, uv); }
+    case 13u: { return textureSample(kittyTex13, placeholderSamp, uv); }
+    case 14u: { return textureSample(kittyTex14, placeholderSamp, uv); }
+    case 15u: { return textureSample(kittyTex15, placeholderSamp, uv); }
+    default: { return vec4<f32>(0.0); }
+  }
+}
 
 fn drawBlockElement(idx: u32, uv: vec2<f32>) -> bool {
   switch idx {
@@ -188,6 +230,17 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
   if ((flags & FLAG_IS_CURSOR_CELL) != 0u) {
     bg = pal.cursorBg.rgb;
     fg = pal.cursorFg.rgb;
+  }
+
+  if ((flags & FLAG_IS_KITTY_PLACEHOLDER) != 0u) {
+    // sliceCol/sliceRow in cell.blockOrSlice; gridCols/gridRows in cell._r
+    let sliceCol = f32(cell.blockOrSlice & 0xffffu);
+    let sliceRow = f32((cell.blockOrSlice >> 16u) & 0xffffu);
+    let gridCols = f32(cell._r & 0xffffu);
+    let gridRows = f32((cell._r >> 16u) & 0xffffu);
+    let uvX = (sliceCol + in.uv.x) / gridCols;
+    let uvY = (sliceRow + in.uv.y) / gridRows;
+    return samplePlaceholder(cell.kittyTexIndex, vec2<f32>(uvX, uvY));
   }
 
   if ((flags & FLAG_IS_BLOCK_ELEMENT) != 0u) {
@@ -567,7 +620,6 @@ export class WebGPURenderer implements Renderer {
   // Text pipeline
   private textPipeline?: GPURenderPipeline;
   private textBindGroupLayout?: GPUBindGroupLayout;
-  private textBindGroup?: GPUBindGroup;
 
   // Cursor pipeline
   private cursorPipeline?: GPURenderPipeline;
@@ -580,6 +632,11 @@ export class WebGPURenderer implements Renderer {
   private kittyPipeline?: GPURenderPipeline;
   private kittyBindGroupLayout?: GPUBindGroupLayout;
   private kittyParamsRing: GPUBuffer[] = [];
+
+  // Virtual kitty placements (Task 16)
+  private placeholderSampler?: GPUSampler;
+  private dummyTexture?: GPUTexture;
+  private dummyView?: GPUTextureView;
 
   static async create(
     canvas: HTMLCanvasElement,
@@ -632,6 +689,26 @@ export class WebGPURenderer implements Renderer {
     });
     // atlas itself constructed lazily in resize() once we have metrics
 
+    this.placeholderSampler = this.device.createSampler({
+      magFilter: 'nearest',
+      minFilter: 'nearest',
+      label: 'placeholderSampler',
+    });
+
+    this.dummyTexture = this.device.createTexture({
+      size: { width: 1, height: 1 },
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+      label: 'dummyKittyTex',
+    });
+    this.device.queue.writeTexture(
+      { texture: this.dummyTexture },
+      new Uint8Array([0, 0, 0, 0]).buffer,
+      { bytesPerRow: 4 },
+      { width: 1, height: 1 },
+    );
+    this.dummyView = this.dummyTexture.createView();
+
     this.textBindGroupLayout = this.device.createBindGroupLayout({
       entries: [
         {
@@ -647,6 +724,12 @@ export class WebGPURenderer implements Renderer {
         },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+        ...Array.from({ length: 16 }, (_, i) => ({
+          binding: 5 + i,
+          visibility: GPUShaderStage.FRAGMENT,
+          texture: { sampleType: 'float' as const },
+        })),
+        { binding: 21, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' as const } },
       ],
     });
 
@@ -846,27 +929,9 @@ export class WebGPURenderer implements Renderer {
   }
 
   private rebuildBindGroup(): void {
-    if (
-      !this.textBindGroupLayout ||
-      !this.gridUBO ||
-      !this.paletteUBO ||
-      !this.cellBuffer ||
-      !this.atlas ||
-      !this.atlasSampler
-    ) {
-      return;
-    }
-    this.textBindGroup = this.device.createBindGroup({
-      layout: this.textBindGroupLayout,
-      entries: [
-        { binding: 0, resource: { buffer: this.gridUBO } },
-        { binding: 1, resource: { buffer: this.paletteUBO } },
-        { binding: 2, resource: { buffer: this.cellBuffer } },
-        { binding: 3, resource: this.atlas.view() },
-        { binding: 4, resource: this.atlasSampler },
-      ],
-    });
-    if (this.cursorBindGroupLayout) {
+    // textBindGroup is now built per-frame in render() because kitty texture views change.
+    // Only rebuild the cursorBindGroup here (static across frames).
+    if (this.cursorBindGroupLayout && this.gridUBO && this.paletteUBO) {
       this.cursorBindGroup = this.device.createBindGroup({
         layout: this.cursorBindGroupLayout,
         entries: [
@@ -974,7 +1039,11 @@ export class WebGPURenderer implements Renderer {
     }
   }
 
-  private encodeCells(buffer: IRenderable, viewportY: number, sb?: IScrollbackProvider): void {
+  private encodeCells(
+    buffer: IRenderable,
+    viewportY: number,
+    sb?: IScrollbackProvider,
+  ): { usedKittyImageIds: number[] } {
     const arr = this.cellArray;
     arr.fill(0);
     const dims = buffer.getDimensions();
@@ -990,6 +1059,26 @@ export class WebGPURenderer implements Renderer {
       if (y === sel.endRow) return x <= sel.endCol;
       return y > sel.startRow && y < sel.endRow;
     };
+
+    // Build virtual kitty placement index for this frame.
+    const kittyVirtualPlacements = new Map<number, KittyPlacementInfo>();
+    const usedKittyImageIds: number[] = [];
+    const usedKittyImageIndex = new Map<number, number>();
+
+    if (buffer.getKittyGraphics && buffer.iterPlacements) {
+      const graphics = buffer.getKittyGraphics();
+      if (graphics !== null) {
+        for (const p of buffer.iterPlacements(graphics, false)) {
+          if (p.isVirtual) {
+            kittyVirtualPlacements.set(p.imageId, p);
+            if (!usedKittyImageIndex.has(p.imageId) && usedKittyImageIds.length < 16) {
+              usedKittyImageIndex.set(p.imageId, usedKittyImageIds.length);
+              usedKittyImageIds.push(p.imageId);
+            }
+          }
+        }
+      }
+    }
 
     for (let y = 0; y < dims.rows; y++) {
       let line: ReturnType<IRenderable['getLine']> = null;
@@ -1031,6 +1120,29 @@ export class WebGPURenderer implements Renderer {
           if (inRange) flags |= FLAG_IS_LINK_RANGE_HOVERED;
         }
         const cp = c.codepoint || 0;
+        if (cp === KITTY_PLACEHOLDER) {
+          const codepoints = buffer.getGrapheme?.(y, x);
+          if (codepoints && codepoints.length >= 3) {
+            const rowD = diacriticToInt(codepoints[1]!);
+            const colD = diacriticToInt(codepoints[2]!);
+            if (rowD >= 0 && colD >= 0) {
+              const fgRgb = (c.fg_r << 16) | (c.fg_g << 8) | c.fg_b;
+              let imageId = fgRgb;
+              if (codepoints.length >= 4) {
+                const msb = diacriticToInt(codepoints[3]!);
+                if (msb >= 0) imageId = (msb << 24) | fgRgb;
+              }
+              const placement = kittyVirtualPlacements.get(imageId);
+              const idx = usedKittyImageIndex.get(imageId);
+              if (placement && idx !== undefined) {
+                flags |= FLAG_IS_KITTY_PLACEHOLDER;
+                arr[i + 5] = (colD & 0xffff) | ((rowD & 0xffff) << 16);
+                arr[i + 6] = idx;
+                arr[i + 7] = (placement.gridCols & 0xffff) | ((placement.gridRows & 0xffff) << 16);
+              }
+            }
+          }
+        }
         if (cp >= 0x2580 && cp <= 0x259f && c.grapheme_len === 0) {
           flags |= FLAG_IS_BLOCK_ELEMENT;
           arr[i + 5] = cp - 0x2580;
@@ -1071,6 +1183,8 @@ export class WebGPURenderer implements Renderer {
         dims.cols * dims.rows * CELL_BYTES,
       );
     }
+
+    return { usedKittyImageIds };
   }
 
   // -------- Renderer interface --------
@@ -1121,8 +1235,41 @@ export class WebGPURenderer implements Renderer {
   render(buffer: IRenderable, viewportY: number = 0, sb?: IScrollbackProvider): void {
     if (this.cols === 0 || this.rows === 0) return;
     const cursor = buffer.getCursor();
-    this.encodeCells(buffer, viewportY, sb);
+    const { usedKittyImageIds } = this.encodeCells(buffer, viewportY, sb);
     this.uploadGridUBO(viewportY, cursor);
+
+    // Build per-frame kitty texture views (virtual placements, Task 16).
+    const frameKittyViews: GPUTextureView[] = new Array(16).fill(this.dummyView!);
+    const graphics2 = buffer.getKittyGraphics?.() ?? null;
+    if (graphics2 !== null) {
+      for (let s = 0; s < usedKittyImageIds.length; s++) {
+        const id = usedKittyImageIds[s]!;
+        const tex = this.getOrUploadKittyTexture(graphics2, id, buffer);
+        if (tex) frameKittyViews[s] = tex.view;
+      }
+    }
+
+    // Build per-frame textBindGroup (kitty texture views change each frame).
+    const textBindGroup = (
+      this.textBindGroupLayout &&
+      this.gridUBO &&
+      this.paletteUBO &&
+      this.cellBuffer &&
+      this.atlas &&
+      this.atlasSampler &&
+      this.placeholderSampler
+    ) ? this.device.createBindGroup({
+      layout: this.textBindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.gridUBO } },
+        { binding: 1, resource: { buffer: this.paletteUBO } },
+        { binding: 2, resource: { buffer: this.cellBuffer } },
+        { binding: 3, resource: this.atlas.view() },
+        { binding: 4, resource: this.atlasSampler },
+        ...frameKittyViews.map((v, i) => ({ binding: 5 + i, resource: v })),
+        { binding: 21, resource: this.placeholderSampler },
+      ],
+    }) : null;
 
     // Collect kitty direct placements (must happen before beginRenderPass — writeBuffer
     // during a render pass is a validation error).
@@ -1185,9 +1332,9 @@ export class WebGPURenderer implements Renderer {
         },
       ],
     });
-    if (this.textPipeline && this.textBindGroup) {
+    if (this.textPipeline && textBindGroup) {
       pass.setPipeline(this.textPipeline);
-      pass.setBindGroup(0, this.textBindGroup);
+      pass.setBindGroup(0, textBindGroup);
       pass.draw(6, this.cols * this.rows);
     }
     if (this.cursorPipeline && this.cursorBindGroup) {
