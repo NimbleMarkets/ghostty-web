@@ -26,7 +26,7 @@ import type {
   Renderer,
   RendererOptions,
 } from './renderer-types';
-import { CellFlags } from './types';
+import { CellFlags, KittyImageFormat } from './types';
 import type { KittyPlacementInfo } from './types';
 import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
 
@@ -109,13 +109,10 @@ const FLAG_USE_THEME_FG: u32 = 1u << 12u;
 const FLAG_USE_THEME_BG: u32 = 1u << 13u;
 const FLAG_IS_CURSOR_CELL: u32 = 1u << 14u;
 
-// Use textureSampleLevel(..., 0.0) instead of textureSample so this works in
-// the divergent-control-flow switch below. textureSample has a "uniform
-// control flow" requirement (it derives mip level from screen-space
-// derivatives); switching on a per-fragment index that selects different
-// texture bindings violates that and produces undefined behavior on Apple
-// Metal in particular. textureSampleLevel takes an explicit LOD and has no
-// such requirement. Our kitty textures have no mips, so LOD 0 is correct.
+// textureSampleLevel (not textureSample) so this works after the upstream
+// non-uniform branches (block-element, kitty placeholder) make control
+// flow non-uniform. textureSample requires uniform CF; textureSampleLevel
+// does not. Our kitty textures have no mips, so explicit LOD 0 is correct.
 fn samplePlaceholder(idx: u32, uv: vec2<f32>) -> vec4<f32> {
   switch idx {
     case 0u: { return textureSampleLevel(kittyTex0, placeholderSamp, uv, 0.0); }
@@ -977,12 +974,11 @@ export class WebGPURenderer implements Renderer {
     const { width, height, format, data } = pixels;
     if (width === 0 || height === 0) return null;
     const rgba = new Uint8Array(width * height * 4);
-    // KittyImageFormat: 0=RGBA, 1=RGB, 2=GRAY, 3=GRAY_ALPHA, others=PNG/unknown
     switch (format) {
-      case 0:
+      case KittyImageFormat.RGBA:
         rgba.set(data);
         break;
-      case 1:
+      case KittyImageFormat.RGB:
         for (let i = 0, o = 0; i < data.length; i += 3, o += 4) {
           rgba[o] = data[i]!;
           rgba[o + 1] = data[i + 1]!;
@@ -990,7 +986,7 @@ export class WebGPURenderer implements Renderer {
           rgba[o + 3] = 255;
         }
         break;
-      case 2:
+      case KittyImageFormat.GRAY:
         for (let i = 0, o = 0; i < data.length; i++, o += 4) {
           const v = data[i]!;
           rgba[o] = v;
@@ -999,7 +995,7 @@ export class WebGPURenderer implements Renderer {
           rgba[o + 3] = 255;
         }
         break;
-      case 3:
+      case KittyImageFormat.GRAY_ALPHA:
         for (let i = 0, o = 0; i < data.length; i += 2, o += 4) {
           const v = data[i]!;
           rgba[o] = v;
@@ -1009,7 +1005,7 @@ export class WebGPURenderer implements Renderer {
         }
         break;
       default:
-        return null; // PNG / unknown
+        return null; // PNG (should be pre-decoded) / unknown
     }
 
     const texture = this.device.createTexture({
