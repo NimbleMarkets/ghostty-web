@@ -27,14 +27,34 @@ import type {
   RendererOptions,
 } from './renderer-types';
 
+const PREFERRED_FORMAT: GPUTextureFormat = 'bgra8unorm';
+
 export class WebGPURenderer implements Renderer {
   public readonly backend = 'webgpu' as const;
   public readonly canvas: HTMLCanvasElement;
 
-  /** Async constructor — real init happens in create(). */
+  private device!: GPUDevice;
+  private context!: GPUCanvasContext;
+  private theme: Required<ITheme> = DEFAULT_THEME;
+  private fontSize: number;
+  private fontFamily: string;
+  private cursorStyle: 'block' | 'underline' | 'bar';
+  private dpr: number;
+  private metrics: FontMetrics = { width: 0, height: 0, baseline: 0 };
+  private cols = 0;
+  private rows = 0;
+  private cursorBlink_ = new CursorBlink();
+  private selectionManager?: SelectionManager;
+  private hoveredHyperlinkId = 0;
+  private hoveredLinkRange: LinkRange | null = null;
+  private onRequestRender: (() => void) | null = null;
+  private invalidateNext = true;
+  private destroyed = false;
+  private deviceLostListeners: Array<(info: GPUDeviceLostInfo) => void> = [];
+
   static async create(
     canvas: HTMLCanvasElement,
-    device: any, // GPUDevice — typed as any until @webgpu/types is added
+    device: GPUDevice,
     opts: RendererOptions
   ): Promise<WebGPURenderer> {
     const r = new WebGPURenderer(canvas, device, opts);
@@ -42,65 +62,171 @@ export class WebGPURenderer implements Renderer {
     return r;
   }
 
-  private constructor(canvas: HTMLCanvasElement, _device: any, _opts: RendererOptions) {
+  private constructor(canvas: HTMLCanvasElement, device: GPUDevice, opts: RendererOptions) {
     this.canvas = canvas;
-    throw new Error('WebGPURenderer: not yet implemented (stub)');
+    this.device = device;
+    this.fontSize = opts.fontSize ?? 15;
+    this.fontFamily = opts.fontFamily ?? 'monospace';
+    this.cursorStyle = opts.cursorStyle ?? 'block';
+    this.dpr = opts.devicePixelRatio ?? window.devicePixelRatio ?? 1;
+    this.theme = { ...DEFAULT_THEME, ...opts.theme };
+    this.cursorBlink_.setEnabled(opts.cursorBlink ?? false);
   }
 
   private async initialize(): Promise<void> {
-    /* filled in Task 6 */
+    const ctx = this.canvas.getContext('webgpu') as GPUCanvasContext | null;
+    if (!ctx) throw new Error('WebGPURenderer: failed to acquire webgpu context');
+    this.context = ctx;
+    this.context.configure({
+      device: this.device,
+      format: PREFERRED_FORMAT,
+      alphaMode: 'premultiplied',
+    });
+
+    this.metrics = this.measureFont();
+
+    this.device.lost.then((info) => {
+      if (this.destroyed) return;
+      console.error('[ghostty-web] GPUDevice lost:', info.reason, info.message);
+      // Task 17 wires this to the Terminal-level fallback.
+      this.deviceLostListeners.forEach((fn) => fn(info));
+    });
   }
 
-  // ----- Renderer interface stubs (filled across later tasks) -----
+  /** Internal hook used by Terminal's fallback path (Task 17). */
+  onDeviceLost(fn: (info: GPUDeviceLostInfo) => void): void {
+    this.deviceLostListeners.push(fn);
+  }
+
+  // -------- Font metrics (same logic as CanvasRenderer.measureFont) --------
+
+  private measureFont(): FontMetrics {
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d')!;
+    ctx.font = `${this.fontSize}px ${this.fontFamily}`;
+    const m = ctx.measureText('M');
+    const width = Math.ceil(m.width);
+    const ascent = m.actualBoundingBoxAscent || this.fontSize * 0.8;
+    const descent = m.actualBoundingBoxDescent || this.fontSize * 0.2;
+    const height = Math.ceil(ascent + descent) + 2;
+    const baseline = Math.ceil(ascent) + 1;
+    return { width, height, baseline };
+  }
+
+  // -------- Renderer interface --------
+
   getMetrics(): FontMetrics {
-    throw new Error('not implemented');
+    return { ...this.metrics };
   }
-  resize(_cols: number, _rows: number): void {
-    throw new Error('not implemented');
+
+  resize(cols: number, rows: number): void {
+    this.cols = cols;
+    this.rows = rows;
+    const cssW = cols * this.metrics.width;
+    const cssH = rows * this.metrics.height;
+    this.canvas.style.width = `${cssW}px`;
+    this.canvas.style.height = `${cssH}px`;
+    this.canvas.width = Math.round(cssW * this.dpr);
+    this.canvas.height = Math.round(cssH * this.dpr);
+    this.invalidateNext = true;
+    // Tasks 7+ will re-allocate cellBuffer here.
   }
-  render(_b: IRenderable, _vy?: number, _sb?: IScrollbackProvider): void {
-    throw new Error('not implemented');
+
+  render(
+    _buffer: IRenderable,
+    _viewportY: number = 0,
+    _scrollbackProvider?: IScrollbackProvider
+  ): void {
+    // Task 6: clear-only render to theme.background.
+    const view = this.context.getCurrentTexture().createView();
+    const encoder = this.device.createCommandEncoder();
+    const [r, g, b] = this.parseHexColor(this.theme.background);
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view,
+          clearValue: { r: r / 255, g: g / 255, b: b / 255, a: 1 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
+    });
+    pass.end();
+    this.device.queue.submit([encoder.finish()]);
+    this.invalidateNext = false;
   }
-  setTheme(_t: ITheme): void {
-    throw new Error('not implemented');
+
+  private parseHexColor(hex: string): [number, number, number] {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+    if (!m) return [0, 0, 0];
+    return [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16)];
   }
-  setFontSize(_s: number): void {
-    throw new Error('not implemented');
+
+  setTheme(theme: ITheme): void {
+    this.theme = { ...DEFAULT_THEME, ...theme };
+    this.invalidateNext = true;
+    this.onRequestRender?.();
   }
-  setFontFamily(_f: string): void {
-    throw new Error('not implemented');
+
+  setFontSize(size: number): void {
+    this.fontSize = size;
+    this.metrics = this.measureFont();
+    this.invalidateNext = true;
+    this.onRequestRender?.();
   }
-  setCursorStyle(_s: 'block' | 'underline' | 'bar'): void {
-    throw new Error('not implemented');
+
+  setFontFamily(family: string): void {
+    this.fontFamily = family;
+    this.metrics = this.measureFont();
+    this.invalidateNext = true;
+    this.onRequestRender?.();
   }
-  setCursorBlink(_e: boolean): void {
-    throw new Error('not implemented');
+
+  setCursorStyle(style: 'block' | 'underline' | 'bar'): void {
+    this.cursorStyle = style;
+    this.invalidateNext = true;
+    this.onRequestRender?.();
   }
-  setOnRequestRender(_fn: (() => void) | null): void {
-    throw new Error('not implemented');
+
+  setCursorBlink(enabled: boolean): void {
+    this.cursorBlink_.setEnabled(enabled);
   }
-  setSelectionManager(_m: SelectionManager): void {
-    throw new Error('not implemented');
+
+  setOnRequestRender(fn: (() => void) | null): void {
+    this.onRequestRender = fn;
+    this.cursorBlink_.setOnRequestRender(fn);
   }
-  setHoveredHyperlinkId(_id: number): void {
-    throw new Error('not implemented');
+
+  setSelectionManager(mgr: SelectionManager): void {
+    this.selectionManager = mgr;
   }
-  setHoveredLinkRange(_r: LinkRange | null): void {
-    throw new Error('not implemented');
+
+  setHoveredHyperlinkId(id: number): void {
+    if (this.hoveredHyperlinkId === id) return;
+    this.hoveredHyperlinkId = id;
+    this.invalidateNext = true;
+    this.onRequestRender?.();
   }
+
+  setHoveredLinkRange(range: LinkRange | null): void {
+    if (this.hoveredLinkRange === range) return;
+    this.hoveredLinkRange = range;
+    this.invalidateNext = true;
+    this.onRequestRender?.();
+  }
+
   invalidate(): void {
-    throw new Error('not implemented');
+    this.invalidateNext = true;
   }
+
   remeasureFont(): void {
-    throw new Error('not implemented');
+    this.metrics = this.measureFont();
+    this.invalidateNext = true;
   }
+
   destroy(): void {
-    throw new Error('not implemented');
+    this.destroyed = true;
+    this.cursorBlink_.destroy();
+    // device.destroy() left to caller; we don't own it.
   }
 }
-
-// Suppress unused-import warnings for symbols that will be used in later tasks.
-// biome-ignore lint/suspicious/noExplicitAny: intentional stub references
-void (CursorBlink as any);
-// biome-ignore lint/suspicious/noExplicitAny: intentional stub references
-void (DEFAULT_THEME as any);
