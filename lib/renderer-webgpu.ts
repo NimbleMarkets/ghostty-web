@@ -87,6 +87,47 @@ const FLAG_IS_LINK_RANGE_HOVERED: u32 = 1u << 9u;
 const FLAG_USE_THEME_FG: u32 = 1u << 12u;
 const FLAG_USE_THEME_BG: u32 = 1u << 13u;
 const FLAG_IS_CURSOR_CELL: u32 = 1u << 14u;
+const FLAG_IS_BLOCK_ELEMENT: u32 = 1u << 10u;
+
+fn drawBlockElement(idx: u32, uv: vec2<f32>) -> bool {
+  switch idx {
+    case 0u: { return uv.y < 0.5; }
+    case 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u: {
+      let n = f32(idx);
+      return uv.y >= 1.0 - n / 8.0;
+    }
+    case 9u, 10u, 11u, 12u, 13u, 14u, 15u: {
+      let n = 16.0 - f32(idx);
+      return uv.x < n / 8.0;
+    }
+    case 16u: { return uv.x >= 0.5; }
+    case 17u: { return false; }
+    case 18u: { return false; }
+    case 19u: { return false; }
+    case 20u: { return uv.y < 1.0 / 8.0; }
+    case 21u: { return uv.x >= 7.0 / 8.0; }
+    case 22u: { return uv.x < 0.5 && uv.y >= 0.5; }
+    case 23u: { return uv.x >= 0.5 && uv.y >= 0.5; }
+    case 24u: { return uv.x < 0.5 && uv.y < 0.5; }
+    case 25u: { return (uv.x < 0.5) || (uv.y >= 0.5); }
+    case 26u: { return (uv.x < 0.5) == (uv.y < 0.5); }
+    case 27u: { return !(uv.x >= 0.5 && uv.y >= 0.5); }
+    case 28u: { return !(uv.x < 0.5 && uv.y >= 0.5); }
+    case 29u: { return uv.x >= 0.5 && uv.y < 0.5; }
+    case 30u: { return (uv.x < 0.5) != (uv.y < 0.5); }
+    case 31u: { return uv.x >= 0.5 || uv.y >= 0.5; }
+    default: { return false; }
+  }
+}
+
+fn blockShade(idx: u32) -> f32 {
+  switch idx {
+    case 17u: { return 0.25; }
+    case 18u: { return 0.5; }
+    case 19u: { return 0.75; }
+    default: { return 0.0; }
+  }
+}
 
 struct VOut {
   @builtin(position) clip: vec4<f32>,
@@ -147,6 +188,18 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
   if ((flags & FLAG_IS_CURSOR_CELL) != 0u) {
     bg = pal.cursorBg.rgb;
     fg = pal.cursorFg.rgb;
+  }
+
+  if ((flags & FLAG_IS_BLOCK_ELEMENT) != 0u) {
+    let idx = cell.blockOrSlice;
+    let shade = blockShade(idx);
+    if (shade > 0.0) {
+      return vec4<f32>(mix(bg, fg, shade), 1.0);
+    }
+    if (drawBlockElement(idx, in.uv)) {
+      return vec4<f32>(fg, 1.0);
+    }
+    return vec4<f32>(bg, 1.0);
   }
 
   let auv = vec2<f32>(
@@ -649,6 +702,11 @@ export class WebGPURenderer implements Renderer {
             (y === r.endY && x <= r.endX && (y > r.startY || x >= r.startX));
           if (inRange) flags |= FLAG_IS_LINK_RANGE_HOVERED;
         }
+        const cp = c.codepoint || 0;
+        if (cp >= 0x2580 && cp <= 0x259f && c.grapheme_len === 0) {
+          flags |= FLAG_IS_BLOCK_ELEMENT;
+          arr[i + 5] = cp - 0x2580;
+        }
         // Pack colors as little-endian rgba8.
         arr[i + 0] = c.fg_r | (c.fg_g << 8) | (c.fg_b << 16);
         arr[i + 1] = c.bg_r | (c.bg_g << 8) | (c.bg_b << 16);
@@ -667,7 +725,6 @@ export class WebGPURenderer implements Renderer {
           arr[i + 3] = (slot.w & 0xffff) | ((slot.h & 0xffff) << 16);
         }
         arr[i + 4] = flags >>> 0;
-        // arr[i + 5] = blockOrSliceCode — Task 13/16
         // arr[i + 6] = kittyTexIndex — Task 16
       }
     }
