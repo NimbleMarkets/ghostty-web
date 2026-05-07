@@ -76,6 +76,8 @@ struct Cell {
 @group(0) @binding(3) var atlasTex: texture_2d<f32>;
 @group(0) @binding(4) var atlasSamp: sampler;
 
+const FLAG_UNDERLINE: u32 = 1u << 2u;
+const FLAG_STRIKETHROUGH: u32 = 1u << 3u;
 const FLAG_INVERSE: u32 = 1u << 4u;
 const FLAG_FAINT: u32 = 1u << 5u;
 const FLAG_INVISIBLE: u32 = 1u << 6u;
@@ -158,6 +160,21 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
 
   let alpha = select(mask, mask * 0.5, (flags & FLAG_FAINT) != 0u);
   let outRgb = mix(bg, fg, alpha);
+
+  // Underline (thin line near baseline) and strikethrough (mid-cell).
+  let baselineFrac = 0.85;       // matches CanvasRenderer's renderCellText
+  let underlineThickness = 1.0 / grid.cellSize.y;
+  if ((flags & FLAG_UNDERLINE) != 0u) {
+    if (in.uv.y >= baselineFrac && in.uv.y < baselineFrac + underlineThickness * 2.0) {
+      return vec4<f32>(fg, 1.0);
+    }
+  }
+  if ((flags & FLAG_STRIKETHROUGH) != 0u) {
+    let strikeMid = 0.5;
+    if (abs(in.uv.y - strikeMid) < underlineThickness) {
+      return vec4<f32>(fg, 1.0);
+    }
+  }
   return vec4<f32>(outRgb, 1.0);
 }
 `;
