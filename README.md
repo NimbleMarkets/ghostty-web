@@ -65,6 +65,12 @@ websocket.onmessage = (e) => term.write(e.data);
 
 For a comprehensive client <-> server example, refer to the [demo](./demo/index.html#L141).
 
+### Renderers
+
+WebGPU (primary) with Canvas2D fallback. Pass `{ renderer: 'webgpu' | 'canvas2d' | 'auto' }`
+(default `'auto'`) to the `Terminal` constructor. WebGPU init failure or device-loss falls
+back to Canvas2D automatically.
+
 ## Development
 
 ghostty-web builds from Ghostty's source with a [patch](./patches/ghostty-wasm-api.patch) to expose additional
