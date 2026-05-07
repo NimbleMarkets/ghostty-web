@@ -31,6 +31,138 @@ import { CellFlags } from './types';
 const warnedUnparseableColors = new Set<string>();
 
 // ---------------------------------------------------------------------------
+// TEXT_SHADER
+// ---------------------------------------------------------------------------
+
+const TEXT_SHADER = /* wgsl */ `
+struct GridUBO {
+  gridSize: vec2<u32>,
+  cellSize: vec2<f32>,
+  dpr: f32,
+  cursorVisible: u32,
+  cursorPos: vec2<u32>,
+  cursorStyle: u32,
+  _pad0: f32,
+  atlasSize: u32,
+  _pad1: vec3<u32>,
+};
+
+struct PaletteUBO {
+  ansi: array<vec4<f32>, 16>,
+  defaultFg: vec4<f32>,
+  defaultBg: vec4<f32>,
+  cursorBg: vec4<f32>,
+  cursorFg: vec4<f32>,
+  selectionBg: vec4<f32>,
+  selectionFg: vec4<f32>,
+  linkUnderlineColor: vec4<f32>,
+  _pad: vec4<f32>,
+};
+
+struct Cell {
+  fg: u32,
+  bg: u32,
+  atlasUV: u32,
+  atlasSize: u32,
+  flags: u32,
+  blockOrSlice: u32,
+  kittyTexIndex: u32,
+  _r: u32,
+};
+
+@group(0) @binding(0) var<uniform> grid: GridUBO;
+@group(0) @binding(1) var<uniform> pal: PaletteUBO;
+@group(0) @binding(2) var<storage, read> cells: array<Cell>;
+@group(0) @binding(3) var atlasTex: texture_2d<f32>;
+@group(0) @binding(4) var atlasSamp: sampler;
+
+const FLAG_INVERSE: u32 = 1u << 4u;
+const FLAG_FAINT: u32 = 1u << 5u;
+const FLAG_INVISIBLE: u32 = 1u << 6u;
+const FLAG_IS_SELECTED: u32 = 1u << 7u;
+const FLAG_USE_THEME_FG: u32 = 1u << 12u;
+const FLAG_USE_THEME_BG: u32 = 1u << 13u;
+const FLAG_IS_CURSOR_CELL: u32 = 1u << 14u;
+
+struct VOut {
+  @builtin(position) clip: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+  @location(1) @interpolate(flat) cellIdx: u32,
+};
+
+@vertex
+fn vsMain(@builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> VOut {
+  let col = iid % grid.gridSize.x;
+  let row = iid / grid.gridSize.x;
+  let corners = array<vec2<f32>, 6>(
+    vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0),
+    vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0),
+  );
+  let local = corners[vid];
+  let cssX = (f32(col) + local.x) * grid.cellSize.x;
+  let cssY = (f32(row) + local.y) * grid.cellSize.y;
+  let canvasW = f32(grid.gridSize.x) * grid.cellSize.x;
+  let canvasH = f32(grid.gridSize.y) * grid.cellSize.y;
+  let ndcX = (cssX / canvasW) * 2.0 - 1.0;
+  let ndcY = 1.0 - (cssY / canvasH) * 2.0;
+
+  var out: VOut;
+  out.clip = vec4<f32>(ndcX, ndcY, 0.0, 1.0);
+  out.uv = local;
+  out.cellIdx = iid;
+  return out;
+}
+
+fn unpackRgb(p: u32) -> vec3<f32> {
+  let r = f32(p & 0xffu) / 255.0;
+  let g = f32((p >> 8u) & 0xffu) / 255.0;
+  let b = f32((p >> 16u) & 0xffu) / 255.0;
+  return vec3<f32>(r, g, b);
+}
+
+@fragment
+fn fsMain(in: VOut) -> @location(0) vec4<f32> {
+  let cell = cells[in.cellIdx];
+  let flags = cell.flags;
+
+  if ((flags & FLAG_INVISIBLE) != 0u) {
+    return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+  }
+
+  var fg = unpackRgb(cell.fg);
+  var bg = unpackRgb(cell.bg);
+  if ((flags & FLAG_USE_THEME_FG) != 0u) { fg = pal.defaultFg.rgb; }
+  if ((flags & FLAG_USE_THEME_BG) != 0u) { bg = pal.defaultBg.rgb; }
+  if ((flags & FLAG_INVERSE) != 0u) {
+    let tmp = fg; fg = bg; bg = tmp;
+  }
+  if ((flags & FLAG_IS_SELECTED) != 0u) {
+    bg = pal.selectionBg.rgb;
+    fg = pal.selectionFg.rgb;
+  }
+  if ((flags & FLAG_IS_CURSOR_CELL) != 0u) {
+    bg = pal.cursorBg.rgb;
+    fg = pal.cursorFg.rgb;
+  }
+
+  let auv = vec2<f32>(
+    f32(cell.atlasUV & 0xffffu),
+    f32((cell.atlasUV >> 16u) & 0xffffu),
+  );
+  let asz = vec2<f32>(
+    f32(cell.atlasSize & 0xffffu),
+    f32((cell.atlasSize >> 16u) & 0xffffu),
+  );
+  let texCoord = (auv + in.uv * asz) / f32(grid.atlasSize);
+  let mask = textureSample(atlasTex, atlasSamp, texCoord).a;
+
+  let alpha = select(mask, mask * 0.5, (flags & FLAG_FAINT) != 0u);
+  let outRgb = mix(bg, fg, alpha);
+  return vec4<f32>(outRgb, 1.0);
+}
+`;
+
+// ---------------------------------------------------------------------------
 // GlyphAtlas
 // ---------------------------------------------------------------------------
 
@@ -225,6 +357,11 @@ export class WebGPURenderer implements Renderer {
   private atlas?: GlyphAtlas;
   private atlasSampler?: GPUSampler;
 
+  // Text pipeline
+  private textPipeline?: GPURenderPipeline;
+  private textBindGroupLayout?: GPUBindGroupLayout;
+  private textBindGroup?: GPUBindGroup;
+
   static async create(
     canvas: HTMLCanvasElement,
     device: GPUDevice,
@@ -275,6 +412,46 @@ export class WebGPURenderer implements Renderer {
       label: 'atlasSampler',
     });
     // atlas itself constructed lazily in resize() once we have metrics
+
+    this.textBindGroupLayout = this.device.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'uniform' },
+        },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        {
+          binding: 2,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'read-only-storage' },
+        },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+      ],
+    });
+
+    const module = this.device.createShaderModule({ code: TEXT_SHADER, label: 'textShader' });
+    const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.textBindGroupLayout] });
+    this.textPipeline = this.device.createRenderPipeline({
+      layout,
+      vertex: { module, entryPoint: 'vsMain' },
+      fragment: {
+        module,
+        entryPoint: 'fsMain',
+        targets: [
+          {
+            format: this.preferredFormat,
+            blend: {
+              color: { srcFactor: 'one', dstFactor: 'zero', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'zero', operation: 'add' },
+            },
+          },
+        ],
+      },
+      primitive: { topology: 'triangle-list' },
+      label: 'textPipeline',
+    });
 
     this.metrics = this.measureFont();
 
@@ -366,6 +543,29 @@ export class WebGPURenderer implements Renderer {
     u32[10] = this.atlas?.atlasSize ?? 1024;                             // atlasSize (Task 9 uses it)
     // u32[11..19] reserved
     this.device.queue.writeBuffer(this.gridUBO, 0, u32.buffer);
+  }
+
+  private rebuildBindGroup(): void {
+    if (
+      !this.textBindGroupLayout ||
+      !this.gridUBO ||
+      !this.paletteUBO ||
+      !this.cellBuffer ||
+      !this.atlas ||
+      !this.atlasSampler
+    ) {
+      return;
+    }
+    this.textBindGroup = this.device.createBindGroup({
+      layout: this.textBindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.gridUBO } },
+        { binding: 1, resource: { buffer: this.paletteUBO } },
+        { binding: 2, resource: { buffer: this.cellBuffer } },
+        { binding: 3, resource: this.atlas.view() },
+        { binding: 4, resource: this.atlasSampler },
+      ],
+    });
   }
 
   private encodeCells(buffer: IRenderable, viewportY: number, sb?: IScrollbackProvider): void {
@@ -497,6 +697,7 @@ export class WebGPURenderer implements Renderer {
     } else {
       this.atlas.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     }
+    this.rebuildBindGroup();
   }
 
   render(buffer: IRenderable, viewportY: number = 0, sb?: IScrollbackProvider): void {
@@ -518,6 +719,11 @@ export class WebGPURenderer implements Renderer {
         },
       ],
     });
+    if (this.textPipeline && this.textBindGroup) {
+      pass.setPipeline(this.textPipeline);
+      pass.setBindGroup(0, this.textBindGroup);
+      pass.draw(6, this.cols * this.rows);
+    }
     pass.end();
     this.device.queue.submit([encoder.finish()]);
 
@@ -551,6 +757,7 @@ export class WebGPURenderer implements Renderer {
     this.fontSize = size;
     this.metrics = this.measureFont();
     this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
+    this.rebuildBindGroup();
     this.invalidateNext = true;
     this.onRequestRender?.();
   }
@@ -559,6 +766,7 @@ export class WebGPURenderer implements Renderer {
     this.fontFamily = family;
     this.metrics = this.measureFont();
     this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
+    this.rebuildBindGroup();
     this.invalidateNext = true;
     this.onRequestRender?.();
   }
