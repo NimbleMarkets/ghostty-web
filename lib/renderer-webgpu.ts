@@ -216,10 +216,6 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
   let cell = cells[in.cellIdx];
   let flags = cell.flags;
 
-  if ((flags & FLAG_INVISIBLE) != 0u) {
-    return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-  }
-
   var fg = unpackRgb(cell.fg);
   var bg = unpackRgb(cell.bg);
   if ((flags & FLAG_USE_THEME_FG) != 0u) { fg = pal.defaultFg.rgb; }
@@ -234,6 +230,14 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
   if ((flags & FLAG_IS_CURSOR_CELL) != 0u) {
     bg = pal.cursorBg.rgb;
     fg = pal.cursorFg.rgb;
+  }
+
+  // Invisible cells still get their (possibly selection/cursor/inverse-
+  // overridden) bg painted, just no glyph or block-element content.
+  // Matches CanvasRenderer's two-pass split where the bg pass always
+  // runs and only the text pass returns early on INVISIBLE.
+  if ((flags & FLAG_INVISIBLE) != 0u) {
+    return vec4<f32>(bg, 1.0);
   }
 
   if ((flags & FLAG_IS_KITTY_PLACEHOLDER) != 0u) {
