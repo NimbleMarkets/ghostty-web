@@ -800,6 +800,7 @@ export class Terminal implements ITerminalCore {
 
     // Clear renderer (force full repaint on next render)
     this.renderer!.invalidate();
+    this.requestRender();
 
     // Reset title
     this.currentTitle = '';
@@ -1289,7 +1290,7 @@ export class Terminal implements ITerminalCore {
     // Render using WASM's native dirty tracking
     // The render() method:
     // 1. Calls update() once to sync state and check dirty flags
-    // 2. Only redraws dirty rows when forceAll=false
+    // 2. Only redraws dirty rows unless invalidate() was called before this frame.
     // 3. Always calls clearDirty() at the end
     this.renderer!.render(this.wasmTerm!, this.viewportY, this);
     this.scrollbarOverlay?.render({
