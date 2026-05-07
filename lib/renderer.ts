@@ -15,6 +15,7 @@ import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
 import type { SelectionManager } from './selection-manager';
 import type { GhosttyCell, ILink, KittyImagePixels, KittyPlacementInfo } from './types';
 import { CellFlags, KittyImageFormat } from './types';
+import { CursorBlink } from './cursor-blink';
 
 // Interface for objects that can be rendered
 export interface IRenderable {
@@ -145,8 +146,7 @@ export class CanvasRenderer {
   private palette: string[];
 
   // Cursor blinking state
-  private cursorVisible: boolean = true;
-  private cursorBlinkInterval?: number;
+  private cursorBlink_ = new CursorBlink();
   private lastCursorPosition: { x: number; y: number } = { x: 0, y: 0 };
 
   // Hook called whenever the renderer's own internal state (today: cursor
@@ -306,9 +306,7 @@ export class CanvasRenderer {
     this.metrics = this.measureFont();
 
     // Setup cursor blinking if enabled
-    if (this.cursorBlink) {
-      this.startCursorBlink();
-    }
+    this.cursorBlink_.setEnabled(this.cursorBlink);
   }
 
   // ==========================================================================
@@ -641,7 +639,7 @@ export class CanvasRenderer {
     }
 
     // Render cursor (only if we're at the bottom, not scrolled)
-    if (viewportY === 0 && cursor.visible && this.cursorVisible) {
+    if (viewportY === 0 && cursor.visible && this.cursorBlink_.isVisible()) {
       this.renderCursor(cursor.x, cursor.y);
     }
 
@@ -1373,24 +1371,7 @@ export class CanvasRenderer {
    */
   public setOnRequestRender(fn: (() => void) | null): void {
     this.onRequestRender = fn;
-  }
-
-  private startCursorBlink(): void {
-    // xterm.js uses ~530ms blink interval
-    this.cursorBlinkInterval = window.setInterval(() => {
-      this.cursorVisible = !this.cursorVisible;
-      // Wake the render scheduler so the cursor cell is actually
-      // repainted with the new visibility state.
-      this.onRequestRender?.();
-    }, 530);
-  }
-
-  private stopCursorBlink(): void {
-    if (this.cursorBlinkInterval !== undefined) {
-      clearInterval(this.cursorBlinkInterval);
-      this.cursorBlinkInterval = undefined;
-    }
-    this.cursorVisible = true;
+    this.cursorBlink_.setOnRequestRender(fn);
   }
 
   // ==========================================================================
@@ -1451,13 +1432,8 @@ export class CanvasRenderer {
    * Enable/disable cursor blinking
    */
   public setCursorBlink(enabled: boolean): void {
-    if (enabled && !this.cursorBlink) {
-      this.cursorBlink = true;
-      this.startCursorBlink();
-    } else if (!enabled && this.cursorBlink) {
-      this.cursorBlink = false;
-      this.stopCursorBlink();
-    }
+    this.cursorBlink = enabled;
+    this.cursorBlink_.setEnabled(enabled);
   }
 
   /**
@@ -1617,6 +1593,6 @@ export class CanvasRenderer {
    * Cleanup resources
    */
   public dispose(): void {
-    this.stopCursorBlink();
+    this.cursorBlink_.destroy();
   }
 }
