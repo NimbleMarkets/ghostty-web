@@ -1416,19 +1416,22 @@ export class WebGPURenderer implements Renderer {
         },
       ],
     });
+    // Order matches CanvasRenderer: text grid → kitty image composite →
+    // cursor on top. Drawing kitty after the cursor would let images
+    // cover the cursor, which Canvas2D never does.
     if (this.textPipeline && textBindGroup) {
       pass.setPipeline(this.textPipeline);
       pass.setBindGroup(0, textBindGroup);
       pass.draw(6, this.cols * this.rows);
     }
-    if (this.cursorPipeline && this.cursorBindGroup) {
-      pass.setPipeline(this.cursorPipeline);
-      pass.setBindGroup(0, this.cursorBindGroup);
-      pass.draw(6);
-    }
     for (let i = 0; i < kittyBindGroups.length; i++) {
       pass.setPipeline(this.kittyPipeline!);
       pass.setBindGroup(0, kittyBindGroups[i]!);
+      pass.draw(6);
+    }
+    if (this.cursorPipeline && this.cursorBindGroup) {
+      pass.setPipeline(this.cursorPipeline);
+      pass.setBindGroup(0, this.cursorBindGroup);
       pass.draw(6);
     }
     pass.end();
