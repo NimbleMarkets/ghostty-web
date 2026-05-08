@@ -436,7 +436,7 @@ type KittyTextureEntry = {
   view: GPUTextureView;
   width: number;
   height: number;
-  format: number;        // KittyImageFormat enum value
+  format: number; // KittyImageFormat enum value
   dataPtr: number;
   dataLen: number;
 };
@@ -461,7 +461,7 @@ class GlyphAtlas {
     cellW: number,
     cellH: number,
     fontSize: number,
-    fontFamily: string,
+    fontFamily: string
   ) {
     this.device = device;
     this.cellW = cellW;
@@ -513,7 +513,7 @@ class GlyphAtlas {
     grapheme: string,
     styleBits: number,
     baseline: number,
-    widthInCells: number = 1,
+    widthInCells: number = 1
   ): AtlasSlot {
     const key = `${widthInCells}|${styleBits}|${grapheme}`;
     const cached = this.cache.get(key);
@@ -552,7 +552,7 @@ class GlyphAtlas {
       { texture: this.texture, origin: { x: slot.u, y: slot.v } },
       img.data.buffer,
       { bytesPerRow: w * 4, rowsPerImage: h },
-      { width: w, height: h },
+      { width: w, height: h }
     );
 
     return slot;
@@ -574,7 +574,7 @@ class GlyphAtlas {
     enc.copyTextureToTexture(
       { texture: this.texture },
       { texture: newTex },
-      { width: this.size, height: this.size },
+      { width: this.size, height: this.size }
     );
     this.device.queue.submit([enc.finish()]);
     this.texture.destroy();
@@ -636,7 +636,7 @@ export class WebGPURenderer implements Renderer {
   private cellBuffer?: GPUBuffer;
   private cellBufferCapacity = 0; // bytes
   private paletteUBO?: GPUBuffer; // 384 B
-  private gridUBO?: GPUBuffer;    // 80 B
+  private gridUBO?: GPUBuffer; // 80 B
   private cellArray = new Uint32Array(0); // staging
   private atlas?: GlyphAtlas;
   private atlasSampler?: GPUSampler;
@@ -729,7 +729,7 @@ export class WebGPURenderer implements Renderer {
       { texture: this.dummyTexture },
       new Uint8Array([0, 0, 0, 0]).buffer,
       { bytesPerRow: 4 },
-      { width: 1, height: 1 },
+      { width: 1, height: 1 }
     );
     this.dummyView = this.dummyTexture.createView();
 
@@ -753,12 +753,18 @@ export class WebGPURenderer implements Renderer {
           visibility: GPUShaderStage.FRAGMENT,
           texture: { sampleType: 'float' as const },
         })),
-        { binding: 21, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' as const } },
+        {
+          binding: 21,
+          visibility: GPUShaderStage.FRAGMENT,
+          sampler: { type: 'filtering' as const },
+        },
       ],
     });
 
     const module = this.device.createShaderModule({ code: TEXT_SHADER, label: 'textShader' });
-    const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.textBindGroupLayout] });
+    const layout = this.device.createPipelineLayout({
+      bindGroupLayouts: [this.textBindGroupLayout],
+    });
     this.textPipeline = this.device.createRenderPipeline({
       layout,
       vertex: { module, entryPoint: 'vsMain' },
@@ -932,22 +938,25 @@ export class WebGPURenderer implements Renderer {
     this.device.queue.writeBuffer(this.paletteUBO, 0, data.buffer);
   }
 
-  private uploadGridUBO(_viewportY: number, cursor: { x: number; y: number; visible: boolean }): void {
+  private uploadGridUBO(
+    _viewportY: number,
+    cursor: { x: number; y: number; visible: boolean }
+  ): void {
     if (!this.gridUBO) return;
     // 80 B = 20 × u32. Layout matches the WGSL GridUBO struct (Tasks 9, 14).
     const u32 = new Uint32Array(20);
     const f32 = new Float32Array(u32.buffer);
-    u32[0] = this.cols;                                                  // gridSize.x
-    u32[1] = this.rows;                                                  // gridSize.y
-    f32[2] = this.metrics.width;                                         // cellSize.x
-    f32[3] = this.metrics.height;                                        // cellSize.y
-    f32[4] = this.dpr;                                                   // devicePixelRatio
-    u32[5] = cursor.visible && this.cursorBlink_.isVisible() ? 1 : 0;    // cursorVisible
-    u32[6] = cursor.x;                                                   // cursorPos.x
-    u32[7] = cursor.y;                                                   // cursorPos.y
+    u32[0] = this.cols; // gridSize.x
+    u32[1] = this.rows; // gridSize.y
+    f32[2] = this.metrics.width; // cellSize.x
+    f32[3] = this.metrics.height; // cellSize.y
+    f32[4] = this.dpr; // devicePixelRatio
+    u32[5] = cursor.visible && this.cursorBlink_.isVisible() ? 1 : 0; // cursorVisible
+    u32[6] = cursor.x; // cursorPos.x
+    u32[7] = cursor.y; // cursorPos.y
     u32[8] = this.cursorStyle === 'block' ? 0 : this.cursorStyle === 'underline' ? 1 : 2;
-    u32[9] = 0;                                                          // _pad0
-    u32[10] = this.atlas?.atlasSize ?? 1024;                             // atlasSize (Task 9 uses it)
+    u32[9] = 0; // _pad0
+    u32[10] = this.atlas?.atlasSize ?? 1024; // atlasSize (Task 9 uses it)
     // u32[11..19] reserved
     this.device.queue.writeBuffer(this.gridUBO, 0, u32.buffer);
   }
@@ -969,7 +978,7 @@ export class WebGPURenderer implements Renderer {
   private getOrUploadKittyTexture(
     graphics: number,
     imageId: number,
-    buffer: IRenderable,
+    buffer: IRenderable
   ): KittyTextureEntry | null {
     const pixels = buffer.getKittyImagePixels?.(graphics, imageId);
     if (!pixels) return this.kittyTextures.get(imageId) ?? null;
@@ -1036,7 +1045,7 @@ export class WebGPURenderer implements Renderer {
       { texture },
       rgba.buffer,
       { bytesPerRow: width * 4, rowsPerImage: height },
-      { width, height },
+      { width, height }
     );
     const entry: KittyTextureEntry = {
       texture,
@@ -1065,7 +1074,7 @@ export class WebGPURenderer implements Renderer {
   private encodeCells(
     buffer: IRenderable,
     viewportY: number,
-    sb?: IScrollbackProvider,
+    sb?: IScrollbackProvider
   ): { usedKittyImageIds: number[] } {
     const arr = this.cellArray;
     arr.fill(0);
@@ -1216,13 +1225,15 @@ export class WebGPURenderer implements Renderer {
               ? buffer.getGraphemeString(y, x)
               : String.fromCodePoint(c.codepoint || 32);
           const styleBits =
-            (flags & FLAG_BOLD ? 1 : 0) | (flags & FLAG_ITALIC ? 2 : 0) | (flags & FLAG_FAINT ? 4 : 0);
+            (flags & FLAG_BOLD ? 1 : 0) |
+            (flags & FLAG_ITALIC ? 2 : 0) |
+            (flags & FLAG_FAINT ? 4 : 0);
           const widthInCells = c.width === 2 ? 2 : 1;
           const slot = this.atlas.getOrRaster(
             grapheme,
             styleBits,
             this.metrics.baseline,
-            widthInCells,
+            widthInCells
           );
           // The cell's quad is always 1 cell wide. For wide glyphs we sample
           // only the LEFT half of the 2-cell-wide slot here; the spacer cell
@@ -1253,11 +1264,7 @@ export class WebGPURenderer implements Renderer {
     // cursor-cell flag (it swaps fg/bg cell-wide). Underline and bar
     // styles are drawn as separate quads by cursorPipeline; tagging the
     // cell would incorrectly fill the whole cell with cursor bg.
-    if (
-      cursor.visible &&
-      this.cursorBlink_.isVisible() &&
-      this.cursorStyle === 'block'
-    ) {
+    if (cursor.visible && this.cursorBlink_.isVisible() && this.cursorStyle === 'block') {
       const ci = (cursor.y * dims.cols + cursor.x) * CELL_U32S;
       arr[ci + 4] = (arr[ci + 4]! | FLAG_IS_CURSOR_CELL) >>> 0;
     }
@@ -1268,7 +1275,7 @@ export class WebGPURenderer implements Renderer {
         0,
         arr.buffer,
         0,
-        dims.cols * dims.rows * CELL_BYTES,
+        dims.cols * dims.rows * CELL_BYTES
       );
     }
 
@@ -1312,7 +1319,7 @@ export class WebGPURenderer implements Renderer {
         this.metrics.width,
         this.metrics.height,
         this.fontSize,
-        this.fontFamily,
+        this.fontFamily
       );
     } else {
       this.atlas.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
@@ -1338,7 +1345,7 @@ export class WebGPURenderer implements Renderer {
     }
 
     // Build per-frame textBindGroup (kitty texture views change each frame).
-    const textBindGroup = (
+    const textBindGroup =
       this.textBindGroupLayout &&
       this.gridUBO &&
       this.paletteUBO &&
@@ -1346,18 +1353,19 @@ export class WebGPURenderer implements Renderer {
       this.atlas &&
       this.atlasSampler &&
       this.placeholderSampler
-    ) ? this.device.createBindGroup({
-      layout: this.textBindGroupLayout,
-      entries: [
-        { binding: 0, resource: { buffer: this.gridUBO } },
-        { binding: 1, resource: { buffer: this.paletteUBO } },
-        { binding: 2, resource: { buffer: this.cellBuffer } },
-        { binding: 3, resource: this.atlas.view() },
-        { binding: 4, resource: this.atlasSampler },
-        ...frameKittyViews.map((v, i) => ({ binding: 5 + i, resource: v })),
-        { binding: 21, resource: this.placeholderSampler },
-      ],
-    }) : null;
+        ? this.device.createBindGroup({
+            layout: this.textBindGroupLayout,
+            entries: [
+              { binding: 0, resource: { buffer: this.gridUBO } },
+              { binding: 1, resource: { buffer: this.paletteUBO } },
+              { binding: 2, resource: { buffer: this.cellBuffer } },
+              { binding: 3, resource: this.atlas.view() },
+              { binding: 4, resource: this.atlasSampler },
+              ...frameKittyViews.map((v, i) => ({ binding: 5 + i, resource: v })),
+              { binding: 21, resource: this.placeholderSampler },
+            ],
+          })
+        : null;
 
     // Collect kitty direct placements (must happen before beginRenderPass — writeBuffer
     // during a render pass is a validation error).
@@ -1393,7 +1401,7 @@ export class WebGPURenderer implements Renderer {
       this.device.queue.writeBuffer(
         this.kittyParamsRing[i]!,
         0,
-        directPlacements[i]!.params.buffer,
+        directPlacements[i]!.params.buffer
       );
     }
     const kittyBindGroups: GPUBindGroup[] = directPlacements.map((p, i) =>
@@ -1404,7 +1412,7 @@ export class WebGPURenderer implements Renderer {
           { binding: 1, resource: p.view },
           { binding: 2, resource: this.kittySampler! },
         ],
-      }),
+      })
     );
 
     const view = this.context.getCurrentTexture().createView();

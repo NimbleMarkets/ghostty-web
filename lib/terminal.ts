@@ -602,10 +602,7 @@ export class Terminal implements ITerminalCore {
       if (this.renderer && this.renderer.backend === 'webgpu') {
         (this.renderer as WebGPURenderer).onDeviceLost(async (info) => {
           if (this.isDisposed) return;
-          console.warn(
-            '[ghostty-web] GPU device lost; falling back to Canvas2D:',
-            info.reason,
-          );
+          console.warn('[ghostty-web] GPU device lost; falling back to Canvas2D:', info.reason);
           if (!this.canvas) return;
           this.renderer?.destroy();
           this.renderer = await pickRenderer('canvas2d', this.canvas, {

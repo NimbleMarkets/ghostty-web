@@ -195,7 +195,11 @@
             frames++;
             const now = performance.now();
             if (now - lastTick >= 1000) {
-              el.textContent = (term.renderer && term.renderer.backend ? term.renderer.backend : '?') + '  ' + frames + ' fps';
+              el.textContent =
+                (term.renderer && term.renderer.backend ? term.renderer.backend : '?') +
+                '  ' +
+                frames +
+                ' fps';
               frames = 0;
               lastTick = now;
             }
