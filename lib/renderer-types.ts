@@ -19,7 +19,7 @@ import type { ITheme } from './interfaces';
 import type { SelectionManager } from './selection-manager';
 import type { GhosttyCell, KittyImagePixels, KittyPlacementInfo } from './types';
 
-export type RendererBackend = 'webgpu' | 'canvas2d' | 'auto';
+export type RendererBackend = 'webgpu' | 'webgl' | 'canvas2d' | 'auto';
 
 export interface RendererOptions {
   fontSize?: number;
@@ -72,7 +72,7 @@ export interface IScrollbackProvider {
  * Pluggable terminal renderer. Implemented by CanvasRenderer and WebGPURenderer.
  */
 export interface Renderer {
-  readonly backend: 'webgpu' | 'canvas2d';
+  readonly backend: 'webgpu' | 'webgl' | 'canvas2d';
   readonly canvas: HTMLCanvasElement;
 
   getMetrics(): FontMetrics;

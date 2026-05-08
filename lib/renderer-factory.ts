@@ -25,6 +25,10 @@ export async function pickRenderer(
     return new CanvasRenderer(canvas, opts);
   }
 
+  if (backend === 'webgl') {
+    throw new Error('WebGL backend not yet implemented');
+  }
+
   if (backend === 'webgpu' || backend === 'auto') {
     const gpu = (navigator as any).gpu as { requestAdapter: (opts?: any) => Promise<any> } | undefined;
     if (!gpu) {
