@@ -496,4 +496,21 @@ describe('WebGL2Renderer', () => {
       expect(cursorDraws.length).toBe(0);
     });
   });
+
+  describe('context-loss listener', () => {
+    test('dispatching webglcontextlost fires registered callback', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      let fired = false;
+      let reason = '';
+      r.onContextLost((info) => {
+        fired = true;
+        reason = info.reason;
+      });
+      const ev = new Event('webglcontextlost', { cancelable: true });
+      canvas.dispatchEvent(ev);
+      expect(fired).toBe(true);
+      expect(reason.length).toBeGreaterThanOrEqual(0); // any string ok
+    });
+  });
 });

@@ -436,7 +436,13 @@ export class WebGL2Renderer implements Renderer {
     this.vao = vao;
 
     this.metrics = this.measureFont();
-    // T13: this.canvas.addEventListener('webglcontextlost', ...)
+    this.canvas.addEventListener('webglcontextlost', (e) => {
+      if (this.destroyed) return;
+      e.preventDefault();
+      const info = { reason: 'webglcontextlost' };
+      console.error('[ghostty-web] WebGL context lost');
+      for (const fn of this.contextLostListeners) fn(info);
+    });
   }
 
   // -------- Font metrics --------
