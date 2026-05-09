@@ -211,6 +211,8 @@ export class WebGL2Renderer implements Renderer {
   private contextLostListeners: Array<(info: { reason: string }) => void> = [];
   private cellArray = new Uint32Array(0);
   private atlas?: GLGlyphAtlas;
+  private paletteUBO?: WebGLBuffer; // 384 B
+  private gridUBO?: WebGLBuffer; // 80 B
 
   static async create(canvas: HTMLCanvasElement, opts: RendererOptions): Promise<WebGL2Renderer> {
     const r = new WebGL2Renderer(canvas, opts);
@@ -237,6 +239,24 @@ export class WebGL2Renderer implements Renderer {
     }) as WebGL2RenderingContext | null;
     if (!gl) throw new Error('WebGL2Renderer: failed to acquire webgl2 context');
     this.gl = gl;
+
+    this.paletteUBO = gl.createBuffer() ?? undefined;
+    if (!this.paletteUBO) throw new Error('WebGL2Renderer: createBuffer failed (paletteUBO)');
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.paletteUBO);
+    gl.bufferData(gl.UNIFORM_BUFFER, 384, gl.DYNAMIC_DRAW);
+
+    this.gridUBO = gl.createBuffer() ?? undefined;
+    if (!this.gridUBO) throw new Error('WebGL2Renderer: createBuffer failed (gridUBO)');
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.gridUBO);
+    gl.bufferData(gl.UNIFORM_BUFFER, 80, gl.DYNAMIC_DRAW);
+
+    // Upload initial palette (theme already merged in constructor).
+    {
+      const data = this.buildPaletteUBOBytes();
+      gl.bindBuffer(gl.UNIFORM_BUFFER, this.paletteUBO);
+      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, data);
+    }
+
     this.metrics = this.measureFont();
     // T13: this.canvas.addEventListener('webglcontextlost', ...)
   }
@@ -405,6 +425,83 @@ export class WebGL2Renderer implements Renderer {
     return arr;
   }
 
+  // -------- UBO byte builders --------
+
+  private buildPaletteUBOBytes(): Float32Array {
+    const data = new Float32Array(96);
+    const w = (i: number, hex: string): void => {
+      const [r, g, b] = this.parseHexColor(hex);
+      data[i * 4 + 0] = r / 255;
+      data[i * 4 + 1] = g / 255;
+      data[i * 4 + 2] = b / 255;
+      data[i * 4 + 3] = 1;
+    };
+    const t = this.theme;
+    w(0, t.black);
+    w(1, t.red);
+    w(2, t.green);
+    w(3, t.yellow);
+    w(4, t.blue);
+    w(5, t.magenta);
+    w(6, t.cyan);
+    w(7, t.white);
+    w(8, t.brightBlack);
+    w(9, t.brightRed);
+    w(10, t.brightGreen);
+    w(11, t.brightYellow);
+    w(12, t.brightBlue);
+    w(13, t.brightMagenta);
+    w(14, t.brightCyan);
+    w(15, t.brightWhite);
+    w(16, t.foreground);
+    w(17, t.background);
+    w(18, t.cursor);
+    w(19, t.cursorAccent);
+    w(20, t.selectionBackground);
+    w(21, t.selectionForeground);
+    w(22, '#4A90E2');
+    return data;
+  }
+
+  private buildGridUBOBytes(
+    _viewportY: number,
+    cursor: { x: number; y: number; visible: boolean }
+  ): Uint32Array {
+    const u32 = new Uint32Array(20);
+    const f32 = new Float32Array(u32.buffer);
+    u32[0] = this.cols;
+    u32[1] = this.rows;
+    f32[2] = this.metrics.width;
+    f32[3] = this.metrics.height;
+    f32[4] = this.dpr;
+    u32[5] = cursor.visible && this.cursorBlink_.isVisible() ? 1 : 0;
+    u32[6] = cursor.x;
+    u32[7] = cursor.y;
+    u32[8] = this.cursorStyle === 'block' ? 0 : this.cursorStyle === 'underline' ? 1 : 2;
+    u32[9] = 0;
+    u32[10] = this.atlas?.atlasSize ?? 1024;
+    return u32;
+  }
+
+  private uploadPaletteUBO(): void {
+    if (!this.paletteUBO) return;
+    const gl = this.gl;
+    const data = this.buildPaletteUBOBytes();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.paletteUBO);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, 0, data);
+  }
+
+  private uploadGridUBO(
+    viewportY: number,
+    cursor: { x: number; y: number; visible: boolean }
+  ): void {
+    if (!this.gridUBO) return;
+    const gl = this.gl;
+    const u32 = this.buildGridUBOBytes(viewportY, cursor);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.gridUBO);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, 0, u32);
+  }
+
   // -------- Renderer interface --------
 
   getMetrics(): FontMetrics {
@@ -452,6 +549,7 @@ export class WebGL2Renderer implements Renderer {
 
   setTheme(theme: ITheme): void {
     this.theme = { ...DEFAULT_THEME, ...theme };
+    this.uploadPaletteUBO();
     this.invalidateNext = true;
     this.onRequestRender?.();
   }

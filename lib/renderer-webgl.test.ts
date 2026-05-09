@@ -231,4 +231,41 @@ describe('WebGL2Renderer', () => {
       expect(after.v).toBe(0);
     });
   });
+
+  describe('UBO byte construction', () => {
+    test('paletteUBO has 96 floats and starts with parsed ANSI black', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {
+        theme: { black: '#0a141e' } as any,
+      });
+      const data = (r as any).buildPaletteUBOBytes() as Float32Array;
+      expect(data.length).toBe(96);
+      // ANSI[0] = black at vec4 offset 0
+      expect(data[0]).toBeCloseTo(0x0a / 255, 4);
+      expect(data[1]).toBeCloseTo(0x14 / 255, 4);
+      expect(data[2]).toBeCloseTo(0x1e / 255, 4);
+      expect(data[3]).toBe(1);
+    });
+
+    test('gridUBO is 20 u32s with cols/rows at offsets 0/1', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(80, 24);
+      const u32 = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
+      expect(u32.length).toBe(20);
+      expect(u32[0]).toBe(80); // gridSize.x
+      expect(u32[1]).toBe(24); // gridSize.y
+    });
+
+    test('gridUBO encodes cursorStyle correctly (block=0, underline=1, bar=2)', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
+      r.resize(1, 1);
+      const u32 = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
+      expect(u32[8]).toBe(1);
+      r.setCursorStyle('bar');
+      const u32b = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
+      expect(u32b[8]).toBe(2);
+    });
+  });
 });
