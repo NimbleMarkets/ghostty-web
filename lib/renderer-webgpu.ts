@@ -37,6 +37,7 @@ import {
   encodeCells as coreEncodeCells,
   type AtlasSlot,
   KittyTextureCacheBase,
+  KittyAtlasBase,
 } from './renderer-core';
 import type { GridUBOState } from './renderer-core';
 
@@ -465,6 +466,46 @@ class WebGPUKittyTextureCache extends KittyTextureCacheBase<GPUTexture> {
   }
 }
 
+class WebGPUKittyAtlas extends KittyAtlasBase {
+  private device: GPUDevice;
+  private texture: GPUTexture;
+
+  constructor(device: GPUDevice, size = 1024) {
+    super(size);
+    this.device = device;
+    this.texture = device.createTexture({
+      size: { width: size, height: size },
+      format: 'rgba8unorm',
+      usage:
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.RENDER_ATTACHMENT,
+      label: 'kittyAtlas',
+    });
+  }
+
+  view(): GPUTextureView {
+    return this.texture.createView();
+  }
+
+  destroy(): void {
+    this.texture.destroy();
+  }
+
+  protected uploadRegion(slot: AtlasSlot, rgba: Uint8Array, w: number, h: number): void {
+    this.device.queue.writeTexture(
+      { texture: this.texture, origin: { x: slot.u, y: slot.v } },
+      rgba.buffer,
+      { bytesPerRow: w * 4, rowsPerImage: h },
+      { width: w, height: h }
+    );
+  }
+
+  protected growTexture(_newSize: number): void {
+    // v1: never grows; clearAndReset reuses the existing texture.
+  }
+}
+
 class GlyphAtlas extends GlyphAtlasBase {
   private device: GPUDevice;
   private texture: GPUTexture;
@@ -571,6 +612,11 @@ export class WebGPURenderer implements Renderer {
   private dummyTexture?: GPUTexture;
   private dummyView?: GPUTextureView;
 
+  // Kitty atlas (PB1 — wired in PB2)
+  private kittyAtlas?: WebGPUKittyAtlas;
+  private kittyAtlasUBO?: GPUBuffer;
+  private kittyAtlasRects = new Float32Array(256 * 4); // host-side staging (256 vec4)
+
   static async create(
     canvas: HTMLCanvasElement,
     device: GPUDevice,
@@ -613,6 +659,11 @@ export class WebGPURenderer implements Renderer {
       size: 80,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       label: 'gridUBO',
+    });
+    this.kittyAtlasUBO = this.device.createBuffer({
+      size: 256 * 4 * 4, // 256 vec4 × 4 floats × 4 bytes = 4096 bytes
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      label: 'kittyAtlasUBO',
     });
     this.uploadPaletteUBO();
 
@@ -922,6 +973,12 @@ export class WebGPURenderer implements Renderer {
     } else {
       this.atlas.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     }
+
+    if (!this.kittyAtlas) {
+      this.kittyAtlas = new WebGPUKittyAtlas(this.device);
+    }
+    // Note: the kitty atlas is fixed-size and persists across resizes.
+
     this.rebuildBindGroup();
   }
 
