@@ -529,4 +529,15 @@ describe('WebGL2Renderer', () => {
       expect(reason.length).toBeGreaterThanOrEqual(0); // any string ok
     });
   });
+
+  describe('kitty program', () => {
+    test('initialize() compiles + links the kitty program (3 programs total)', async () => {
+      const canvas = document.createElement('canvas');
+      await WebGL2Renderer.create(canvas, {});
+      const stub = getStub();
+      // Text + cursor + kitty = 3 programs → 6 compileShader, 3 linkProgram (minimum).
+      expect(stub.countCalls('compileShader')).toBeGreaterThanOrEqual(6);
+      expect(stub.countCalls('linkProgram')).toBeGreaterThanOrEqual(3);
+    });
+  });
 });

@@ -208,6 +208,46 @@ void main() {
 }
 `;
 
+const KITTY_VS = `#version 300 es
+precision highp float;
+precision highp int;
+layout(std140) uniform KittyParamsUBO {
+  vec2 srcOrigin;
+  vec2 srcSize;
+  vec2 dstOrigin;
+  vec2 dstSize;
+  vec2 imgSize;
+  vec2 canvasSize;
+} kp;
+out vec2 vUv;
+const vec2 CORNERS[6] = vec2[6](
+  vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
+  vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 1.0)
+);
+void main() {
+  vec2 local = CORNERS[gl_VertexID];
+  float cssX = kp.dstOrigin.x + local.x * kp.dstSize.x;
+  float cssY = kp.dstOrigin.y + local.y * kp.dstSize.y;
+  gl_Position = vec4(
+    (cssX / kp.canvasSize.x) * 2.0 - 1.0,
+    1.0 - (cssY / kp.canvasSize.y) * 2.0,
+    0.0, 1.0
+  );
+  vUv = (kp.srcOrigin + local * kp.srcSize) / kp.imgSize;
+}
+`;
+
+const KITTY_FS = `#version 300 es
+precision highp float;
+precision highp int;
+uniform highp sampler2D uKittyImg;
+in vec2 vUv;
+out vec4 fragColor;
+void main() {
+  fragColor = texture(uKittyImg, vUv);
+}
+`;
+
 export class GLGlyphAtlas extends GlyphAtlasBase {
   private gl: WebGL2RenderingContext;
   private texture: WebGLTexture;
@@ -370,10 +410,15 @@ export class WebGL2Renderer implements Renderer {
   private cellTexH = 0;
   private textProgram?: WebGLProgram;
   private cursorProgram?: WebGLProgram;
+  private kittyProgram?: WebGLProgram;
   private textProgramUniforms = {
     cellTex: null as WebGLUniformLocation | null,
     atlasTex: null as WebGLUniformLocation | null,
   };
+  private kittyProgramUniforms = {
+    kittyImg: null as WebGLUniformLocation | null,
+  };
+  private kittyParamsRing: WebGLBuffer[] = [];
   private vao?: WebGLVertexArrayObject;
 
   static async create(canvas: HTMLCanvasElement, opts: RendererOptions): Promise<WebGL2Renderer> {
@@ -423,6 +468,7 @@ export class WebGL2Renderer implements Renderer {
 
     this.setupTextProgram();
     this.setupCursorProgram();
+    this.setupKittyProgram();
 
     const vao = gl.createVertexArray();
     if (!vao) throw new Error('WebGL2Renderer: createVertexArray failed');
@@ -503,6 +549,28 @@ export class WebGL2Renderer implements Renderer {
     this.cursorProgram = prog;
     gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'GridUBO'), 0);
     gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'PaletteUBO'), 1);
+  }
+
+  private setupKittyProgram(): void {
+    const gl = this.gl;
+    const prog = this.buildProgram(KITTY_VS, KITTY_FS, 'kitty');
+    this.kittyProgram = prog;
+    // KittyParamsUBO is bound to slot 0 (kitty pipeline's only block).
+    gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'KittyParamsUBO'), 0);
+    this.kittyProgramUniforms.kittyImg = gl.getUniformLocation(prog, 'uKittyImg');
+    gl.useProgram(prog);
+    gl.uniform1i(this.kittyProgramUniforms.kittyImg, 0);
+  }
+
+  private ensureKittyRingSize(n: number): void {
+    const gl = this.gl;
+    while (this.kittyParamsRing.length < n) {
+      const buf = gl.createBuffer();
+      if (!buf) throw new Error('WebGL2Renderer: createBuffer failed (kittyParamsRing)');
+      gl.bindBuffer(gl.UNIFORM_BUFFER, buf);
+      gl.bufferData(gl.UNIFORM_BUFFER, 64, gl.DYNAMIC_DRAW); // 16 floats
+      this.kittyParamsRing.push(buf);
+    }
   }
 
   private parseHexColor(hex: string): [number, number, number] {
