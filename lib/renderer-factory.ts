@@ -35,12 +35,11 @@ async function tryWebGPU(
       if (explicit) throw new Error('WebGPU adapter unavailable');
       return null;
     }
-    const adapterMax = adapter.limits?.maxSampledTexturesPerShaderStage ?? 16;
-    const requiredLimits: Record<string, number> = {};
-    if (adapterMax >= 17) {
-      requiredLimits.maxSampledTexturesPerShaderStage = Math.min(32, adapterMax);
-    }
-    const device = await adapter.requestDevice({ requiredLimits });
+    // As of Phase B (2026-05-09), the WebGPU text shader binds 2 sampled
+    // textures (glyph atlas + kitty atlas), well within the default 16-per-stage
+    // limit. No requiredLimits bumping needed. See
+    // docs/superpowers/specs/2026-05-09-webgpu-kitty-atlas-design.md.
+    const device = await adapter.requestDevice();
     return await WebGPURenderer.create(canvas, device, opts);
   } catch (e) {
     if (explicit) throw e;
