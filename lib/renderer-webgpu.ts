@@ -29,8 +29,27 @@ import type {
 import { CellFlags, KittyImageFormat } from './types';
 import type { KittyPlacementInfo } from './types';
 import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
-
-const warnedUnparseableColors = new Set<string>();
+import {
+  CELL_BYTES,
+  CELL_U32S,
+  FLAG_BOLD,
+  FLAG_ITALIC,
+  FLAG_UNDERLINE,
+  FLAG_STRIKETHROUGH,
+  FLAG_INVERSE,
+  FLAG_FAINT,
+  FLAG_INVISIBLE,
+  FLAG_IS_SELECTED,
+  FLAG_IS_HYPERLINK_HOVERED,
+  FLAG_IS_LINK_RANGE_HOVERED,
+  FLAG_IS_BLOCK_ELEMENT,
+  FLAG_IS_KITTY_PLACEHOLDER,
+  FLAG_USE_THEME_FG,
+  FLAG_USE_THEME_BG,
+  FLAG_IS_CURSOR_CELL,
+  measureFont as coreMeasureFont,
+  parseHexColor as coreParseHexColor,
+} from './renderer-core';
 
 // ---------------------------------------------------------------------------
 // TEXT_SHADER
@@ -587,27 +606,6 @@ class GlyphAtlas {
   }
 }
 
-// Cell encoding — see plan §"Cell Encoding Reference".
-const CELL_BYTES = 32;
-const CELL_U32S = 8;
-
-// Flag bits — must match WGSL.
-const FLAG_BOLD = 1 << 0;
-const FLAG_ITALIC = 1 << 1;
-const FLAG_UNDERLINE = 1 << 2;
-const FLAG_STRIKETHROUGH = 1 << 3;
-const FLAG_INVERSE = 1 << 4;
-const FLAG_FAINT = 1 << 5;
-const FLAG_INVISIBLE = 1 << 6;
-const FLAG_IS_SELECTED = 1 << 7;
-const FLAG_IS_HYPERLINK_HOVERED = 1 << 8;
-const FLAG_IS_LINK_RANGE_HOVERED = 1 << 9;
-const FLAG_IS_BLOCK_ELEMENT = 1 << 10;
-const FLAG_IS_KITTY_PLACEHOLDER = 1 << 11;
-const FLAG_USE_THEME_FG = 1 << 12;
-const FLAG_USE_THEME_BG = 1 << 13;
-const FLAG_IS_CURSOR_CELL = 1 << 14;
-
 export class WebGPURenderer implements Renderer {
   public readonly backend = 'webgpu' as const;
   public readonly canvas: HTMLCanvasElement;
@@ -884,16 +882,7 @@ export class WebGPURenderer implements Renderer {
   // -------- Font metrics (same logic as CanvasRenderer.measureFont) --------
 
   private measureFont(): FontMetrics {
-    const c = document.createElement('canvas');
-    const ctx = c.getContext('2d')!;
-    ctx.font = `${this.fontSize}px ${this.fontFamily}`;
-    const m = ctx.measureText('M');
-    const width = Math.ceil(m.width);
-    const ascent = m.actualBoundingBoxAscent || this.fontSize * 0.8;
-    const descent = m.actualBoundingBoxDescent || this.fontSize * 0.2;
-    const height = Math.ceil(ascent + descent) + 2;
-    const baseline = Math.ceil(ascent) + 1;
-    return { width, height, baseline };
+    return coreMeasureFont(this.fontSize, this.fontFamily);
   }
 
   // -------- Buffer helpers --------
@@ -1454,18 +1443,7 @@ export class WebGPURenderer implements Renderer {
   }
 
   private parseHexColor(hex: string): [number, number, number] {
-    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
-    if (!m) {
-      if (!warnedUnparseableColors.has(hex)) {
-        warnedUnparseableColors.add(hex);
-        console.warn(
-          '[ghostty-web] WebGPURenderer: unparseable theme color, falling back to black:',
-          hex
-        );
-      }
-      return [0, 0, 0];
-    }
-    return [Number.parseInt(m[1]!, 16), Number.parseInt(m[2]!, 16), Number.parseInt(m[3]!, 16)];
+    return coreParseHexColor(hex);
   }
 
   setTheme(theme: ITheme): void {
