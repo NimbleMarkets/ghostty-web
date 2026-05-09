@@ -343,6 +343,13 @@ export interface EncodeCellsContext {
   kittyEnabled: boolean;
   /** When true, set FLAG_IS_BLOCK_ELEMENT for U+2580..U+259F and skip atlas. */
   blockElementShaderEnabled: boolean;
+  /**
+   * Maximum number of distinct kitty image ids to track in usedKittyImageIds
+   * for this frame. Cells whose imageId would exceed this cap render as
+   * background only. Defaults to 16 (WebGPU's 16-sampler limit). WebGL with
+   * the kitty atlas can safely raise this to e.g. 256.
+   */
+  maxKittyImages?: number;
 }
 
 /**
@@ -385,6 +392,7 @@ export function encodeCells(
   };
 
   // Build virtual kitty placement index (only when kitty is enabled).
+  const maxKitty = ctx.maxKittyImages ?? 16;
   const kittyVirtualPlacements = new Map<number, KittyPlacementInfo>();
   const usedKittyImageIds: number[] = [];
   const usedKittyImageIndex = new Map<number, number>();
@@ -395,7 +403,7 @@ export function encodeCells(
       for (const p of buffer.iterPlacements(graphics, false)) {
         if (p.isVirtual) {
           kittyVirtualPlacements.set(p.imageId, p);
-          if (!usedKittyImageIndex.has(p.imageId) && usedKittyImageIds.length < 16) {
+          if (!usedKittyImageIndex.has(p.imageId) && usedKittyImageIds.length < maxKitty) {
             usedKittyImageIndex.set(p.imageId, usedKittyImageIds.length);
             usedKittyImageIds.push(p.imageId);
           }
