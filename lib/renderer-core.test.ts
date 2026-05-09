@@ -199,8 +199,9 @@ describe('KittyAtlasBase', () => {
 
   test('signature match returns cached entry, no re-upload', () => {
     const atlas = new StubAtlas();
-    const a = atlas.addOrUpdate(1, pixels(64, 32));
-    const b = atlas.addOrUpdate(1, pixels(64, 32));
+    const p = pixels(64, 32); // same object ⇒ same buffer identity
+    const a = atlas.addOrUpdate(1, p);
+    const b = atlas.addOrUpdate(1, p);
     expect(b).toBe(a);
     expect(atlas.uploads.length).toBe(1); // no second upload
   });

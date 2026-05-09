@@ -691,7 +691,14 @@ export abstract class KittyTextureCacheBase<TBackendTexture> {
 
 export type KittyAtlasEntry = {
   slot: AtlasSlot;
-  signature: { width: number; height: number; format: number; dataPtr: number; dataLen: number };
+  signature: {
+    width: number;
+    height: number;
+    format: number;
+    dataPtr: number;
+    dataLen: number;
+    dataBuf: ArrayBufferLike;
+  };
 };
 
 /**
@@ -735,7 +742,8 @@ export abstract class KittyAtlasBase {
       cached.signature.height === pixels.height &&
       cached.signature.format === pixels.format &&
       cached.signature.dataPtr === pixels.data.byteOffset &&
-      cached.signature.dataLen === pixels.data.length;
+      cached.signature.dataLen === pixels.data.length &&
+      cached.signature.dataBuf === pixels.data.buffer;
     if (sigMatches) return cached;
 
     const rgba = kittyImageToRGBA(pixels);
@@ -756,6 +764,7 @@ export abstract class KittyAtlasBase {
         format: pixels.format,
         dataPtr: pixels.data.byteOffset,
         dataLen: pixels.data.length,
+        dataBuf: pixels.data.buffer,
       },
     };
     this.cache.set(imageId, entry);
