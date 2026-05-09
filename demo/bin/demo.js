@@ -222,7 +222,8 @@ const HTML_TEMPLATE = `<!doctype html>
         return 'auto';
       }
 
-      const term = new Terminal({
+      const requested = parseBackend();
+      const baseOpts = {
         cols: 80,
         rows: 24,
         fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
@@ -231,14 +232,43 @@ const HTML_TEMPLATE = `<!doctype html>
           background: '#1e1e1e',
           foreground: '#d4d4d4',
         },
-        renderer: parseBackend(),
-      });
-
-      const fitAddon = new FitAddon();
-      term.loadAddon(fitAddon);
+      };
 
       const container = document.getElementById('terminal');
-      await term.open(container);
+
+      // In the demo we degrade explicit backend choices to 'auto' on failure
+      // so the page stays usable when (e.g.) the user disables WebGPU in the
+      // browser. Library consumers get the original throw via pickRenderer().
+      const fitAddon = new FitAddon();
+      async function createAndOpen(rendererChoice) {
+        const t = new Terminal({ ...baseOpts, renderer: rendererChoice });
+        t.loadAddon(fitAddon);
+        await t.open(container);
+        return t;
+      }
+
+      let term;
+      try {
+        term = await createAndOpen(requested);
+      } catch (err) {
+        if (requested !== 'auto') {
+          console.warn('[demo] requested renderer ' + requested + ' failed, falling back to auto:', err);
+          const banner = document.createElement('div');
+          banner.style.cssText =
+            'position: absolute; left: 12px; top: 4px;' +
+            'font: 11px/1.4 monospace; color: #ffbd2e; background: rgba(0,0,0,0.6);' +
+            'padding: 4px 8px; border-radius: 3px; z-index: 10; max-width: 60%;';
+          banner.textContent =
+            'Requested renderer "' + requested + '" unavailable in this browser; using auto.';
+          container.style.position = container.style.position || 'relative';
+          container.appendChild(banner);
+          setTimeout(() => banner.remove(), 6000);
+          term = await createAndOpen('auto');
+        } else {
+          throw err;
+        }
+      }
+
       fitAddon.fit();
       fitAddon.observeResize(); // Auto-fit when container resizes
 
