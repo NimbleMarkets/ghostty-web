@@ -213,6 +213,9 @@ export class WebGL2Renderer implements Renderer {
   private atlas?: GLGlyphAtlas;
   private paletteUBO?: WebGLBuffer; // 384 B
   private gridUBO?: WebGLBuffer; // 80 B
+  private cellTex?: WebGLTexture;
+  private cellTexW = 0;
+  private cellTexH = 0;
 
   static async create(canvas: HTMLCanvasElement, opts: RendererOptions): Promise<WebGL2Renderer> {
     const r = new WebGL2Renderer(canvas, opts);
@@ -536,15 +539,57 @@ export class WebGL2Renderer implements Renderer {
     } else {
       this.atlas.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     }
+
+    const desiredW = Math.max(1, cols * 2);
+    const desiredH = Math.max(1, rows);
+    if (!this.cellTex || this.cellTexW !== desiredW || this.cellTexH !== desiredH) {
+      if (this.cellTex) this.gl.deleteTexture(this.cellTex);
+      const tex = this.gl.createTexture();
+      if (!tex) throw new Error('WebGL2Renderer: cellTex createTexture failed');
+      this.cellTex = tex;
+      this.cellTexW = desiredW;
+      this.cellTexH = desiredH;
+      this.gl.bindTexture(this.gl.TEXTURE_2D, tex);
+      this.gl.texStorage2D(this.gl.TEXTURE_2D, 1, this.gl.RGBA32UI, desiredW, desiredH);
+      // Integer textures must use NEAREST filters.
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+    }
   }
 
-  render(_buffer: IRenderable, _viewportY: number = 0, _sb?: IScrollbackProvider): void {
+  render(buffer: IRenderable, viewportY: number = 0, sb?: IScrollbackProvider): void {
     if (this.cols === 0 || this.rows === 0) return;
     const gl = this.gl;
+    const cursor = buffer.getCursor();
+    this.encodeCells(buffer, viewportY, sb);
+    this.uploadGridUBO(viewportY, cursor);
+
+    // Cell texture upload.
+    if (this.cellTex) {
+      gl.bindTexture(gl.TEXTURE_2D, this.cellTex);
+      gl.pixelStorei(/* UNPACK_ALIGNMENT */ 0x0cf5, 1);
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        this.cellTexW,
+        this.cellTexH,
+        gl.RGBA_INTEGER,
+        gl.UNSIGNED_INT,
+        this.cellArray
+      );
+    }
+
+    // Clear default framebuffer (text + cursor passes added in T9 / T11).
     const [r, g, b] = this.parseHexColor(this.theme.background);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(r / 255, g / 255, b / 255, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
+
+    buffer.clearDirty();
     this.invalidateNext = false;
   }
 

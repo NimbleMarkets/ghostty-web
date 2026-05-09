@@ -268,4 +268,55 @@ describe('WebGL2Renderer', () => {
       expect(u32b[8]).toBe(2);
     });
   });
+
+  describe('cell texture upload', () => {
+    test('render() allocates RGBA32UI cell texture sized (cols*2, rows)', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      const stub = getStub();
+      r.resize(40, 12);
+      // Look for a texStorage2D with internalFormat = RGBA32UI = 0x8d70
+      const ts = stub.calls.find(
+        (c) => c.method === 'texStorage2D' && (c.args[2] as number) === 0x8d70
+      );
+      expect(ts).toBeDefined();
+      expect(ts!.args[3]).toBe(40 * 2); // width
+      expect(ts!.args[4]).toBe(12); // height
+    });
+
+    test('render() uploads cellArray bytes via texSubImage2D', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(2, 1);
+      const stub = getStub();
+      const cell = {
+        codepoint: 0x41,
+        width: 1,
+        flags: 0,
+        fg_r: 0,
+        fg_g: 0,
+        fg_b: 0,
+        bg_r: 0,
+        bg_g: 0,
+        bg_b: 0,
+        fgIsDefault: false,
+        bgIsDefault: false,
+        hyperlink_id: 0,
+        grapheme_len: 0,
+      };
+      const buf = {
+        getLine: () => [cell, cell],
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 2, rows: 1 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      r.render(buf as any, 0);
+      // Cell-texture upload uses format = RGBA_INTEGER = 0x8d99.
+      const cellUploads = stub.calls.filter(
+        (c) => c.method === 'texSubImage2D' && c.args.includes(0x8d99)
+      );
+      expect(cellUploads.length).toBeGreaterThan(0);
+    });
+  });
 });
