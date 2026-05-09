@@ -939,10 +939,15 @@ export class WebGL2Renderer implements Renderer {
   destroy(): void {
     this.destroyed = true;
     this.cursorBlink_.destroy();
-    // Known resource leak (v1): the renderer does not free its GL buffers,
-    // textures, programs, or VAO on destroy. Acceptable in practice because
-    // the canvas is typically GC'd shortly after destroy() and WebGL drivers
-    // reclaim resources when the context is collected. Tracked as follow-up.
+    this.kittyAtlas?.destroy();
+    this.kittyTextures.destroyAll();
+    if (this.kittyAtlasUBO) this.gl.deleteBuffer(this.kittyAtlasUBO);
+    if (this.kittyProgram) this.gl.deleteProgram(this.kittyProgram);
+    for (const buf of this.kittyParamsRing) this.gl.deleteBuffer(buf);
+    this.kittyParamsRing.length = 0;
+    // TODO (existing follow-up): also gl.deleteBuffer(paletteUBO, gridUBO),
+    // gl.deleteTexture(cellTex, glyph atlas), gl.deleteProgram(textProgram,
+    // cursorProgram), gl.deleteVertexArray(vao). Tracked separately.
   }
 
   /** T13 will register a callback fired on webglcontextlost. */
