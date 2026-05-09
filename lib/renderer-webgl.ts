@@ -589,6 +589,9 @@ export class WebGL2Renderer implements Renderer {
     gl.clearColor(r / 255, g / 255, b / 255, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
+    // TODO(T11): move clearDirty() after the cursor draw pass once T9/T11 land,
+    // so dirty state is only cleared after the renderer has actually committed
+    // the new contents to the framebuffer.
     buffer.clearDirty();
     this.invalidateNext = false;
   }

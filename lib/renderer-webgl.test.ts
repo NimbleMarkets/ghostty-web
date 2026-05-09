@@ -270,7 +270,7 @@ describe('WebGL2Renderer', () => {
   });
 
   describe('cell texture upload', () => {
-    test('render() allocates RGBA32UI cell texture sized (cols*2, rows)', async () => {
+    test('resize() allocates RGBA32UI cell texture sized (cols*2, rows)', async () => {
       const canvas = document.createElement('canvas');
       const r = await WebGL2Renderer.create(canvas, {});
       const stub = getStub();
