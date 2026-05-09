@@ -363,6 +363,8 @@ export class WebGL2Renderer implements Renderer {
   private kittyTextures!: GLKittyTextureCache;
   private paletteUBO?: WebGLBuffer; // 384 B
   private gridUBO?: WebGLBuffer; // 80 B
+  private kittyAtlasUBO?: WebGLBuffer; // 4096 B (256 vec4)
+  private kittyAtlasRects = new Float32Array(256 * 4); // host-side staging (256 vec4)
   private cellTex?: WebGLTexture;
   private cellTexW = 0;
   private cellTexH = 0;
@@ -410,6 +412,11 @@ export class WebGL2Renderer implements Renderer {
     if (!this.gridUBO) throw new Error('WebGL2Renderer: createBuffer failed (gridUBO)');
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.gridUBO);
     gl.bufferData(gl.UNIFORM_BUFFER, 80, gl.DYNAMIC_DRAW);
+
+    this.kittyAtlasUBO = gl.createBuffer() ?? undefined;
+    if (!this.kittyAtlasUBO) throw new Error('WebGL2Renderer: createBuffer failed (kittyAtlasUBO)');
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.kittyAtlasUBO);
+    gl.bufferData(gl.UNIFORM_BUFFER, 256 * 4 * 4, gl.DYNAMIC_DRAW);
 
     // Upload initial palette (theme already merged in constructor).
     this.uploadPaletteUBO();
