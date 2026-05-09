@@ -123,7 +123,7 @@ const uint FLAG_USE_THEME_FG = 1u << 12;
 const uint FLAG_USE_THEME_BG = 1u << 13;
 const uint FLAG_IS_CURSOR_CELL = 1u << 14;
 uniform highp usampler2D uCellTex;
-uniform sampler2D uAtlasTex;
+uniform highp sampler2D uAtlasTex;
 in vec2 vUv;
 flat in int vCellIdx;
 out vec4 fragColor;
@@ -430,6 +430,8 @@ export class WebGL2Renderer implements Renderer {
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
       const info = gl.getProgramInfoLog(prog) ?? '<no info log>';
+      gl.deleteShader(vsObj);
+      gl.deleteShader(fsObj);
       gl.deleteProgram(prog);
       throw new Error(`buildProgram(${label}) link failed: ${info}`);
     }
