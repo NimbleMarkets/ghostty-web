@@ -10,8 +10,8 @@
 import type { ITheme } from './interfaces';
 import type { FontMetrics, IRenderable, IScrollbackProvider, LinkRange } from './renderer-types';
 import type { SelectionManager } from './selection-manager';
-import { CellFlags } from './types';
-import type { KittyPlacementInfo } from './types';
+import { CellFlags, KittyImageFormat } from './types';
+import type { KittyPlacementInfo, KittyImagePixels } from './types';
 import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
 
 // ---------------------------------------------------------------------------
@@ -540,4 +540,55 @@ export function encodeCells(
     arr[ci + 4] = (arr[ci + 4]! | FLAG_IS_CURSOR_CELL) >>> 0;
   }
   return { usedKittyImageIds };
+}
+
+// ---------------------------------------------------------------------------
+// Kitty graphics
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a `KittyImagePixels` payload (RGB / GRAY / GRAY_ALPHA / RGBA) to
+ * a packed `width × height × 4` RGBA8 Uint8Array. Returns null for
+ * unsupported formats (PNG should be pre-decoded; if it isn't, callers
+ * skip the placement) or zero-dimension images.
+ *
+ * Lifted from the inlined WebGPU implementation; behavior is identical.
+ */
+export function kittyImageToRGBA(pixels: KittyImagePixels): Uint8Array | null {
+  const { width, height, format, data } = pixels;
+  if (width === 0 || height === 0) return null;
+  const rgba = new Uint8Array(width * height * 4);
+  switch (format) {
+    case KittyImageFormat.RGBA:
+      rgba.set(data);
+      return rgba;
+    case KittyImageFormat.RGB:
+      for (let i = 0, o = 0; i < data.length; i += 3, o += 4) {
+        rgba[o] = data[i]!;
+        rgba[o + 1] = data[i + 1]!;
+        rgba[o + 2] = data[i + 2]!;
+        rgba[o + 3] = 255;
+      }
+      return rgba;
+    case KittyImageFormat.GRAY:
+      for (let i = 0, o = 0; i < data.length; i++, o += 4) {
+        const v = data[i]!;
+        rgba[o] = v;
+        rgba[o + 1] = v;
+        rgba[o + 2] = v;
+        rgba[o + 3] = 255;
+      }
+      return rgba;
+    case KittyImageFormat.GRAY_ALPHA:
+      for (let i = 0, o = 0; i < data.length; i += 2, o += 4) {
+        const v = data[i]!;
+        rgba[o] = v;
+        rgba[o + 1] = v;
+        rgba[o + 2] = v;
+        rgba[o + 3] = data[i + 1]!;
+      }
+      return rgba;
+    default:
+      return null; // PNG (should be pre-decoded) / unknown
+  }
 }
