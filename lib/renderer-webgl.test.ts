@@ -108,7 +108,7 @@ describe('WebGL2Renderer', () => {
         isRowDirty: () => false,
         clearDirty: () => {},
       };
-      const arr = (r as any).encodeCells(buf, 0);
+      const { cellArray: arr } = (r as any).encodeCells(buf, 0);
       // CELL_U32S = 8; flags is index 4 within each cell.
       // Each empty cell flags = (USE_THEME_FG | USE_THEME_BG) = (1<<12) | (1<<13) = 0x3000
       expect(arr[4]).toBe(0x3000);
@@ -134,7 +134,7 @@ describe('WebGL2Renderer', () => {
         isRowDirty: () => false,
         clearDirty: () => {},
       };
-      const arr = (r as any).encodeCells(buf, 0);
+      const { cellArray: arr } = (r as any).encodeCells(buf, 0);
       // fg = 0xab | (0xcd << 8) | (0xef << 16) = 0xefcdab
       expect(arr[0]).toBe(0xefcdab);
       // bg = 0x12 | (0x34 << 8) | (0x56 << 16) = 0x563412
@@ -155,7 +155,7 @@ describe('WebGL2Renderer', () => {
         isRowDirty: () => false,
         clearDirty: () => {},
       };
-      const arr = (r as any).encodeCells(buf, 0);
+      const { cellArray: arr } = (r as any).encodeCells(buf, 0);
       const FLAG_IS_CURSOR_CELL = 1 << 14;
       expect((arr[4] & FLAG_IS_CURSOR_CELL) !== 0).toBe(false); // cell 0
       expect((arr[12] & FLAG_IS_CURSOR_CELL) !== 0).toBe(true); // cell 1 (cursor)
@@ -538,6 +538,90 @@ describe('WebGL2Renderer', () => {
       // Text + cursor + kitty = 3 programs → 6 compileShader, 3 linkProgram (minimum).
       expect(stub.countCalls('compileShader')).toBeGreaterThanOrEqual(6);
       expect(stub.countCalls('linkProgram')).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  describe('virtual kitty placements (WebGL)', () => {
+    test('render with virtual placement uploads kitty atlas + rect UBO', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(2, 1);
+      const stub = getStub();
+      stub.calls.length = 0;
+      const placement = {
+        imageId: 7,
+        pixelWidth: 32,
+        pixelHeight: 32,
+        gridCols: 2,
+        gridRows: 1,
+        viewportCol: 0,
+        viewportRow: 0,
+        viewportVisible: true,
+        sourceX: 0,
+        sourceY: 0,
+        sourceWidth: 32,
+        sourceHeight: 32,
+        isVirtual: true,
+      };
+      const buf = {
+        getLine: (_y: number) => null,
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 2, rows: 1 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+        getKittyGraphics: () => 1,
+        iterPlacements: function* (_g: number, _onlyVisible?: boolean) {
+          yield placement;
+        },
+        getKittyImagePixels: (_g: number, id: number) =>
+          id === 7
+            ? {
+                width: 32,
+                height: 32,
+                format: 1,
+                data: new Uint8Array(32 * 32 * 4),
+              }
+            : null,
+      };
+      r.render(buf as any, 0);
+      // Should have at least one texSubImage2D for the kitty atlas (RGBA / UNSIGNED_BYTE,
+      // distinguishable from the cellTex's RGBA_INTEGER + UNSIGNED_INT and the glyph atlas's
+      // smaller per-glyph uploads).
+      const kittyAtlasUploads = stub.calls.filter(
+        (c) =>
+          c.method === 'texSubImage2D' &&
+          c.args.includes(0x1908) /* RGBA */ &&
+          // Width = 32 (atlas region size for our placement).
+          (c.args[4] === 32 || c.args[5] === 32)
+      );
+      expect(kittyAtlasUploads.length).toBeGreaterThan(0);
+      // Should bind 3 UBOs (grid=0, palette=1, kittyAtlas=2) at some point.
+      const baseBindings = stub.calls
+        .filter((c) => c.method === 'bindBufferBase')
+        .map((c) => c.args[1] as number);
+      expect(baseBindings).toContain(2);
+    });
+
+    test('render with no kitty content still binds UBO slot 2 (zeroed rects)', async () => {
+      // The text program references KittyAtlasUBO unconditionally; the binding
+      // is required for validation. Verify slot 2 is bound even with no kitty.
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(2, 1);
+      const stub = getStub();
+      stub.calls.length = 0;
+      const buf = {
+        getLine: () => null,
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 2, rows: 1 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      r.render(buf as any, 0);
+      const baseBindings = stub.calls
+        .filter((c) => c.method === 'bindBufferBase')
+        .map((c) => c.args[1] as number);
+      expect(baseBindings).toContain(2);
     });
   });
 });

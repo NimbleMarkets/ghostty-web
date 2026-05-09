@@ -606,8 +606,8 @@ export class WebGL2Renderer implements Renderer {
     buffer: IRenderable,
     viewportY: number,
     sb?: IScrollbackProvider
-  ): Uint32Array {
-    coreEncodeCells(this.cellArray, buffer, viewportY, sb, {
+  ): { cellArray: Uint32Array; usedKittyImageIds: number[] } {
+    const { usedKittyImageIds } = coreEncodeCells(this.cellArray, buffer, viewportY, sb, {
       metrics: this.metrics,
       selectionManager: this.selectionManager,
       hoveredHyperlinkId: this.hoveredHyperlinkId,
@@ -615,10 +615,11 @@ export class WebGL2Renderer implements Renderer {
       cursorStyle: this.cursorStyle,
       cursorBlinkVisible: this.cursorBlink_.isVisible(),
       atlas: this.atlas,
-      kittyEnabled: false,
+      kittyEnabled: true,
       blockElementShaderEnabled: false,
+      maxKittyImages: 256,
     });
-    return this.cellArray;
+    return { cellArray: this.cellArray, usedKittyImageIds };
   }
 
   // -------- UBO upload --------
@@ -716,8 +717,31 @@ export class WebGL2Renderer implements Renderer {
     if (this.cols === 0 || this.rows === 0) return;
     const gl = this.gl;
     const cursor = buffer.getCursor();
-    this.encodeCells(buffer, viewportY, sb);
+    const { usedKittyImageIds } = this.encodeCells(buffer, viewportY, sb);
     this.uploadGridUBO(viewportY, cursor);
+
+    // Update kitty atlas for any virtual-placement images used this frame, and
+    // build the rect lookup table for the text shader.
+    this.kittyAtlasRects.fill(0);
+    const kittyGraphics = buffer.getKittyGraphics?.() ?? null;
+    if (kittyGraphics !== null && this.kittyAtlas && usedKittyImageIds.length > 0) {
+      for (let i = 0; i < usedKittyImageIds.length; i++) {
+        const id = usedKittyImageIds[i]!;
+        const pixels = buffer.getKittyImagePixels?.(kittyGraphics, id);
+        if (!pixels) continue;
+        const entry = this.kittyAtlas.addOrUpdate(id, pixels);
+        if (!entry) continue;
+        const size = this.kittyAtlas.atlasSize;
+        this.kittyAtlasRects[i * 4 + 0] = entry.slot.u / size;
+        this.kittyAtlasRects[i * 4 + 1] = entry.slot.v / size;
+        this.kittyAtlasRects[i * 4 + 2] = (entry.slot.u + entry.slot.w) / size;
+        this.kittyAtlasRects[i * 4 + 3] = (entry.slot.v + entry.slot.h) / size;
+      }
+    }
+    if (this.kittyAtlasUBO) {
+      gl.bindBuffer(gl.UNIFORM_BUFFER, this.kittyAtlasUBO);
+      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.kittyAtlasRects);
+    }
 
     // Cell texture upload.
     if (this.cellTex) {
@@ -749,16 +773,21 @@ export class WebGL2Renderer implements Renderer {
       this.cellTex &&
       this.atlas &&
       this.gridUBO &&
-      this.paletteUBO
+      this.paletteUBO &&
+      this.kittyAtlas &&
+      this.kittyAtlasUBO
     ) {
       gl.useProgram(this.textProgram);
       gl.bindVertexArray(this.vao);
       gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.gridUBO);
       gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, this.paletteUBO);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, this.kittyAtlasUBO);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.cellTex);
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, this.atlas.glTexture());
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, this.kittyAtlas.glTexture());
       gl.disable(gl.BLEND); // text pass overwrites
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.cols * this.rows);
     }
