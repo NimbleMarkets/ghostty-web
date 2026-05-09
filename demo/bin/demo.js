@@ -215,6 +215,13 @@ const HTML_TEMPLATE = `<!doctype html>
       import { init, Terminal, FitAddon } from '/dist/ghostty-web.js';
 
       await init();
+
+      function parseBackend() {
+        const q = new URLSearchParams(window.location.search).get('renderer');
+        if (q === 'webgpu' || q === 'webgl' || q === 'canvas2d' || q === 'auto') return q;
+        return 'auto';
+      }
+
       const term = new Terminal({
         cols: 80,
         rows: 24,
@@ -224,6 +231,7 @@ const HTML_TEMPLATE = `<!doctype html>
           background: '#1e1e1e',
           foreground: '#d4d4d4',
         },
+        renderer: parseBackend(),
       });
 
       const fitAddon = new FitAddon();
@@ -233,6 +241,44 @@ const HTML_TEMPLATE = `<!doctype html>
       await term.open(container);
       fitAddon.fit();
       fitAddon.observeResize(); // Auto-fit when container resizes
+
+      // FPS overlay (top-right corner) showing active renderer + frame rate.
+      (function installFpsOverlay() {
+        const el = document.createElement('div');
+        el.style.cssText =
+          'position: absolute; right: 12px; top: 4px;' +
+          'font: 11px/1 monospace; color: #ccc; background: rgba(0,0,0,0.4);' +
+          'padding: 2px 6px; border-radius: 3px; pointer-events: none; z-index: 10;';
+        container.style.position = container.style.position || 'relative';
+        container.appendChild(el);
+        let frames = 0;
+        let lastTick = performance.now();
+        const tick = () => {
+          frames++;
+          const now = performance.now();
+          if (now - lastTick >= 1000) {
+            el.textContent =
+              (term.renderer && term.renderer.backend ? term.renderer.backend : '?') +
+              '  ' + frames + ' fps';
+            frames = 0;
+            lastTick = now;
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      })();
+
+      // Alt+Shift+R cycles renderer: webgpu → webgl → canvas2d → webgpu.
+      window.addEventListener('keydown', (e) => {
+        if (e.altKey && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+          e.preventDefault();
+          const cur = term.renderer ? term.renderer.backend : null;
+          const next = cur === 'webgpu' ? 'webgl' : cur === 'webgl' ? 'canvas2d' : 'webgpu';
+          const url = new URL(window.location.href);
+          url.searchParams.set('renderer', next);
+          window.location.href = url.toString();
+        }
+      });
 
       // Status elements
       const statusDot = document.getElementById('status-dot');
