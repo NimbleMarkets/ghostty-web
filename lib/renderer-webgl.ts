@@ -112,11 +112,16 @@ const uint FLAG_INVISIBLE = 1u << 6;
 const uint FLAG_IS_SELECTED = 1u << 7;
 const uint FLAG_IS_HYPERLINK_HOVERED = 1u << 8;
 const uint FLAG_IS_LINK_RANGE_HOVERED = 1u << 9;
+const uint FLAG_IS_KITTY_PLACEHOLDER = 1u << 11;
 const uint FLAG_USE_THEME_FG = 1u << 12;
 const uint FLAG_USE_THEME_BG = 1u << 13;
 const uint FLAG_IS_CURSOR_CELL = 1u << 14;
 uniform highp usampler2D uCellTex;
 uniform highp sampler2D uAtlasTex;
+uniform highp sampler2D uKittyAtlas;
+layout(std140) uniform KittyAtlasUBO {
+  vec4 rects[256];
+} kittyAtlas;
 in vec2 vUv;
 flat in int vCellIdx;
 out vec4 fragColor;
@@ -144,6 +149,21 @@ void main() {
   if ((flags & FLAG_IS_SELECTED) != 0u) { bg = pal.selectionBg.rgb; fg = pal.selectionFg.rgb; }
   if ((flags & FLAG_IS_CURSOR_CELL) != 0u) { bg = pal.cursorBg.rgb; fg = pal.cursorFg.rgb; }
   if ((flags & FLAG_INVISIBLE) != 0u) { fragColor = vec4(bg, 1.0); return; }
+  if ((flags & FLAG_IS_KITTY_PLACEHOLDER) != 0u) {
+    // Slice + grid encoded in c1.y / c1.w (was blockOrSlice / _r in WGSL).
+    uint sliceCol = c1.y & 0xffffu;
+    uint sliceRow = (c1.y >> 16) & 0xffffu;
+    uint gridCols = c1.w & 0xffffu;
+    uint gridRows = (c1.w >> 16) & 0xffffu;
+    float uvX = (float(sliceCol) + vUv.x) / float(gridCols);
+    float uvY = (float(sliceRow) + vUv.y) / float(gridRows);
+    // c1.z holds the kittyImageIndex (0..255). Look up the atlas rect for that index.
+    uint imgIdx = c1.z;
+    vec4 rect = kittyAtlas.rects[imgIdx];  // (uMin, vMin, uMax, vMax) in atlas-normalized coords
+    vec2 atlasUv = mix(rect.xy, rect.zw, vec2(uvX, uvY));
+    fragColor = texture(uKittyAtlas, atlasUv);
+    return;
+  }
   vec2 auv = vec2(float(atlasUV & 0xffffu), float((atlasUV >> 16) & 0xffffu));
   vec2 asz = vec2(float(atlasSize & 0xffffu), float((atlasSize >> 16) & 0xffffu));
   vec2 texCoord = (auv + vUv * asz) / float(grid.atlasSize);
@@ -529,18 +549,21 @@ export class WebGL2Renderer implements Renderer {
     const gl = this.gl;
     const prog = this.buildProgram(TEXT_VS, TEXT_FS, 'text');
     this.textProgram = prog;
-    // UBO bindings: index 0 = grid, index 1 = palette.
+    // UBO bindings: index 0 = grid, index 1 = palette, index 2 = kitty atlas.
     const gridIdx = gl.getUniformBlockIndex(prog, 'GridUBO');
     const palIdx = gl.getUniformBlockIndex(prog, 'PaletteUBO');
     gl.uniformBlockBinding(prog, gridIdx, 0);
     gl.uniformBlockBinding(prog, palIdx, 1);
+    gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'KittyAtlasUBO'), 2);
     // Texture-sampler uniform locations.
     this.textProgramUniforms.cellTex = gl.getUniformLocation(prog, 'uCellTex');
     this.textProgramUniforms.atlasTex = gl.getUniformLocation(prog, 'uAtlasTex');
-    // Bind sampler texture units (0 = cellTex, 1 = atlasTex).
+    // Bind sampler texture units (0 = cellTex, 1 = atlasTex, 2 = kitty atlas).
     gl.useProgram(prog);
     gl.uniform1i(this.textProgramUniforms.cellTex, 0);
     gl.uniform1i(this.textProgramUniforms.atlasTex, 1);
+    const kittyAtlasLoc = gl.getUniformLocation(prog, 'uKittyAtlas');
+    gl.uniform1i(kittyAtlasLoc, 2);
   }
 
   private setupCursorProgram(): void {
