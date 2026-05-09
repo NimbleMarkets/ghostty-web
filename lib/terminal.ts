@@ -38,6 +38,7 @@ import { CanvasRenderer } from './renderer';
 import { pickRenderer } from './renderer-factory';
 import type { Renderer } from './renderer-types';
 import type { WebGPURenderer } from './renderer-webgpu';
+import type { WebGL2Renderer } from './renderer-webgl';
 import { ScrollbarOverlay } from './scrollbar-overlay';
 import { SelectionManager } from './selection-manager';
 import type { ILink, ILinkProvider } from './types';
@@ -596,15 +597,23 @@ export class Terminal implements ITerminalCore {
       // state changes (cursor blink) wake the loop on demand.
       this.renderer!.setOnRequestRender(() => this.requestRender());
 
-      // If using WebGPU, register a device-lost handler to gracefully fall
-      // back to Canvas2D if the GPU device is lost (e.g. driver crash, tab
-      // backgrounded too long, GPU process killed).
-      if (this.renderer && this.renderer.backend === 'webgpu') {
-        (this.renderer as WebGPURenderer).onDeviceLost(async (info) => {
-          if (this.isDisposed) return;
-          console.warn('[ghostty-web] GPU device lost; falling back to Canvas2D:', info.reason);
-          if (!this.canvas) return;
-          this.renderer?.destroy();
+      // Rebind the renderer-dependent state after a fallback. Used by both
+      // WebGPU device-lost and WebGL context-lost handlers.
+      const swapRenderer = async (target: 'webgl' | 'canvas2d', reason: string): Promise<void> => {
+        if (this.isDisposed || !this.canvas) return;
+        console.warn(`[ghostty-web] renderer falling back to ${target}:`, reason);
+        this.renderer?.destroy();
+        try {
+          this.renderer = await pickRenderer(target, this.canvas, {
+            fontSize: this.options.fontSize,
+            fontFamily: this.options.fontFamily,
+            cursorStyle: this.options.cursorStyle,
+            cursorBlink: this.options.cursorBlink,
+            theme: this.options.theme,
+          });
+        } catch (e) {
+          // If the requested target also fails, drop straight to Canvas2D.
+          console.warn(`[ghostty-web] ${target} fallback failed; using canvas2d:`, e);
           this.renderer = await pickRenderer('canvas2d', this.canvas, {
             fontSize: this.options.fontSize,
             fontFamily: this.options.fontFamily,
@@ -612,13 +621,24 @@ export class Terminal implements ITerminalCore {
             cursorBlink: this.options.cursorBlink,
             theme: this.options.theme,
           });
-          this.renderer.resize(this.cols, this.rows);
-          this.renderer.setOnRequestRender(() => this.requestRender());
-          if (this.selectionManager) {
-            this.renderer.setSelectionManager(this.selectionManager);
-          }
-          this.renderer.invalidate();
-          this.requestRender();
+        }
+        this.renderer.resize(this.cols, this.rows);
+        this.renderer.setOnRequestRender(() => this.requestRender());
+        if (this.selectionManager) {
+          this.renderer.setSelectionManager(this.selectionManager);
+        }
+        this.renderer.invalidate();
+        this.requestRender();
+      };
+
+      if (this.renderer && this.renderer.backend === 'webgpu') {
+        (this.renderer as WebGPURenderer).onDeviceLost(async (info) => {
+          // Try WebGL first; swapRenderer will fall through to Canvas2D if WebGL also fails.
+          await swapRenderer('webgl', `GPU device lost (${info.reason})`);
+        });
+      } else if (this.renderer && this.renderer.backend === 'webgl') {
+        (this.renderer as WebGL2Renderer).onContextLost(async (info) => {
+          await swapRenderer('canvas2d', `WebGL context lost (${info.reason})`);
         });
       }
 
