@@ -50,6 +50,129 @@ const FLAG_USE_THEME_FG = 1 << 12;
 const FLAG_USE_THEME_BG = 1 << 13;
 const FLAG_IS_CURSOR_CELL = 1 << 14;
 
+const GRID_UBO_GLSL = `
+layout(std140) uniform GridUBO {
+  uvec2 gridSize;
+  vec2 cellSize;
+  float dpr;
+  uint cursorVisible;
+  uvec2 cursorPos;
+  uint cursorStyle;
+  float _pad0;
+  uint atlasSize;
+  uint _r1; uint _r2; uint _r3; uint _r4;
+  uint _r5; uint _r6; uint _r7; uint _r8; uint _r9;
+} grid;
+`;
+
+const PALETTE_UBO_GLSL = `
+layout(std140) uniform PaletteUBO {
+  vec4 ansi[16];
+  vec4 defaultFg;
+  vec4 defaultBg;
+  vec4 cursorBg;
+  vec4 cursorFg;
+  vec4 selectionBg;
+  vec4 selectionFg;
+  vec4 linkUnderlineColor;
+  vec4 _pad;
+} pal;
+`;
+
+const TEXT_VS = `#version 300 es
+precision highp float;
+precision highp int;
+${GRID_UBO_GLSL}
+out vec2 vUv;
+flat out int vCellIdx;
+const vec2 CORNERS[6] = vec2[6](
+  vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
+  vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 1.0)
+);
+void main() {
+  uint col = uint(gl_InstanceID) % grid.gridSize.x;
+  uint row = uint(gl_InstanceID) / grid.gridSize.x;
+  vec2 local = CORNERS[gl_VertexID];
+  float cssX = (float(col) + local.x) * grid.cellSize.x;
+  float cssY = (float(row) + local.y) * grid.cellSize.y;
+  float canvasW = float(grid.gridSize.x) * grid.cellSize.x;
+  float canvasH = float(grid.gridSize.y) * grid.cellSize.y;
+  float ndcX = (cssX / canvasW) * 2.0 - 1.0;
+  float ndcY = 1.0 - (cssY / canvasH) * 2.0;
+  gl_Position = vec4(ndcX, ndcY, 0.0, 1.0);
+  vUv = local;
+  vCellIdx = gl_InstanceID;
+}
+`;
+
+const TEXT_FS = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp usampler2D;
+${GRID_UBO_GLSL}
+${PALETTE_UBO_GLSL}
+const uint FLAG_UNDERLINE = 1u << 2;
+const uint FLAG_STRIKETHROUGH = 1u << 3;
+const uint FLAG_INVERSE = 1u << 4;
+const uint FLAG_FAINT = 1u << 5;
+const uint FLAG_INVISIBLE = 1u << 6;
+const uint FLAG_IS_SELECTED = 1u << 7;
+const uint FLAG_IS_HYPERLINK_HOVERED = 1u << 8;
+const uint FLAG_IS_LINK_RANGE_HOVERED = 1u << 9;
+const uint FLAG_USE_THEME_FG = 1u << 12;
+const uint FLAG_USE_THEME_BG = 1u << 13;
+const uint FLAG_IS_CURSOR_CELL = 1u << 14;
+uniform highp usampler2D uCellTex;
+uniform sampler2D uAtlasTex;
+in vec2 vUv;
+flat in int vCellIdx;
+out vec4 fragColor;
+vec3 unpackRgb(uint p) {
+  float r = float(p & 0xffu) / 255.0;
+  float g = float((p >> 8) & 0xffu) / 255.0;
+  float b = float((p >> 16) & 0xffu) / 255.0;
+  return vec3(r, g, b);
+}
+void main() {
+  int cellX = vCellIdx % int(grid.gridSize.x);
+  int cellY = vCellIdx / int(grid.gridSize.x);
+  uvec4 c0 = texelFetch(uCellTex, ivec2(cellX * 2 + 0, cellY), 0);
+  uvec4 c1 = texelFetch(uCellTex, ivec2(cellX * 2 + 1, cellY), 0);
+  uint cellFg = c0.x;
+  uint cellBg = c0.y;
+  uint atlasUV = c0.z;
+  uint atlasSize = c0.w;
+  uint flags = c1.x;
+  vec3 fg = unpackRgb(cellFg);
+  vec3 bg = unpackRgb(cellBg);
+  if ((flags & FLAG_USE_THEME_FG) != 0u) fg = pal.defaultFg.rgb;
+  if ((flags & FLAG_USE_THEME_BG) != 0u) bg = pal.defaultBg.rgb;
+  if ((flags & FLAG_INVERSE) != 0u) { vec3 tmp = fg; fg = bg; bg = tmp; }
+  if ((flags & FLAG_IS_SELECTED) != 0u) { bg = pal.selectionBg.rgb; fg = pal.selectionFg.rgb; }
+  if ((flags & FLAG_IS_CURSOR_CELL) != 0u) { bg = pal.cursorBg.rgb; fg = pal.cursorFg.rgb; }
+  if ((flags & FLAG_INVISIBLE) != 0u) { fragColor = vec4(bg, 1.0); return; }
+  vec2 auv = vec2(float(atlasUV & 0xffffu), float((atlasUV >> 16) & 0xffffu));
+  vec2 asz = vec2(float(atlasSize & 0xffffu), float((atlasSize >> 16) & 0xffffu));
+  vec2 texCoord = (auv + vUv * asz) / float(grid.atlasSize);
+  float mask = textureLod(uAtlasTex, texCoord, 0.0).a;
+  float alpha = (flags & FLAG_FAINT) != 0u ? mask * 0.5 : mask;
+  vec3 outRgb = mix(bg, fg, alpha);
+  float baselineFrac = 0.85;
+  float underlineThickness = 1.0 / grid.cellSize.y;
+  bool hoverActive = (flags & (FLAG_IS_HYPERLINK_HOVERED | FLAG_IS_LINK_RANGE_HOVERED)) != 0u;
+  if (hoverActive && vUv.y >= baselineFrac && vUv.y < baselineFrac + underlineThickness * 2.0) {
+    fragColor = pal.linkUnderlineColor; return;
+  }
+  if ((flags & FLAG_UNDERLINE) != 0u && vUv.y >= baselineFrac && vUv.y < baselineFrac + underlineThickness * 2.0) {
+    fragColor = vec4(fg, 1.0); return;
+  }
+  if ((flags & FLAG_STRIKETHROUGH) != 0u && abs(vUv.y - 0.5) < underlineThickness) {
+    fragColor = vec4(fg, 1.0); return;
+  }
+  fragColor = vec4(outRgb, 1.0);
+}
+`;
+
 type AtlasSlot = { u: number; v: number; w: number; h: number };
 
 export class GLGlyphAtlas {
@@ -216,6 +339,11 @@ export class WebGL2Renderer implements Renderer {
   private cellTex?: WebGLTexture;
   private cellTexW = 0;
   private cellTexH = 0;
+  private textProgram?: WebGLProgram;
+  private textProgramUniforms = {
+    cellTex: null as WebGLUniformLocation | null,
+    atlasTex: null as WebGLUniformLocation | null,
+  };
 
   static async create(canvas: HTMLCanvasElement, opts: RendererOptions): Promise<WebGL2Renderer> {
     const r = new WebGL2Renderer(canvas, opts);
@@ -256,6 +384,8 @@ export class WebGL2Renderer implements Renderer {
     // Upload initial palette (theme already merged in constructor).
     this.uploadPaletteUBO();
 
+    this.setupTextProgram();
+
     this.metrics = this.measureFont();
     // T13: this.canvas.addEventListener('webglcontextlost', ...)
   }
@@ -273,6 +403,57 @@ export class WebGL2Renderer implements Renderer {
     const height = Math.ceil(ascent + descent) + 2;
     const baseline = Math.ceil(ascent) + 1;
     return { width, height, baseline };
+  }
+
+  private compileShader(source: string, type: number, label: string): WebGLShader {
+    const gl = this.gl;
+    const sh = gl.createShader(type);
+    if (!sh) throw new Error(`compileShader(${label}): createShader failed`);
+    gl.shaderSource(sh, source);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      const info = gl.getShaderInfoLog(sh) ?? '<no info log>';
+      gl.deleteShader(sh);
+      throw new Error(`compileShader(${label}) failed: ${info}`);
+    }
+    return sh;
+  }
+
+  private buildProgram(vs: string, fs: string, label: string): WebGLProgram {
+    const gl = this.gl;
+    const vsObj = this.compileShader(vs, gl.VERTEX_SHADER, `${label}.vs`);
+    const fsObj = this.compileShader(fs, gl.FRAGMENT_SHADER, `${label}.fs`);
+    const prog = gl.createProgram();
+    if (!prog) throw new Error(`buildProgram(${label}): createProgram failed`);
+    gl.attachShader(prog, vsObj);
+    gl.attachShader(prog, fsObj);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      const info = gl.getProgramInfoLog(prog) ?? '<no info log>';
+      gl.deleteProgram(prog);
+      throw new Error(`buildProgram(${label}) link failed: ${info}`);
+    }
+    gl.deleteShader(vsObj);
+    gl.deleteShader(fsObj);
+    return prog;
+  }
+
+  private setupTextProgram(): void {
+    const gl = this.gl;
+    const prog = this.buildProgram(TEXT_VS, TEXT_FS, 'text');
+    this.textProgram = prog;
+    // UBO bindings: index 0 = grid, index 1 = palette.
+    const gridIdx = gl.getUniformBlockIndex(prog, 'GridUBO');
+    const palIdx = gl.getUniformBlockIndex(prog, 'PaletteUBO');
+    gl.uniformBlockBinding(prog, gridIdx, 0);
+    gl.uniformBlockBinding(prog, palIdx, 1);
+    // Texture-sampler uniform locations.
+    this.textProgramUniforms.cellTex = gl.getUniformLocation(prog, 'uCellTex');
+    this.textProgramUniforms.atlasTex = gl.getUniformLocation(prog, 'uAtlasTex');
+    // Bind sampler texture units (0 = cellTex, 1 = atlasTex).
+    gl.useProgram(prog);
+    gl.uniform1i(this.textProgramUniforms.cellTex, 0);
+    gl.uniform1i(this.textProgramUniforms.atlasTex, 1);
   }
 
   private parseHexColor(hex: string): [number, number, number] {

@@ -269,6 +269,35 @@ describe('WebGL2Renderer', () => {
     });
   });
 
+  describe('text program', () => {
+    test('initialize() compiles vertex+fragment shaders and links the text program', async () => {
+      const canvas = document.createElement('canvas');
+      await WebGL2Renderer.create(canvas, {});
+      const stub = getStub();
+      // 2 compileShader calls (vs+fs) for the text program — and Task 10
+      // adds two more for the cursor program. After Task 8 specifically we
+      // expect at least 2 compileShader and at least 1 linkProgram.
+      expect(stub.countCalls('compileShader')).toBeGreaterThanOrEqual(2);
+      expect(stub.countCalls('linkProgram')).toBeGreaterThanOrEqual(1);
+    });
+
+    test('text program binds GridUBO/PaletteUBO blocks and texture samplers', async () => {
+      const canvas = document.createElement('canvas');
+      await WebGL2Renderer.create(canvas, {});
+      const stub = getStub();
+      const blockNames = stub.calls
+        .filter((c) => c.method === 'getUniformBlockIndex')
+        .map((c) => c.args[1]);
+      expect(blockNames).toContain('GridUBO');
+      expect(blockNames).toContain('PaletteUBO');
+      const uniformNames = stub.calls
+        .filter((c) => c.method === 'getUniformLocation')
+        .map((c) => c.args[1]);
+      expect(uniformNames).toContain('uCellTex');
+      expect(uniformNames).toContain('uAtlasTex');
+    });
+  });
+
   describe('cell texture upload', () => {
     test('resize() allocates RGBA32UI cell texture sized (cols*2, rows)', async () => {
       const canvas = document.createElement('canvas');
