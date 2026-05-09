@@ -251,11 +251,7 @@ export class WebGL2Renderer implements Renderer {
     gl.bufferData(gl.UNIFORM_BUFFER, 80, gl.DYNAMIC_DRAW);
 
     // Upload initial palette (theme already merged in constructor).
-    {
-      const data = this.buildPaletteUBOBytes();
-      gl.bindBuffer(gl.UNIFORM_BUFFER, this.paletteUBO);
-      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, data);
-    }
+    this.uploadPaletteUBO();
 
     this.metrics = this.measureFont();
     // T13: this.canvas.addEventListener('webglcontextlost', ...)
@@ -460,6 +456,7 @@ export class WebGL2Renderer implements Renderer {
     w(20, t.selectionBackground);
     w(21, t.selectionForeground);
     w(22, '#4A90E2');
+    // 23 reserved (zeroed by Float32Array constructor)
     return data;
   }
 
@@ -467,19 +464,23 @@ export class WebGL2Renderer implements Renderer {
     _viewportY: number,
     cursor: { x: number; y: number; visible: boolean }
   ): Uint32Array {
+    // 80 B = 20 × u32. Layout matches the WGSL GridUBO struct in
+    // renderer-webgpu.ts (TEXT_SHADER:40-50). Float fields use a Float32Array
+    // view aliased over the same buffer.
     const u32 = new Uint32Array(20);
     const f32 = new Float32Array(u32.buffer);
-    u32[0] = this.cols;
-    u32[1] = this.rows;
-    f32[2] = this.metrics.width;
-    f32[3] = this.metrics.height;
-    f32[4] = this.dpr;
-    u32[5] = cursor.visible && this.cursorBlink_.isVisible() ? 1 : 0;
-    u32[6] = cursor.x;
-    u32[7] = cursor.y;
+    u32[0] = this.cols; // gridSize.x
+    u32[1] = this.rows; // gridSize.y
+    f32[2] = this.metrics.width; // cellSize.x
+    f32[3] = this.metrics.height; // cellSize.y
+    f32[4] = this.dpr; // devicePixelRatio
+    u32[5] = cursor.visible && this.cursorBlink_.isVisible() ? 1 : 0; // cursorVisible
+    u32[6] = cursor.x; // cursorPos.x
+    u32[7] = cursor.y; // cursorPos.y
     u32[8] = this.cursorStyle === 'block' ? 0 : this.cursorStyle === 'underline' ? 1 : 2;
-    u32[9] = 0;
-    u32[10] = this.atlas?.atlasSize ?? 1024;
+    u32[9] = 0; // _pad0
+    u32[10] = this.atlas?.atlasSize ?? 1024; // atlasSize
+    // u32[11..19] reserved
     return u32;
   }
 
@@ -614,6 +615,10 @@ export class WebGL2Renderer implements Renderer {
   destroy(): void {
     this.destroyed = true;
     this.cursorBlink_.destroy();
+    // TODO: also gl.deleteBuffer(paletteUBO, gridUBO), gl.deleteTexture(cellTex,
+    // atlas), gl.deleteProgram(textProgram, cursorProgram),
+    // gl.deleteVertexArray(vao). Deferred until all GL resources are introduced
+    // (T11 is the last to add resources); cleaning everything up in one pass.
   }
 
   /** T13 will register a callback fired on webglcontextlost. */
