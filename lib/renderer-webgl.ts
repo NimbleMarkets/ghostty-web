@@ -273,7 +273,11 @@ export class WebGL2Renderer implements Renderer {
 
   // -------- Cell encoding --------
 
-  private encodeCells(buffer: IRenderable, viewportY: number, sb?: IScrollbackProvider): Uint32Array {
+  private encodeCells(
+    buffer: IRenderable,
+    viewportY: number,
+    sb?: IScrollbackProvider
+  ): Uint32Array {
     const arr = this.cellArray;
     arr.fill(0);
     const dims = buffer.getDimensions();
@@ -394,11 +398,7 @@ export class WebGL2Renderer implements Renderer {
       }
     }
 
-    if (
-      cursor.visible &&
-      this.cursorBlink_.isVisible() &&
-      this.cursorStyle === 'block'
-    ) {
+    if (cursor.visible && this.cursorBlink_.isVisible() && this.cursorStyle === 'block') {
       const ci = (cursor.y * dims.cols + cursor.x) * CELL_U32S;
       arr[ci + 4] = (arr[ci + 4]! | FLAG_IS_CURSOR_CELL) >>> 0;
     }

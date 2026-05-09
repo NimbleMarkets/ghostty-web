@@ -83,8 +83,12 @@ describe('WebGL2Renderer', () => {
         codepoint: 0x41, // 'A'
         width: 1,
         flags: 0,
-        fg_r: 200, fg_g: 200, fg_b: 200,
-        bg_r: 30, bg_g: 30, bg_b: 30,
+        fg_r: 200,
+        fg_g: 200,
+        fg_b: 200,
+        bg_r: 30,
+        bg_g: 30,
+        bg_b: 30,
         fgIsDefault: false,
         bgIsDefault: false,
         hyperlink_id: 0,
@@ -115,7 +119,14 @@ describe('WebGL2Renderer', () => {
       const canvas = document.createElement('canvas');
       const r = await WebGL2Renderer.create(canvas, {});
       r.resize(1, 1);
-      const cell = fakeCell({ fg_r: 0xab, fg_g: 0xcd, fg_b: 0xef, bg_r: 0x12, bg_g: 0x34, bg_b: 0x56 });
+      const cell = fakeCell({
+        fg_r: 0xab,
+        fg_g: 0xcd,
+        fg_b: 0xef,
+        bg_r: 0x12,
+        bg_g: 0x34,
+        bg_b: 0x56,
+      });
       const buf = {
         getLine: () => [cell],
         getCursor: () => ({ x: 0, y: 0, visible: false }),
