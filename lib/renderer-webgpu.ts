@@ -86,23 +86,13 @@ struct Cell {
 @group(0) @binding(2) var<storage, read> cells: array<Cell>;
 @group(0) @binding(3) var atlasTex: texture_2d<f32>;
 @group(0) @binding(4) var atlasSamp: sampler;
-@group(0) @binding(5) var kittyTex0: texture_2d<f32>;
-@group(0) @binding(6) var kittyTex1: texture_2d<f32>;
-@group(0) @binding(7) var kittyTex2: texture_2d<f32>;
-@group(0) @binding(8) var kittyTex3: texture_2d<f32>;
-@group(0) @binding(9) var kittyTex4: texture_2d<f32>;
-@group(0) @binding(10) var kittyTex5: texture_2d<f32>;
-@group(0) @binding(11) var kittyTex6: texture_2d<f32>;
-@group(0) @binding(12) var kittyTex7: texture_2d<f32>;
-@group(0) @binding(13) var kittyTex8: texture_2d<f32>;
-@group(0) @binding(14) var kittyTex9: texture_2d<f32>;
-@group(0) @binding(15) var kittyTex10: texture_2d<f32>;
-@group(0) @binding(16) var kittyTex11: texture_2d<f32>;
-@group(0) @binding(17) var kittyTex12: texture_2d<f32>;
-@group(0) @binding(18) var kittyTex13: texture_2d<f32>;
-@group(0) @binding(19) var kittyTex14: texture_2d<f32>;
-@group(0) @binding(20) var kittyTex15: texture_2d<f32>;
-@group(0) @binding(21) var placeholderSamp: sampler;
+@group(0) @binding(5) var kittyAtlas: texture_2d<f32>;
+@group(0) @binding(6) var kittySamp: sampler;
+
+struct KittyAtlasUBO {
+  rects: array<vec4<f32>, 256>,
+};
+@group(0) @binding(7) var<uniform> kittyAtlasU: KittyAtlasUBO;
 
 const FLAG_UNDERLINE: u32 = 1u << 2u;
 const FLAG_STRIKETHROUGH: u32 = 1u << 3u;
@@ -117,32 +107,6 @@ const FLAG_IS_KITTY_PLACEHOLDER: u32 = 1u << 11u;
 const FLAG_USE_THEME_FG: u32 = 1u << 12u;
 const FLAG_USE_THEME_BG: u32 = 1u << 13u;
 const FLAG_IS_CURSOR_CELL: u32 = 1u << 14u;
-
-// textureSampleLevel (not textureSample) so this works after the upstream
-// non-uniform branches (block-element, kitty placeholder) make control
-// flow non-uniform. textureSample requires uniform CF; textureSampleLevel
-// does not. Our kitty textures have no mips, so explicit LOD 0 is correct.
-fn samplePlaceholder(idx: u32, uv: vec2<f32>) -> vec4<f32> {
-  switch idx {
-    case 0u: { return textureSampleLevel(kittyTex0, placeholderSamp, uv, 0.0); }
-    case 1u: { return textureSampleLevel(kittyTex1, placeholderSamp, uv, 0.0); }
-    case 2u: { return textureSampleLevel(kittyTex2, placeholderSamp, uv, 0.0); }
-    case 3u: { return textureSampleLevel(kittyTex3, placeholderSamp, uv, 0.0); }
-    case 4u: { return textureSampleLevel(kittyTex4, placeholderSamp, uv, 0.0); }
-    case 5u: { return textureSampleLevel(kittyTex5, placeholderSamp, uv, 0.0); }
-    case 6u: { return textureSampleLevel(kittyTex6, placeholderSamp, uv, 0.0); }
-    case 7u: { return textureSampleLevel(kittyTex7, placeholderSamp, uv, 0.0); }
-    case 8u: { return textureSampleLevel(kittyTex8, placeholderSamp, uv, 0.0); }
-    case 9u: { return textureSampleLevel(kittyTex9, placeholderSamp, uv, 0.0); }
-    case 10u: { return textureSampleLevel(kittyTex10, placeholderSamp, uv, 0.0); }
-    case 11u: { return textureSampleLevel(kittyTex11, placeholderSamp, uv, 0.0); }
-    case 12u: { return textureSampleLevel(kittyTex12, placeholderSamp, uv, 0.0); }
-    case 13u: { return textureSampleLevel(kittyTex13, placeholderSamp, uv, 0.0); }
-    case 14u: { return textureSampleLevel(kittyTex14, placeholderSamp, uv, 0.0); }
-    case 15u: { return textureSampleLevel(kittyTex15, placeholderSamp, uv, 0.0); }
-    default: { return vec4<f32>(0.0); }
-  }
-}
 
 fn drawBlockElement(idx: u32, uv: vec2<f32>) -> bool {
   switch idx {
@@ -250,14 +214,15 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
   }
 
   if ((flags & FLAG_IS_KITTY_PLACEHOLDER) != 0u) {
-    // sliceCol/sliceRow in cell.blockOrSlice; gridCols/gridRows in cell._r
     let sliceCol = f32(cell.blockOrSlice & 0xffffu);
     let sliceRow = f32((cell.blockOrSlice >> 16u) & 0xffffu);
     let gridCols = f32(cell._r & 0xffffu);
     let gridRows = f32((cell._r >> 16u) & 0xffffu);
     let uvX = (sliceCol + in.uv.x) / gridCols;
     let uvY = (sliceRow + in.uv.y) / gridRows;
-    return samplePlaceholder(cell.kittyTexIndex, vec2<f32>(uvX, uvY));
+    let rect = kittyAtlasU.rects[cell.kittyTexIndex];
+    let atlasUv = mix(rect.xy, rect.zw, vec2<f32>(uvX, uvY));
+    return textureSampleLevel(kittyAtlas, kittySamp, atlasUv, 0.0);
   }
 
   if ((flags & FLAG_IS_BLOCK_ELEMENT) != 0u) {
@@ -709,15 +674,20 @@ export class WebGPURenderer implements Renderer {
         },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
-        ...Array.from({ length: 16 }, (_, i) => ({
-          binding: 5 + i,
+        {
+          binding: 5,
           visibility: GPUShaderStage.FRAGMENT,
           texture: { sampleType: 'float' as const },
-        })),
+        },
         {
-          binding: 21,
+          binding: 6,
           visibility: GPUShaderStage.FRAGMENT,
           sampler: { type: 'filtering' as const },
+        },
+        {
+          binding: 7,
+          visibility: GPUShaderStage.FRAGMENT,
+          buffer: { type: 'uniform' as const },
         },
       ],
     });
@@ -918,6 +888,7 @@ export class WebGPURenderer implements Renderer {
       atlas: this.atlas,
       kittyEnabled: true,
       blockElementShaderEnabled: true,
+      maxKittyImages: 256,
     });
     if (this.cellBuffer) {
       this.device.queue.writeBuffer(
@@ -988,26 +959,29 @@ export class WebGPURenderer implements Renderer {
     const { usedKittyImageIds } = this.encodeCells(buffer, viewportY, sb);
     this.uploadGridUBO(viewportY, cursor);
 
-    // Build per-frame kitty texture views (virtual placements, Task 16).
-    const frameKittyViews: GPUTextureView[] = new Array(16).fill(this.dummyView!);
+    // Update kitty atlas for any virtual-placement images used this frame, and
+    // build the rect lookup table for the text shader (mirrors Phase A WebGL).
+    this.kittyAtlasRects.fill(0);
     const graphics2 = buffer.getKittyGraphics?.() ?? null;
-    if (graphics2 !== null) {
-      for (let s = 0; s < usedKittyImageIds.length; s++) {
-        const id = usedKittyImageIds[s]!;
+    if (graphics2 !== null && this.kittyAtlas && usedKittyImageIds.length > 0) {
+      for (let i = 0; i < usedKittyImageIds.length; i++) {
+        const id = usedKittyImageIds[i]!;
         const pixels = buffer.getKittyImagePixels?.(graphics2, id);
-        let view: GPUTextureView | null = null;
-        if (pixels) {
-          const tex = this.kittyTextures.getOrUpload(id, pixels);
-          if (tex) view = tex.createView();
-        } else {
-          const cached = this.kittyTextures.get(id);
-          if (cached) view = cached.createView();
-        }
-        if (view) frameKittyViews[s] = view;
+        if (!pixels) continue;
+        const entry = this.kittyAtlas.addOrUpdate(id, pixels);
+        if (!entry) continue;
+        const size = this.kittyAtlas.atlasSize;
+        this.kittyAtlasRects[i * 4 + 0] = entry.slot.u / size;
+        this.kittyAtlasRects[i * 4 + 1] = entry.slot.v / size;
+        this.kittyAtlasRects[i * 4 + 2] = (entry.slot.u + entry.slot.w) / size;
+        this.kittyAtlasRects[i * 4 + 3] = (entry.slot.v + entry.slot.h) / size;
       }
     }
+    if (this.kittyAtlasUBO) {
+      this.device.queue.writeBuffer(this.kittyAtlasUBO, 0, this.kittyAtlasRects.buffer);
+    }
 
-    // Build per-frame textBindGroup (kitty texture views change each frame).
+    // Build per-frame textBindGroup (kitty atlas UBO updated each frame).
     const textBindGroup =
       this.textBindGroupLayout &&
       this.gridUBO &&
@@ -1015,7 +989,9 @@ export class WebGPURenderer implements Renderer {
       this.cellBuffer &&
       this.atlas &&
       this.atlasSampler &&
-      this.placeholderSampler
+      this.kittyAtlas &&
+      this.kittySampler &&
+      this.kittyAtlasUBO
         ? this.device.createBindGroup({
             layout: this.textBindGroupLayout,
             entries: [
@@ -1024,8 +1000,9 @@ export class WebGPURenderer implements Renderer {
               { binding: 2, resource: { buffer: this.cellBuffer } },
               { binding: 3, resource: this.atlas.view() },
               { binding: 4, resource: this.atlasSampler },
-              ...frameKittyViews.map((v, i) => ({ binding: 5 + i, resource: v })),
-              { binding: 21, resource: this.placeholderSampler },
+              { binding: 5, resource: this.kittyAtlas.view() },
+              { binding: 6, resource: this.kittySampler },
+              { binding: 7, resource: { buffer: this.kittyAtlasUBO } },
             ],
           })
         : null;
