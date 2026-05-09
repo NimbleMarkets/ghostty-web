@@ -184,3 +184,141 @@ export function buildGridUBOBytes(state: GridUBOState): Uint32Array {
   u32[10] = state.atlasSize;
   return u32;
 }
+
+// ---------------------------------------------------------------------------
+// Glyph atlas (shared shelf-packed cache; texture upload/grow per backend)
+// ---------------------------------------------------------------------------
+
+export type AtlasSlot = { u: number; v: number; w: number; h: number };
+
+/**
+ * Backend-agnostic glyph atlas. Owns shelf packing, the grapheme cache,
+ * and offscreen Canvas2D rasterization. Subclasses provide the actual
+ * GPU/GL texture and implement uploadRegion + growTexture.
+ *
+ * Cache key is `${widthInCells}|${styleBits}|${grapheme}`. Width-in-cells
+ * is 1 for narrow glyphs and 2 for CJK / emoji; the slot is `cellW *
+ * widthInCells` pixels wide.
+ *
+ * Style bits: 0x1 = bold, 0x2 = italic, 0x4 = faint (50% alpha fill).
+ */
+export abstract class GlyphAtlasBase {
+  protected size: number; // square; powers of 2
+  private nextX = 0;
+  private nextY = 0;
+  private rowHeight = 0;
+  private cache = new Map<string, AtlasSlot>();
+  protected cellW: number;
+  protected cellH: number;
+  protected fontSize: number;
+  protected fontFamily: string;
+  private offscreen = document.createElement('canvas');
+  private offCtx: CanvasRenderingContext2D;
+
+  constructor(cellW: number, cellH: number, fontSize: number, fontFamily: string) {
+    this.cellW = cellW;
+    this.cellH = cellH;
+    this.fontSize = fontSize;
+    this.fontFamily = fontFamily;
+    this.size = 1024;
+    // Offscreen sized for the widest glyph we support (2 cells for CJK /
+    // emoji). Narrow glyphs only use the left half; we crop the read.
+    this.offscreen.width = cellW * 2;
+    this.offscreen.height = cellH;
+    this.offCtx = this.offscreen.getContext('2d', { willReadFrequently: true })!;
+  }
+
+  /**
+   * Subclass hook: upload a freshly-rasterized RGBA region into the backend
+   * texture at (slot.u, slot.v) sized w × h. The pixel data is row-major
+   * RGBA bytes (Uint8ClampedArray from getImageData).
+   */
+  protected abstract uploadRegion(
+    slot: AtlasSlot,
+    rgba: Uint8ClampedArray,
+    w: number,
+    h: number
+  ): void;
+
+  /**
+   * Subclass hook: grow the underlying texture to `newSize` × `newSize`.
+   * After this call returns, getOrRaster will re-rasterize on next miss
+   * (the cache is cleared by the caller before invoking growTexture).
+   * Implementations MAY copy old contents (WebGPU does) or skip the copy
+   * (WebGL re-rasterizes on miss; simpler).
+   */
+  protected abstract growTexture(newSize: number): void;
+
+  reset(cellW: number, cellH: number, fontSize: number, fontFamily: string): void {
+    this.cellW = cellW;
+    this.cellH = cellH;
+    this.fontSize = fontSize;
+    this.fontFamily = fontFamily;
+    this.cache.clear();
+    this.nextX = 0;
+    this.nextY = 0;
+    this.rowHeight = 0;
+    this.offscreen.width = cellW * 2;
+    this.offscreen.height = cellH;
+  }
+
+  /**
+   * Returns the slot for a (grapheme, styleBits, widthInCells) triple.
+   * Rasterizes + uploads on cache miss. Allocates a new shelf row when
+   * the current row fills, and grows the atlas when no shelf fits.
+   */
+  getOrRaster(
+    grapheme: string,
+    styleBits: number,
+    baseline: number,
+    widthInCells: number = 1
+  ): AtlasSlot {
+    const key = `${widthInCells}|${styleBits}|${grapheme}`;
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+
+    const w = this.cellW * widthInCells;
+    const h = this.cellH;
+    if (this.nextX + w > this.size) {
+      this.nextX = 0;
+      this.nextY += this.rowHeight;
+      this.rowHeight = 0;
+    }
+    if (this.nextY + h > this.size) {
+      this.grow();
+    }
+    const slot: AtlasSlot = { u: this.nextX, v: this.nextY, w, h };
+    this.nextX += w;
+    if (h > this.rowHeight) this.rowHeight = h;
+    this.cache.set(key, slot);
+
+    const ctx = this.offCtx;
+    ctx.clearRect(0, 0, w, h);
+    let style = '';
+    if (styleBits & 1) style += 'bold ';
+    if (styleBits & 2) style += 'italic ';
+    ctx.font = `${style}${this.fontSize}px ${this.fontFamily}`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = styleBits & 4 ? 'rgba(255, 255, 255, 0.5)' : '#ffffff'; // FAINT
+    ctx.fillText(grapheme, 0, baseline);
+
+    const img = ctx.getImageData(0, 0, w, h);
+    this.uploadRegion(slot, img.data, w, h);
+    return slot;
+  }
+
+  private grow(): void {
+    const newSize = this.size * 2;
+    this.cache.clear();
+    this.nextX = 0;
+    this.nextY = 0;
+    this.rowHeight = 0;
+    this.growTexture(newSize);
+    this.size = newSize;
+  }
+
+  get atlasSize(): number {
+    return this.size;
+  }
+}

@@ -51,6 +51,8 @@ import {
   parseHexColor as coreParseHexColor,
   buildPaletteUBOBytes,
   buildGridUBOBytes,
+  GlyphAtlasBase,
+  type AtlasSlot,
 } from './renderer-core';
 import type { GridUBOState } from './renderer-core';
 
@@ -451,8 +453,6 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
 // GlyphAtlas
 // ---------------------------------------------------------------------------
 
-type AtlasSlot = { u: number; v: number; w: number; h: number };
-
 type KittyTextureEntry = {
   texture: GPUTexture;
   view: GPUTextureView;
@@ -463,20 +463,9 @@ type KittyTextureEntry = {
   dataLen: number;
 };
 
-class GlyphAtlas {
+class GlyphAtlas extends GlyphAtlasBase {
   private device: GPUDevice;
   private texture: GPUTexture;
-  private size: number; // square; powers of 2
-  private nextX = 0;
-  private nextY = 0;
-  private rowHeight = 0;
-  private cache = new Map<string, AtlasSlot>();
-  private cellW: number;
-  private cellH: number;
-  private fontSize: number;
-  private fontFamily: string;
-  private offscreen = document.createElement('canvas');
-  private offCtx: CanvasRenderingContext2D;
 
   constructor(
     device: GPUDevice,
@@ -485,105 +474,18 @@ class GlyphAtlas {
     fontSize: number,
     fontFamily: string
   ) {
+    super(cellW, cellH, fontSize, fontFamily);
     this.device = device;
-    this.cellW = cellW;
-    this.cellH = cellH;
-    this.fontSize = fontSize;
-    this.fontFamily = fontFamily;
-    this.size = 1024;
-    this.texture = device.createTexture({
-      size: { width: this.size, height: this.size },
-      format: 'rgba8unorm',
-      usage:
-        GPUTextureUsage.TEXTURE_BINDING |
-        GPUTextureUsage.COPY_DST |
-        GPUTextureUsage.COPY_SRC |
-        GPUTextureUsage.RENDER_ATTACHMENT,
-      label: 'glyphAtlas',
-    });
-    // Offscreen sized for the widest glyph we support (2 cells for CJK /
-    // emoji). Narrow glyphs only use the left half; we crop the read.
-    this.offscreen.width = cellW * 2;
-    this.offscreen.height = cellH;
-    this.offCtx = this.offscreen.getContext('2d', { willReadFrequently: true })!;
+    this.texture = this.createBackingTexture(this.size);
   }
 
   view(): GPUTextureView {
     return this.texture.createView();
   }
 
-  reset(cellW: number, cellH: number, fontSize: number, fontFamily: string): void {
-    this.cellW = cellW;
-    this.cellH = cellH;
-    this.fontSize = fontSize;
-    this.fontFamily = fontFamily;
-    this.cache.clear();
-    this.nextX = 0;
-    this.nextY = 0;
-    this.rowHeight = 0;
-    this.offscreen.width = cellW * 2;
-    this.offscreen.height = cellH;
-    // Texture stays allocated; we just zero it conceptually by overwriting on demand.
-  }
-
-  /**
-   * Returns slot UV in pixels. Rasterizes + uploads on miss.
-   * `widthInCells` is 1 for normal glyphs, 2 for CJK / emoji that occupy
-   * two terminal cells. The slot's pixel width is widthInCells * cellW.
-   */
-  getOrRaster(
-    grapheme: string,
-    styleBits: number,
-    baseline: number,
-    widthInCells: number = 1
-  ): AtlasSlot {
-    const key = `${widthInCells}|${styleBits}|${grapheme}`;
-    const cached = this.cache.get(key);
-    if (cached) return cached;
-
-    // Allocate slot.
-    const w = this.cellW * widthInCells;
-    const h = this.cellH;
-    if (this.nextX + w > this.size) {
-      this.nextX = 0;
-      this.nextY += this.rowHeight;
-      this.rowHeight = 0;
-    }
-    if (this.nextY + h > this.size) {
-      this.grow();
-    }
-    const slot: AtlasSlot = { u: this.nextX, v: this.nextY, w, h };
-    this.nextX += w;
-    if (h > this.rowHeight) this.rowHeight = h;
-    this.cache.set(key, slot);
-
-    // Rasterize.
-    const ctx = this.offCtx;
-    ctx.clearRect(0, 0, w, h);
-    let style = '';
-    if (styleBits & 1) style += 'bold ';
-    if (styleBits & 2) style += 'italic ';
-    ctx.font = `${style}${this.fontSize}px ${this.fontFamily}`;
-    ctx.textBaseline = 'alphabetic';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = styleBits & 4 ? 'rgba(255, 255, 255, 0.5)' : '#ffffff'; // FAINT
-    ctx.fillText(grapheme, 0, baseline);
-
-    const img = ctx.getImageData(0, 0, w, h);
-    this.device.queue.writeTexture(
-      { texture: this.texture, origin: { x: slot.u, y: slot.v } },
-      img.data.buffer,
-      { bytesPerRow: w * 4, rowsPerImage: h },
-      { width: w, height: h }
-    );
-
-    return slot;
-  }
-
-  private grow(): void {
-    const newSize = this.size * 2;
-    const newTex = this.device.createTexture({
-      size: { width: newSize, height: newSize },
+  private createBackingTexture(size: number): GPUTexture {
+    return this.device.createTexture({
+      size: { width: size, height: size },
       format: 'rgba8unorm',
       usage:
         GPUTextureUsage.TEXTURE_BINDING |
@@ -592,20 +494,24 @@ class GlyphAtlas {
         GPUTextureUsage.RENDER_ATTACHMENT,
       label: 'glyphAtlas',
     });
-    const enc = this.device.createCommandEncoder();
-    enc.copyTextureToTexture(
-      { texture: this.texture },
-      { texture: newTex },
-      { width: this.size, height: this.size }
-    );
-    this.device.queue.submit([enc.finish()]);
-    this.texture.destroy();
-    this.texture = newTex;
-    this.size = newSize;
   }
 
-  get atlasSize(): number {
-    return this.size;
+  protected uploadRegion(slot: AtlasSlot, rgba: Uint8ClampedArray, w: number, h: number): void {
+    this.device.queue.writeTexture(
+      { texture: this.texture, origin: { x: slot.u, y: slot.v } },
+      rgba.buffer,
+      { bytesPerRow: w * 4, rowsPerImage: h },
+      { width: w, height: h }
+    );
+  }
+
+  protected growTexture(newSize: number): void {
+    const newTex = this.createBackingTexture(newSize);
+    // Note: cache is already cleared by GlyphAtlasBase.grow(), so we don't
+    // need to copy old contents — re-rasterize on miss. Previous behavior
+    // did copyTextureToTexture, which is no longer needed.
+    this.texture.destroy();
+    this.texture = newTex;
   }
 }
 
