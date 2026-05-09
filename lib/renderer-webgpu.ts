@@ -572,11 +572,6 @@ export class WebGPURenderer implements Renderer {
   private kittyBindGroupLayout?: GPUBindGroupLayout;
   private kittyParamsRing: GPUBuffer[] = [];
 
-  // Virtual kitty placements (Task 16)
-  private placeholderSampler?: GPUSampler;
-  private dummyTexture?: GPUTexture;
-  private dummyView?: GPUTextureView;
-
   // Kitty atlas (PB1 — wired in PB2)
   private kittyAtlas?: WebGPUKittyAtlas;
   private kittyAtlasUBO?: GPUBuffer;
@@ -638,26 +633,6 @@ export class WebGPURenderer implements Renderer {
       label: 'atlasSampler',
     });
     // atlas itself constructed lazily in resize() once we have metrics
-
-    this.placeholderSampler = this.device.createSampler({
-      magFilter: 'nearest',
-      minFilter: 'nearest',
-      label: 'placeholderSampler',
-    });
-
-    this.dummyTexture = this.device.createTexture({
-      size: { width: 1, height: 1 },
-      format: 'rgba8unorm',
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-      label: 'dummyKittyTex',
-    });
-    this.device.queue.writeTexture(
-      { texture: this.dummyTexture },
-      new Uint8Array([0, 0, 0, 0]).buffer,
-      { bytesPerRow: 4 },
-      { width: 1, height: 1 }
-    );
-    this.dummyView = this.dummyTexture.createView();
 
     this.textBindGroupLayout = this.device.createBindGroupLayout({
       entries: [
