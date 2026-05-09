@@ -173,6 +173,48 @@ void main() {
 }
 `;
 
+const CURSOR_VS = `#version 300 es
+precision highp float;
+precision highp int;
+${GRID_UBO_GLSL}
+out vec2 vUv;
+const vec2 CORNERS[6] = vec2[6](
+  vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
+  vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 1.0)
+);
+void main() {
+  vec2 local = CORNERS[gl_VertexID];
+  float cssX = (float(grid.cursorPos.x) + local.x) * grid.cellSize.x;
+  float cssY = (float(grid.cursorPos.y) + local.y) * grid.cellSize.y;
+  float canvasW = float(grid.gridSize.x) * grid.cellSize.x;
+  float canvasH = float(grid.gridSize.y) * grid.cellSize.y;
+  gl_Position = vec4((cssX / canvasW) * 2.0 - 1.0, 1.0 - (cssY / canvasH) * 2.0, 0.0, 1.0);
+  vUv = local;
+}
+`;
+
+const CURSOR_FS = `#version 300 es
+precision highp float;
+precision highp int;
+${GRID_UBO_GLSL}
+${PALETTE_UBO_GLSL}
+in vec2 vUv;
+out vec4 fragColor;
+void main() {
+  if (grid.cursorVisible == 0u) { fragColor = vec4(0.0); return; }
+  if (grid.cursorStyle == 0u) { fragColor = vec4(0.0); return; } // block handled in textPass
+  if (grid.cursorStyle == 1u) {
+    if (vUv.y >= 0.85) { fragColor = pal.cursorBg; return; }
+    fragColor = vec4(0.0); return;
+  }
+  if (grid.cursorStyle == 2u) {
+    if (vUv.x < 0.15) { fragColor = pal.cursorBg; return; }
+    fragColor = vec4(0.0); return;
+  }
+  fragColor = vec4(0.0);
+}
+`;
+
 type AtlasSlot = { u: number; v: number; w: number; h: number };
 
 export class GLGlyphAtlas {
@@ -340,6 +382,7 @@ export class WebGL2Renderer implements Renderer {
   private cellTexW = 0;
   private cellTexH = 0;
   private textProgram?: WebGLProgram;
+  private cursorProgram?: WebGLProgram;
   private textProgramUniforms = {
     cellTex: null as WebGLUniformLocation | null,
     atlasTex: null as WebGLUniformLocation | null,
@@ -386,6 +429,7 @@ export class WebGL2Renderer implements Renderer {
     this.uploadPaletteUBO();
 
     this.setupTextProgram();
+    this.setupCursorProgram();
 
     const vao = gl.createVertexArray();
     if (!vao) throw new Error('WebGL2Renderer: createVertexArray failed');
@@ -461,6 +505,14 @@ export class WebGL2Renderer implements Renderer {
     gl.useProgram(prog);
     gl.uniform1i(this.textProgramUniforms.cellTex, 0);
     gl.uniform1i(this.textProgramUniforms.atlasTex, 1);
+  }
+
+  private setupCursorProgram(): void {
+    const gl = this.gl;
+    const prog = this.buildProgram(CURSOR_VS, CURSOR_FS, 'cursor');
+    this.cursorProgram = prog;
+    gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'GridUBO'), 0);
+    gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'PaletteUBO'), 1);
   }
 
   private parseHexColor(hex: string): [number, number, number] {

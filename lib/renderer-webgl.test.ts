@@ -349,6 +349,17 @@ describe('WebGL2Renderer', () => {
     });
   });
 
+  describe('cursor program', () => {
+    test('initialize() compiles + links cursor program (vs/fs pair)', async () => {
+      const canvas = document.createElement('canvas');
+      await WebGL2Renderer.create(canvas, {});
+      const stub = getStub();
+      // After Tasks 8 + 10: 2 programs total → 4 compileShader, 2 linkProgram.
+      expect(stub.countCalls('compileShader')).toBeGreaterThanOrEqual(4);
+      expect(stub.countCalls('linkProgram')).toBeGreaterThanOrEqual(2);
+    });
+  });
+
   describe('text-program render path', () => {
     test('render() issues drawArraysInstanced with instanceCount = cols*rows', async () => {
       const canvas = document.createElement('canvas');
