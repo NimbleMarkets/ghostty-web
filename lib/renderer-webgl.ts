@@ -36,6 +36,7 @@ import {
   buildPaletteUBOBytes,
   buildGridUBOBytes,
   GlyphAtlasBase,
+  KittyTextureCacheBase,
   encodeCells as coreEncodeCells,
   type AtlasSlot,
 } from './renderer-core';
@@ -259,6 +260,38 @@ export class GLGlyphAtlas extends GlyphAtlasBase {
   }
 }
 
+class GLKittyTextureCache extends KittyTextureCacheBase<WebGLTexture> {
+  constructor(private gl: WebGL2RenderingContext) {
+    super();
+  }
+  protected createTexture(width: number, height: number): WebGLTexture | null {
+    const gl = this.gl;
+    const tex = gl.createTexture();
+    if (!tex) return null;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, width, height);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return tex;
+  }
+  protected uploadFull(
+    handle: WebGLTexture,
+    rgba: Uint8Array,
+    width: number,
+    height: number
+  ): void {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, handle);
+    gl.pixelStorei(/* UNPACK_ALIGNMENT */ 0x0cf5, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+  }
+  protected destroyTexture(handle: WebGLTexture): void {
+    this.gl.deleteTexture(handle);
+  }
+}
+
 export class WebGL2Renderer implements Renderer {
   public readonly backend = 'webgl' as const;
   public readonly canvas: HTMLCanvasElement;
@@ -282,6 +315,7 @@ export class WebGL2Renderer implements Renderer {
   private contextLostListeners: Array<(info: { reason: string }) => void> = [];
   private cellArray = new Uint32Array(0);
   private atlas?: GLGlyphAtlas;
+  private kittyTextures!: GLKittyTextureCache;
   private paletteUBO?: WebGLBuffer; // 384 B
   private gridUBO?: WebGLBuffer; // 80 B
   private cellTex?: WebGLTexture;
@@ -320,6 +354,7 @@ export class WebGL2Renderer implements Renderer {
     }) as WebGL2RenderingContext | null;
     if (!gl) throw new Error('WebGL2Renderer: failed to acquire webgl2 context');
     this.gl = gl;
+    this.kittyTextures = new GLKittyTextureCache(this.gl);
 
     this.paletteUBO = gl.createBuffer() ?? undefined;
     if (!this.paletteUBO) throw new Error('WebGL2Renderer: createBuffer failed (paletteUBO)');
