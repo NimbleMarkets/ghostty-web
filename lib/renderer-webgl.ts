@@ -37,6 +37,7 @@ import {
   buildGridUBOBytes,
   GlyphAtlasBase,
   KittyTextureCacheBase,
+  KittyAtlasBase,
   encodeCells as coreEncodeCells,
   type AtlasSlot,
 } from './renderer-core';
@@ -292,6 +293,49 @@ class GLKittyTextureCache extends KittyTextureCacheBase<WebGLTexture> {
   }
 }
 
+class GLKittyAtlas extends KittyAtlasBase {
+  private gl: WebGL2RenderingContext;
+  private texture: WebGLTexture;
+
+  constructor(gl: WebGL2RenderingContext, size = 1024) {
+    super(size);
+    this.gl = gl;
+    const tex = gl.createTexture();
+    if (!tex) throw new Error('GLKittyAtlas: createTexture failed');
+    this.texture = tex;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, size, size);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+
+  glTexture(): WebGLTexture {
+    return this.texture;
+  }
+
+  destroy(): void {
+    this.gl.deleteTexture(this.texture);
+  }
+
+  protected uploadRegion(
+    slot: { u: number; v: number; w: number; h: number },
+    rgba: Uint8Array,
+    w: number,
+    h: number
+  ): void {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.pixelStorei(/* UNPACK_ALIGNMENT */ 0x0cf5, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, slot.u, slot.v, w, h, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+  }
+
+  protected growTexture(_newSize: number): void {
+    // v1: never grows; clearAndReset reuses the existing texture.
+  }
+}
+
 export class WebGL2Renderer implements Renderer {
   public readonly backend = 'webgl' as const;
   public readonly canvas: HTMLCanvasElement;
@@ -315,6 +359,7 @@ export class WebGL2Renderer implements Renderer {
   private contextLostListeners: Array<(info: { reason: string }) => void> = [];
   private cellArray = new Uint32Array(0);
   private atlas?: GLGlyphAtlas;
+  private kittyAtlas?: GLKittyAtlas;
   private kittyTextures!: GLKittyTextureCache;
   private paletteUBO?: WebGLBuffer; // 384 B
   private gridUBO?: WebGLBuffer; // 80 B
@@ -544,6 +589,11 @@ export class WebGL2Renderer implements Renderer {
     } else {
       this.atlas.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     }
+
+    if (!this.kittyAtlas) {
+      this.kittyAtlas = new GLKittyAtlas(this.gl);
+    }
+    // Note: the kitty atlas is fixed-size and persists across resizes.
 
     const desiredW = Math.max(1, cols * 2);
     const desiredH = Math.max(1, rows);
