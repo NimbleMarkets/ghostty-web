@@ -624,4 +624,49 @@ describe('WebGL2Renderer', () => {
       expect(baseBindings).toContain(2);
     });
   });
+
+  describe('direct kitty placements (WebGL)', () => {
+    test('render with direct placement issues kitty draws between text and cursor', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(4, 2);
+      const stub = getStub();
+      stub.calls.length = 0;
+      const placement = {
+        imageId: 5,
+        pixelWidth: 64,
+        pixelHeight: 32,
+        gridCols: 4,
+        gridRows: 2,
+        viewportCol: 0,
+        viewportRow: 0,
+        viewportVisible: true,
+        sourceX: 0,
+        sourceY: 0,
+        sourceWidth: 64,
+        sourceHeight: 32,
+        isVirtual: false,
+      };
+      const buf = {
+        getLine: () => null,
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 4, rows: 2 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+        getKittyGraphics: () => 1,
+        iterPlacements: function* (_g: number, _onlyVisible?: boolean) {
+          yield placement;
+        },
+        getKittyImagePixels: (_g: number, id: number) =>
+          id === 5 ? { width: 64, height: 32, format: 1, data: new Uint8Array(64 * 32 * 4) } : null,
+      };
+      r.render(buf as any, 0);
+      // Should issue an extra drawArrays(TRIANGLES, 0, 6) for the direct placement,
+      // beyond any cursor-pass drawArrays.
+      const directDraws = stub.calls.filter(
+        (c) => c.method === 'drawArrays' && (c.args[2] as number) === 6
+      );
+      expect(directDraws.length).toBeGreaterThanOrEqual(1);
+    });
+  });
 });

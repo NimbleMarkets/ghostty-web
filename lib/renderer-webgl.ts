@@ -743,6 +743,40 @@ export class WebGL2Renderer implements Renderer {
       gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.kittyAtlasRects);
     }
 
+    // Direct kitty placements pre-walk (must happen before draw, so the params
+    // UBOs are already populated by the time we issue the kitty draw loop).
+    const directPlacements: Array<{ params: Float32Array; tex: WebGLTexture }> = [];
+    if (kittyGraphics !== null && buffer.iterPlacements) {
+      const cssW = this.cols * this.metrics.width;
+      const cssH = this.rows * this.metrics.height;
+      for (const p of buffer.iterPlacements(kittyGraphics, true)) {
+        if (p.isVirtual) continue;
+        const pixels = buffer.getKittyImagePixels?.(kittyGraphics, p.imageId);
+        if (!pixels) continue;
+        const tex = this.kittyTextures.getOrUpload(p.imageId, pixels);
+        if (!tex) continue;
+        const params = new Float32Array(16);
+        params[0] = p.sourceX;
+        params[1] = p.sourceY;
+        params[2] = p.sourceWidth;
+        params[3] = p.sourceHeight;
+        params[4] = p.viewportCol * this.metrics.width;
+        params[5] = p.viewportRow * this.metrics.height;
+        params[6] = p.pixelWidth;
+        params[7] = p.pixelHeight;
+        params[8] = pixels.width;
+        params[9] = pixels.height;
+        params[10] = cssW;
+        params[11] = cssH;
+        directPlacements.push({ params, tex });
+      }
+    }
+    this.ensureKittyRingSize(directPlacements.length);
+    for (let i = 0; i < directPlacements.length; i++) {
+      gl.bindBuffer(gl.UNIFORM_BUFFER, this.kittyParamsRing[i]!);
+      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, directPlacements[i]!.params);
+    }
+
     // Cell texture upload.
     if (this.cellTex) {
       gl.bindTexture(gl.TEXTURE_2D, this.cellTex);
@@ -790,6 +824,23 @@ export class WebGL2Renderer implements Renderer {
       gl.bindTexture(gl.TEXTURE_2D, this.kittyAtlas.glTexture());
       gl.disable(gl.BLEND); // text pass overwrites
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.cols * this.rows);
+    }
+
+    // Direct kitty placements — draw between text and cursor so images sit over
+    // text but under the cursor (matches WebGPU ordering).
+    if (this.kittyProgram && directPlacements.length > 0) {
+      gl.useProgram(this.kittyProgram);
+      gl.bindVertexArray(this.vao!);
+      gl.enable(gl.BLEND);
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.blendEquation(gl.FUNC_ADD);
+      for (let i = 0; i < directPlacements.length; i++) {
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.kittyParamsRing[i]!);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, directPlacements[i]!.tex);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
+      gl.disable(gl.BLEND);
     }
 
     // Cursor pass — only for non-block styles. Block cursor is handled by the
