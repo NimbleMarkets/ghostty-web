@@ -680,3 +680,111 @@ export abstract class KittyTextureCacheBase<TBackendTexture> {
     this.cache.clear();
   }
 }
+
+export type KittyAtlasEntry = {
+  slot: AtlasSlot;
+  signature: { width: number; height: number; format: number; dataPtr: number; dataLen: number };
+};
+
+/**
+ * Variable-size shelf-packed atlas for virtual-placement kitty images.
+ * Parallel to GlyphAtlasBase but for arbitrary-dimension RGBA8 images.
+ *
+ * v1 is fixed-size (1024² by default). On overflow, clears the entire
+ * cache + packing cursor and retries once. If the image is still too big,
+ * returns null and the caller skips that placement for the frame.
+ *
+ * Subclasses provide the backend texture upload primitive.
+ */
+export abstract class KittyAtlasBase {
+  protected size: number;
+  private nextX = 0;
+  private nextY = 0;
+  private rowHeight = 0;
+  private cache = new Map<number, KittyAtlasEntry>();
+
+  constructor(size = 1024) {
+    this.size = size;
+  }
+
+  /** Subclass: upload a freshly-converted RGBA region into the backing texture. */
+  protected abstract uploadRegion(slot: AtlasSlot, rgba: Uint8Array, w: number, h: number): void;
+
+  /** Subclass: grow the backing texture (v1 callers pass the existing size; reserved). */
+  protected abstract growTexture(newSize: number): void;
+
+  /**
+   * Add (or refresh) the image for `imageId`. On signature match returns the
+   * cached entry. On miss converts to RGBA, shelf-packs into the atlas, and
+   * uploads. Returns null if conversion fails or the image doesn't fit even
+   * after one clearAndReset retry.
+   */
+  addOrUpdate(imageId: number, pixels: KittyImagePixels): KittyAtlasEntry | null {
+    const cached = this.cache.get(imageId);
+    const sigMatches =
+      cached &&
+      cached.signature.width === pixels.width &&
+      cached.signature.height === pixels.height &&
+      cached.signature.format === pixels.format &&
+      cached.signature.dataPtr === pixels.data.byteOffset &&
+      cached.signature.dataLen === pixels.data.length;
+    if (sigMatches) return cached;
+
+    const rgba = kittyImageToRGBA(pixels);
+    if (!rgba) return null;
+
+    let slot = this.tryPack(pixels.width, pixels.height);
+    if (!slot) {
+      this.clearAndReset();
+      slot = this.tryPack(pixels.width, pixels.height);
+      if (!slot) return null; // image larger than the entire atlas
+    }
+    this.uploadRegion(slot, rgba, pixels.width, pixels.height);
+    const entry: KittyAtlasEntry = {
+      slot,
+      signature: {
+        width: pixels.width,
+        height: pixels.height,
+        format: pixels.format,
+        dataPtr: pixels.data.byteOffset,
+        dataLen: pixels.data.length,
+      },
+    };
+    this.cache.set(imageId, entry);
+    return entry;
+  }
+
+  /** Lookup a cached entry without uploading. */
+  getEntry(imageId: number): KittyAtlasEntry | undefined {
+    return this.cache.get(imageId);
+  }
+
+  /** Clear cache + reset packing cursor. Surviving images get re-uploaded on next walk. */
+  clearAndReset(): void {
+    this.cache.clear();
+    this.nextX = 0;
+    this.nextY = 0;
+    this.rowHeight = 0;
+  }
+
+  get atlasSize(): number {
+    return this.size;
+  }
+
+  private tryPack(w: number, h: number): AtlasSlot | null {
+    if (w > this.size || h > this.size) return null;
+    // Check vertical overflow at current row position first. If the item won't
+    // fit vertically at the current nextY (even before any horizontal wrap),
+    // fail immediately. This lets the caller detect atlas-full before wrapping.
+    if (this.nextY + h >= this.size) return null;
+    if (this.nextX + w > this.size) {
+      this.nextX = 0;
+      this.nextY += this.rowHeight;
+      this.rowHeight = 0;
+    }
+    const slot: AtlasSlot = { u: this.nextX, v: this.nextY, w, h };
+    this.nextX += w;
+    if (h > this.rowHeight) this.rowHeight = h;
+    return slot;
+  }
+}

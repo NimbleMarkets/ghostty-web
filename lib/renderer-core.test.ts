@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { kittyImageToRGBA, KittyTextureCacheBase } from './renderer-core';
+import {
+  kittyImageToRGBA,
+  KittyTextureCacheBase,
+  KittyAtlasBase,
+  type AtlasSlot,
+} from './renderer-core';
 import { KittyImageFormat } from './types';
 
 describe('kittyImageToRGBA', () => {
@@ -150,5 +155,79 @@ describe('KittyTextureCacheBase', () => {
     cache.getOrUpload(43, px as any);
     cache.destroyAll();
     expect(cache.destroyed.length).toBe(2);
+  });
+});
+
+describe('KittyAtlasBase', () => {
+  // Concrete stub subclass — no GL.
+  class StubAtlas extends KittyAtlasBase {
+    public uploads: Array<{ slot: AtlasSlot; w: number; h: number }> = [];
+    constructor(size = 1024) {
+      super(size);
+    }
+    protected uploadRegion(slot: AtlasSlot, _rgba: Uint8Array, w: number, h: number): void {
+      this.uploads.push({ slot: { ...slot }, w, h });
+    }
+    protected growTexture(_newSize: number): void {
+      /* v1: no-op */
+    }
+  }
+
+  function pixels(width: number, height: number, dataLen = width * height * 4) {
+    return {
+      width,
+      height,
+      format: 1, // RGBA
+      data: new Uint8Array(dataLen),
+    } as any;
+  }
+
+  test('first add packs at (0,0)', () => {
+    const atlas = new StubAtlas();
+    const e = atlas.addOrUpdate(1, pixels(64, 32));
+    expect(e).not.toBeNull();
+    expect(e!.slot).toEqual({ u: 0, v: 0, w: 64, h: 32 });
+    expect(atlas.uploads.length).toBe(1);
+  });
+
+  test('second add lands to the right of the first on the same shelf', () => {
+    const atlas = new StubAtlas();
+    atlas.addOrUpdate(1, pixels(64, 32));
+    const e = atlas.addOrUpdate(2, pixels(64, 32));
+    expect(e!.slot).toEqual({ u: 64, v: 0, w: 64, h: 32 });
+  });
+
+  test('signature match returns cached entry, no re-upload', () => {
+    const atlas = new StubAtlas();
+    const a = atlas.addOrUpdate(1, pixels(64, 32));
+    const b = atlas.addOrUpdate(1, pixels(64, 32));
+    expect(b).toBe(a);
+    expect(atlas.uploads.length).toBe(1); // no second upload
+  });
+
+  test('overflow triggers clearAndReset and packs at (0,0) again', () => {
+    const atlas = new StubAtlas(128); // small atlas
+    atlas.addOrUpdate(1, pixels(64, 64));
+    atlas.addOrUpdate(2, pixels(64, 64));
+    // shelf 1 full; next add wraps to second shelf at v=64
+    atlas.addOrUpdate(3, pixels(64, 64));
+    // now image 4 at 64x64 won't fit (would land at v=128, overflow)
+    const e4 = atlas.addOrUpdate(4, pixels(64, 64));
+    // After clearAndReset, image 4 packs at (0,0). Cache for 1/2/3 cleared.
+    expect(e4).not.toBeNull();
+    expect(e4!.slot).toEqual({ u: 0, v: 0, w: 64, h: 64 });
+    expect(atlas.getEntry(1)).toBeUndefined();
+    expect(atlas.getEntry(4)).toBe(e4!);
+  });
+
+  test('image larger than atlas returns null after retry', () => {
+    const atlas = new StubAtlas(128);
+    const e = atlas.addOrUpdate(1, pixels(256, 256));
+    expect(e).toBeNull();
+  });
+
+  test('atlasSize getter returns current size', () => {
+    const atlas = new StubAtlas(2048);
+    expect(atlas.atlasSize).toBe(2048);
   });
 });
