@@ -592,3 +592,91 @@ export function kittyImageToRGBA(pixels: KittyImagePixels): Uint8Array | null {
       return null; // PNG (should be pre-decoded) / unknown
   }
 }
+
+/**
+ * Per-image GPU texture cache for direct-placement kitty images, abstract
+ * over backend texture handles. Subclasses provide createTexture / uploadFull
+ * / destroyTexture for their backend.
+ *
+ * Cache is keyed by imageId. Each entry stores a signature (width, height,
+ * format, data byteOffset, data length) so we re-upload only when the
+ * underlying image data changes (caller passes the same KittyImagePixels
+ * object whose .data is a view into WASM memory; if the WASM image changes
+ * the byteOffset/length will too).
+ */
+export abstract class KittyTextureCacheBase<TBackendTexture> {
+  private cache = new Map<
+    number,
+    {
+      handle: TBackendTexture;
+      width: number;
+      height: number;
+      format: number;
+      dataPtr: number;
+      dataLen: number;
+      dataBuf: ArrayBufferLike;
+    }
+  >();
+
+  protected abstract createTexture(width: number, height: number): TBackendTexture | null;
+  protected abstract uploadFull(
+    handle: TBackendTexture,
+    rgba: Uint8Array,
+    width: number,
+    height: number
+  ): void;
+  protected abstract destroyTexture(handle: TBackendTexture): void;
+
+  /**
+   * Returns the cached or newly-uploaded texture for the given imageId.
+   * Returns null if the image cannot be converted (e.g. undecoded PNG) or
+   * if texture allocation fails.
+   *
+   * Signature: width × height × format × data.byteOffset × data.length ×
+   * data.buffer (object identity). In practice the WASM heap never moves so
+   * byteOffset/length alone would be stable, but including the buffer
+   * reference ensures correctness in test environments where each
+   * KittyImagePixels carries an independent allocation.
+   */
+  getOrUpload(imageId: number, pixels: KittyImagePixels): TBackendTexture | null {
+    const cached = this.cache.get(imageId);
+    const sigMatches =
+      cached &&
+      cached.width === pixels.width &&
+      cached.height === pixels.height &&
+      cached.format === pixels.format &&
+      cached.dataPtr === pixels.data.byteOffset &&
+      cached.dataLen === pixels.data.length &&
+      cached.dataBuf === pixels.data.buffer;
+    if (sigMatches) return cached.handle;
+
+    const rgba = kittyImageToRGBA(pixels);
+    if (!rgba) return null;
+
+    if (cached) this.destroyTexture(cached.handle);
+    const handle = this.createTexture(pixels.width, pixels.height);
+    if (!handle) return null;
+    this.uploadFull(handle, rgba, pixels.width, pixels.height);
+    this.cache.set(imageId, {
+      handle,
+      width: pixels.width,
+      height: pixels.height,
+      format: pixels.format,
+      dataPtr: pixels.data.byteOffset,
+      dataLen: pixels.data.length,
+      dataBuf: pixels.data.buffer,
+    });
+    return handle;
+  }
+
+  /** Lookup without upload. */
+  get(imageId: number): TBackendTexture | undefined {
+    return this.cache.get(imageId)?.handle;
+  }
+
+  /** Release all backend textures. Called by renderer destroy(). */
+  destroyAll(): void {
+    for (const entry of this.cache.values()) this.destroyTexture(entry.handle);
+    this.cache.clear();
+  }
+}
