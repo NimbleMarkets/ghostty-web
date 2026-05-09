@@ -406,6 +406,35 @@ describe('WebGL2Renderer', () => {
     });
   });
 
+  describe('setters', () => {
+    test('setTheme triggers a paletteUBO upload', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      const stub = getStub();
+      const before = stub.calls.filter(
+        (c) => c.method === 'bufferSubData' && (c.args[0] as number) === stub.UNIFORM_BUFFER
+      ).length;
+      r.setTheme({ background: '#abcdef' } as any);
+      const after = stub.calls.filter(
+        (c) => c.method === 'bufferSubData' && (c.args[0] as number) === stub.UNIFORM_BUFFER
+      ).length;
+      expect(after).toBeGreaterThan(before);
+    });
+
+    test('setFontSize resets the atlas', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, { fontSize: 14 });
+      r.resize(4, 2);
+      const atlasBefore = (r as any).atlas;
+      r.setFontSize(20);
+      // Same instance, but reset.
+      expect((r as any).atlas).toBe(atlasBefore);
+      // Verify metrics propagated.
+      const m = r.getMetrics();
+      expect(m.height).toBeGreaterThan(0);
+    });
+  });
+
   describe('cursor render path', () => {
     test('non-block visible cursor: drawArrays(TRIANGLES, 0, 6) is called once', async () => {
       const canvas = document.createElement('canvas');

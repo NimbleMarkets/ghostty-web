@@ -886,6 +886,7 @@ export class WebGL2Renderer implements Renderer {
   setFontSize(size: number): void {
     this.fontSize = size;
     this.metrics = this.measureFont();
+    this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     this.invalidateNext = true;
     this.onRequestRender?.();
   }
@@ -893,6 +894,7 @@ export class WebGL2Renderer implements Renderer {
   setFontFamily(family: string): void {
     this.fontFamily = family;
     this.metrics = this.measureFont();
+    this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     this.invalidateNext = true;
     this.onRequestRender?.();
   }
@@ -937,6 +939,7 @@ export class WebGL2Renderer implements Renderer {
 
   remeasureFont(): void {
     this.metrics = this.measureFont();
+    this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     this.invalidateNext = true;
   }
 
