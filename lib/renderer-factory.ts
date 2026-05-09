@@ -1,20 +1,73 @@
 /**
  * Renderer factory. Resolves a RendererBackend choice into a concrete
- * Renderer instance, with auto-fallback to Canvas2D when WebGPU is
- * unavailable.
+ * Renderer instance, with auto-fallback chain WebGPU → WebGL2 → Canvas2D.
  *
  * - 'canvas2d' → CanvasRenderer
  * - 'webgpu'   → WebGPURenderer; throws if WebGPU is unavailable
- * - 'auto'     → tries WebGPU first, silently falls back to Canvas2D on
- *                missing navigator.gpu, missing adapter, or device init
- *                failure. Logs a one-line warning on fallback.
+ * - 'webgl'    → WebGL2Renderer; throws if WebGL2 is unavailable
+ * - 'auto'     → tries WebGPU first, then WebGL2, then Canvas2D.
+ *                Logs a one-line warning on each fallback (one per kind).
  */
 
 import { CanvasRenderer } from './renderer';
 import type { Renderer, RendererBackend, RendererOptions } from './renderer-types';
 import { WebGPURenderer } from './renderer-webgpu';
+import { WebGL2Renderer } from './renderer-webgl';
 
-let warnedFallback = false;
+let warnedWebGPUFallback = false;
+let warnedWebGLFallback = false;
+
+async function tryWebGPU(
+  canvas: HTMLCanvasElement,
+  opts: RendererOptions,
+  explicit: boolean
+): Promise<Renderer | null> {
+  const gpu = (navigator as any).gpu as
+    | { requestAdapter: (opts?: any) => Promise<any> }
+    | undefined;
+  if (!gpu) {
+    if (explicit) throw new Error('WebGPU not available in this browser');
+    return null;
+  }
+  try {
+    const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) {
+      if (explicit) throw new Error('WebGPU adapter unavailable');
+      return null;
+    }
+    const adapterMax = adapter.limits?.maxSampledTexturesPerShaderStage ?? 16;
+    const requiredLimits: Record<string, number> = {};
+    if (adapterMax >= 17) {
+      requiredLimits.maxSampledTexturesPerShaderStage = Math.min(32, adapterMax);
+    }
+    const device = await adapter.requestDevice({ requiredLimits });
+    return await WebGPURenderer.create(canvas, device, opts);
+  } catch (e) {
+    if (explicit) throw e;
+    if (!warnedWebGPUFallback) {
+      warnedWebGPUFallback = true;
+      console.warn('[ghostty-web] WebGPU init failed, trying WebGL2:', e);
+    }
+    return null;
+  }
+}
+
+async function tryWebGL(
+  canvas: HTMLCanvasElement,
+  opts: RendererOptions,
+  explicit: boolean
+): Promise<Renderer | null> {
+  try {
+    return await WebGL2Renderer.create(canvas, opts);
+  } catch (e) {
+    if (explicit) throw e;
+    if (!warnedWebGLFallback) {
+      warnedWebGLFallback = true;
+      console.warn('[ghostty-web] WebGL2 init failed, falling back to Canvas2D:', e);
+    }
+    return null;
+  }
+}
 
 export async function pickRenderer(
   backend: RendererBackend,
@@ -24,46 +77,20 @@ export async function pickRenderer(
   if (backend === 'canvas2d') {
     return new CanvasRenderer(canvas, opts);
   }
-
+  if (backend === 'webgpu') {
+    const r = await tryWebGPU(canvas, opts, true);
+    if (!r) throw new Error('WebGPU initialization failed');
+    return r;
+  }
   if (backend === 'webgl') {
-    throw new Error('WebGL backend not yet implemented');
+    const r = await tryWebGL(canvas, opts, true);
+    if (!r) throw new Error('WebGL2 initialization failed');
+    return r;
   }
-
-  if (backend === 'webgpu' || backend === 'auto') {
-    const gpu = (navigator as any).gpu as { requestAdapter: (opts?: any) => Promise<any> } | undefined;
-    if (!gpu) {
-      if (backend === 'webgpu') {
-        throw new Error('WebGPU not available in this browser');
-      }
-      // auto: silently fall through
-    } else {
-      try {
-        const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
-        if (!adapter) {
-          if (backend === 'webgpu') throw new Error('WebGPU adapter unavailable');
-        } else {
-          // textPass binds 1 glyph atlas + 16 kitty textures = 17 sampled
-          // textures per fragment stage. Default device limit is 16, so the
-          // pipeline silently fails to validate without raising the limit.
-          // Request as much as the adapter exposes (most desktops report
-          // ≥32; mobile may report exactly 16, which would fail).
-          const adapterMax = adapter.limits?.maxSampledTexturesPerShaderStage ?? 16;
-          const requiredLimits: Record<string, number> = {};
-          if (adapterMax >= 17) {
-            requiredLimits.maxSampledTexturesPerShaderStage = Math.min(32, adapterMax);
-          }
-          const device = await adapter.requestDevice({ requiredLimits });
-          return await WebGPURenderer.create(canvas, device, opts);
-        }
-      } catch (e) {
-        if (backend === 'webgpu') throw e;
-        if (!warnedFallback) {
-          warnedFallback = true;
-          console.warn('[ghostty-web] WebGPU init failed, falling back to Canvas2D:', e);
-        }
-      }
-    }
-  }
-
+  // backend === 'auto'
+  const wgpu = await tryWebGPU(canvas, opts, false);
+  if (wgpu) return wgpu;
+  const wgl = await tryWebGL(canvas, opts, false);
+  if (wgl) return wgl;
   return new CanvasRenderer(canvas, opts);
 }
