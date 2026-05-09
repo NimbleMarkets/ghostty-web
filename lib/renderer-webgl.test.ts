@@ -234,11 +234,9 @@ describe('WebGL2Renderer', () => {
 
   describe('UBO byte construction', () => {
     test('paletteUBO has 96 floats and starts with parsed ANSI black', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {
-        theme: { black: '#0a141e' } as any,
-      });
-      const data = (r as any).buildPaletteUBOBytes() as Float32Array;
+      const { buildPaletteUBOBytes } = await import('./renderer-core');
+      const { DEFAULT_THEME } = await import('./renderer');
+      const data = buildPaletteUBOBytes({ ...DEFAULT_THEME, black: '#0a141e' });
       expect(data.length).toBe(96);
       // ANSI[0] = black at vec4 offset 0
       expect(data[0]).toBeCloseTo(0x0a / 255, 4);
@@ -248,24 +246,42 @@ describe('WebGL2Renderer', () => {
     });
 
     test('gridUBO is 20 u32s with cols/rows at offsets 0/1', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      r.resize(80, 24);
-      const u32 = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
+      const { buildGridUBOBytes } = await import('./renderer-core');
+      const u32 = buildGridUBOBytes({
+        cols: 80,
+        rows: 24,
+        cellWidth: 10,
+        cellHeight: 20,
+        dpr: 1,
+        cursorX: 0,
+        cursorY: 0,
+        cursorVisible: false,
+        cursorBlinkVisible: false,
+        cursorStyle: 'block',
+        atlasSize: 1024,
+      });
       expect(u32.length).toBe(20);
       expect(u32[0]).toBe(80); // gridSize.x
       expect(u32[1]).toBe(24); // gridSize.y
     });
 
     test('gridUBO encodes cursorStyle correctly (block=0, underline=1, bar=2)', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
-      r.resize(1, 1);
-      const u32 = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
-      expect(u32[8]).toBe(1);
-      r.setCursorStyle('bar');
-      const u32b = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
-      expect(u32b[8]).toBe(2);
+      const { buildGridUBOBytes } = await import('./renderer-core');
+      const base = {
+        cols: 1,
+        rows: 1,
+        cellWidth: 10,
+        cellHeight: 20,
+        dpr: 1,
+        cursorX: 0,
+        cursorY: 0,
+        cursorVisible: false,
+        cursorBlinkVisible: false,
+        atlasSize: 1024,
+      };
+      expect(buildGridUBOBytes({ ...base, cursorStyle: 'block' })[8]).toBe(0);
+      expect(buildGridUBOBytes({ ...base, cursorStyle: 'underline' })[8]).toBe(1);
+      expect(buildGridUBOBytes({ ...base, cursorStyle: 'bar' })[8]).toBe(2);
     });
   });
 

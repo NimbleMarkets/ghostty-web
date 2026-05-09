@@ -49,7 +49,10 @@ import {
   FLAG_IS_CURSOR_CELL,
   measureFont as coreMeasureFont,
   parseHexColor as coreParseHexColor,
+  buildPaletteUBOBytes,
+  buildGridUBOBytes,
 } from './renderer-core';
+import type { GridUBOState } from './renderer-core';
 
 // ---------------------------------------------------------------------------
 // TEXT_SHADER
@@ -889,41 +892,7 @@ export class WebGPURenderer implements Renderer {
 
   private uploadPaletteUBO(): void {
     if (!this.paletteUBO) return;
-    const data = new Float32Array(96);
-    const w = (i: number, hex: string): void => {
-      const [r, g, b] = this.parseHexColor(hex);
-      data[i * 4 + 0] = r / 255;
-      data[i * 4 + 1] = g / 255;
-      data[i * 4 + 2] = b / 255;
-      data[i * 4 + 3] = 1;
-    };
-    // 16 ANSI palette
-    const t = this.theme;
-    w(0, t.black);
-    w(1, t.red);
-    w(2, t.green);
-    w(3, t.yellow);
-    w(4, t.blue);
-    w(5, t.magenta);
-    w(6, t.cyan);
-    w(7, t.white);
-    w(8, t.brightBlack);
-    w(9, t.brightRed);
-    w(10, t.brightGreen);
-    w(11, t.brightYellow);
-    w(12, t.brightBlue);
-    w(13, t.brightMagenta);
-    w(14, t.brightCyan);
-    w(15, t.brightWhite);
-    // theme entries
-    w(16, t.foreground);
-    w(17, t.background);
-    w(18, t.cursor);
-    w(19, t.cursorAccent);
-    w(20, t.selectionBackground);
-    w(21, t.selectionForeground);
-    w(22, '#4A90E2'); // link underline color (matches CanvasRenderer)
-    // 23 reserved (zeroed)
+    const data = buildPaletteUBOBytes(this.theme);
     this.device.queue.writeBuffer(this.paletteUBO, 0, data.buffer);
   }
 
@@ -932,21 +901,19 @@ export class WebGPURenderer implements Renderer {
     cursor: { x: number; y: number; visible: boolean }
   ): void {
     if (!this.gridUBO) return;
-    // 80 B = 20 × u32. Layout matches the WGSL GridUBO struct (Tasks 9, 14).
-    const u32 = new Uint32Array(20);
-    const f32 = new Float32Array(u32.buffer);
-    u32[0] = this.cols; // gridSize.x
-    u32[1] = this.rows; // gridSize.y
-    f32[2] = this.metrics.width; // cellSize.x
-    f32[3] = this.metrics.height; // cellSize.y
-    f32[4] = this.dpr; // devicePixelRatio
-    u32[5] = cursor.visible && this.cursorBlink_.isVisible() ? 1 : 0; // cursorVisible
-    u32[6] = cursor.x; // cursorPos.x
-    u32[7] = cursor.y; // cursorPos.y
-    u32[8] = this.cursorStyle === 'block' ? 0 : this.cursorStyle === 'underline' ? 1 : 2;
-    u32[9] = 0; // _pad0
-    u32[10] = this.atlas?.atlasSize ?? 1024; // atlasSize (Task 9 uses it)
-    // u32[11..19] reserved
+    const u32 = buildGridUBOBytes({
+      cols: this.cols,
+      rows: this.rows,
+      cellWidth: this.metrics.width,
+      cellHeight: this.metrics.height,
+      dpr: this.dpr,
+      cursorX: cursor.x,
+      cursorY: cursor.y,
+      cursorVisible: cursor.visible,
+      cursorBlinkVisible: this.cursorBlink_.isVisible(),
+      cursorStyle: this.cursorStyle,
+      atlasSize: this.atlas?.atlasSize ?? 1024,
+    } satisfies GridUBOState);
     this.device.queue.writeBuffer(this.gridUBO, 0, u32.buffer);
   }
 
