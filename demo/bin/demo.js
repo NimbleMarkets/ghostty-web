@@ -300,7 +300,10 @@ const HTML_TEMPLATE = `<!doctype html>
 
       // Alt+Shift+R cycles renderer: webgpu → webgl → canvas2d → webgpu.
       window.addEventListener('keydown', (e) => {
-        if (e.altKey && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+        // Use e.code (physical key) rather than e.key — on macOS, holding
+        // Option transforms 'R' into a dead-key character before keydown,
+        // so e.key would never match.
+        if (e.altKey && e.shiftKey && e.code === 'KeyR') {
           e.preventDefault();
           const cur = term.renderer ? term.renderer.backend : null;
           const next = cur === 'webgpu' ? 'webgl' : cur === 'webgl' ? 'canvas2d' : 'webgpu';
