@@ -32,6 +32,138 @@ import type { SelectionManager } from './selection-manager';
 
 const warnedUnparseableColors = new Set<string>();
 
+type AtlasSlot = { u: number; v: number; w: number; h: number };
+
+export class GLGlyphAtlas {
+  private gl: WebGL2RenderingContext;
+  private texture: WebGLTexture;
+  private size: number; // square; powers of 2
+  private nextX = 0;
+  private nextY = 0;
+  private rowHeight = 0;
+  private cache = new Map<string, AtlasSlot>();
+  private cellW: number;
+  private cellH: number;
+  private fontSize: number;
+  private fontFamily: string;
+  private offscreen = document.createElement('canvas');
+  private offCtx: CanvasRenderingContext2D;
+
+  constructor(
+    gl: WebGL2RenderingContext,
+    cellW: number,
+    cellH: number,
+    fontSize: number,
+    fontFamily: string
+  ) {
+    this.gl = gl;
+    this.cellW = cellW;
+    this.cellH = cellH;
+    this.fontSize = fontSize;
+    this.fontFamily = fontFamily;
+    this.size = 1024;
+    const tex = gl.createTexture();
+    if (!tex) throw new Error('GLGlyphAtlas: createTexture failed');
+    this.texture = tex;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, this.size, this.size);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.offscreen.width = cellW * 2;
+    this.offscreen.height = cellH;
+    this.offCtx = this.offscreen.getContext('2d', { willReadFrequently: true })!;
+  }
+
+  glTexture(): WebGLTexture {
+    return this.texture;
+  }
+
+  reset(cellW: number, cellH: number, fontSize: number, fontFamily: string): void {
+    this.cellW = cellW;
+    this.cellH = cellH;
+    this.fontSize = fontSize;
+    this.fontFamily = fontFamily;
+    this.cache.clear();
+    this.nextX = 0;
+    this.nextY = 0;
+    this.rowHeight = 0;
+    this.offscreen.width = cellW * 2;
+    this.offscreen.height = cellH;
+  }
+
+  getOrRaster(
+    grapheme: string,
+    styleBits: number,
+    baseline: number,
+    widthInCells: number = 1
+  ): AtlasSlot {
+    const key = `${widthInCells}|${styleBits}|${grapheme}`;
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+
+    const w = this.cellW * widthInCells;
+    const h = this.cellH;
+    if (this.nextX + w > this.size) {
+      this.nextX = 0;
+      this.nextY += this.rowHeight;
+      this.rowHeight = 0;
+    }
+    if (this.nextY + h > this.size) {
+      this.grow();
+    }
+    const slot: AtlasSlot = { u: this.nextX, v: this.nextY, w, h };
+    this.nextX += w;
+    if (h > this.rowHeight) this.rowHeight = h;
+    this.cache.set(key, slot);
+
+    const ctx = this.offCtx;
+    ctx.clearRect(0, 0, w, h);
+    let style = '';
+    if (styleBits & 1) style += 'bold ';
+    if (styleBits & 2) style += 'italic ';
+    ctx.font = `${style}${this.fontSize}px ${this.fontFamily}`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = styleBits & 4 ? 'rgba(255, 255, 255, 0.5)' : '#ffffff';
+    ctx.fillText(grapheme, 0, baseline);
+
+    const img = ctx.getImageData(0, 0, w, h);
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.pixelStorei(/* UNPACK_ALIGNMENT */ 0x0cf5, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, slot.u, slot.v, w, h, gl.RGBA, gl.UNSIGNED_BYTE, img.data);
+    return slot;
+  }
+
+  private grow(): void {
+    const newSize = this.size * 2;
+    const gl = this.gl;
+    const newTex = gl.createTexture();
+    if (!newTex) {
+      console.warn('[ghostty-web] GLGlyphAtlas: grow() failed; keeping existing atlas');
+      return;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, newTex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, newSize, newSize);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    // We do not preserve old contents on grow — the cache is going to
+    // re-rasterize misses on demand. (Same trade-off as the WebGPU path's
+    // copyTextureToTexture, just simpler.)
+    gl.deleteTexture?.(this.texture);
+    this.texture = newTex;
+    this.size = newSize;
+  }
+
+  get atlasSize(): number {
+    return this.size;
+  }
+}
+
 export class WebGL2Renderer implements Renderer {
   public readonly backend = 'webgl' as const;
   public readonly canvas: HTMLCanvasElement;
