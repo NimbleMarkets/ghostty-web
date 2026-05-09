@@ -405,4 +405,66 @@ describe('WebGL2Renderer', () => {
       expect(baseBindings).toContain(1); // paletteUBO
     });
   });
+
+  describe('cursor render path', () => {
+    test('non-block visible cursor: drawArrays(TRIANGLES, 0, 6) is called once', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
+      r.resize(2, 1);
+      // Disable blink so isVisible() returns true deterministically.
+      (r as any).cursorBlink_.setEnabled(false);
+      const stub = getStub();
+      stub.calls.length = 0;
+      const buf = {
+        getLine: () => null,
+        getCursor: () => ({ x: 0, y: 0, visible: true }),
+        getDimensions: () => ({ cols: 2, rows: 1 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      r.render(buf as any, 0);
+      const cursorDraws = stub.calls.filter(
+        (c) => c.method === 'drawArrays' && (c.args[2] as number) === 6
+      );
+      expect(cursorDraws.length).toBe(1);
+    });
+
+    test('block cursor: no drawArrays (block handled by text pass)', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'block' });
+      r.resize(2, 1);
+      (r as any).cursorBlink_.setEnabled(false);
+      const stub = getStub();
+      stub.calls.length = 0;
+      const buf = {
+        getLine: () => null,
+        getCursor: () => ({ x: 0, y: 0, visible: true }),
+        getDimensions: () => ({ cols: 2, rows: 1 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      r.render(buf as any, 0);
+      const cursorDraws = stub.calls.filter((c) => c.method === 'drawArrays');
+      expect(cursorDraws.length).toBe(0);
+    });
+
+    test('hidden cursor: no drawArrays', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
+      r.resize(2, 1);
+      (r as any).cursorBlink_.setEnabled(false);
+      const stub = getStub();
+      stub.calls.length = 0;
+      const buf = {
+        getLine: () => null,
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 2, rows: 1 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      r.render(buf as any, 0);
+      const cursorDraws = stub.calls.filter((c) => c.method === 'drawArrays');
+      expect(cursorDraws.length).toBe(0);
+    });
+  });
 });

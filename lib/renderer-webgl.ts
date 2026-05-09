@@ -850,9 +850,28 @@ export class WebGL2Renderer implements Renderer {
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.cols * this.rows);
     }
 
-    // TODO(T11): move clearDirty() after the cursor draw pass once T9/T11 land,
-    // so dirty state is only cleared after the renderer has actually committed
-    // the new contents to the framebuffer.
+    // Cursor pass — only for non-block styles. Block cursor is handled by the
+    // text pass via FLAG_IS_CURSOR_CELL.
+    if (
+      this.cursorProgram &&
+      this.vao &&
+      this.gridUBO &&
+      this.paletteUBO &&
+      cursor.visible &&
+      this.cursorBlink_.isVisible() &&
+      this.cursorStyle !== 'block'
+    ) {
+      gl.useProgram(this.cursorProgram);
+      gl.bindVertexArray(this.vao);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.gridUBO);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, this.paletteUBO);
+      gl.enable(gl.BLEND);
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.blendEquation(gl.FUNC_ADD);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.disable(gl.BLEND);
+    }
+
     buffer.clearDirty();
     this.invalidateNext = false;
   }
