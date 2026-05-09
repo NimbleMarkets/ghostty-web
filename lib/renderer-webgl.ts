@@ -344,6 +344,7 @@ export class WebGL2Renderer implements Renderer {
     cellTex: null as WebGLUniformLocation | null,
     atlasTex: null as WebGLUniformLocation | null,
   };
+  private vao?: WebGLVertexArrayObject;
 
   static async create(canvas: HTMLCanvasElement, opts: RendererOptions): Promise<WebGL2Renderer> {
     const r = new WebGL2Renderer(canvas, opts);
@@ -385,6 +386,10 @@ export class WebGL2Renderer implements Renderer {
     this.uploadPaletteUBO();
 
     this.setupTextProgram();
+
+    const vao = gl.createVertexArray();
+    if (!vao) throw new Error('WebGL2Renderer: createVertexArray failed');
+    this.vao = vao;
 
     this.metrics = this.measureFont();
     // T13: this.canvas.addEventListener('webglcontextlost', ...)
@@ -766,11 +771,32 @@ export class WebGL2Renderer implements Renderer {
       );
     }
 
-    // Clear default framebuffer (text + cursor passes added in T9 / T11).
-    const [r, g, b] = this.parseHexColor(this.theme.background);
+    // Clear default framebuffer.
+    const [tr, tg, tb] = this.parseHexColor(this.theme.background);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    gl.clearColor(r / 255, g / 255, b / 255, 1);
+    gl.clearColor(tr / 255, tg / 255, tb / 255, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // Text pass.
+    if (
+      this.textProgram &&
+      this.vao &&
+      this.cellTex &&
+      this.atlas &&
+      this.gridUBO &&
+      this.paletteUBO
+    ) {
+      gl.useProgram(this.textProgram);
+      gl.bindVertexArray(this.vao);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.gridUBO);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, this.paletteUBO);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.cellTex);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.atlas.glTexture());
+      gl.disable(gl.BLEND); // text pass overwrites
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.cols * this.rows);
+    }
 
     // TODO(T11): move clearDirty() after the cursor draw pass once T9/T11 land,
     // so dirty state is only cleared after the renderer has actually committed

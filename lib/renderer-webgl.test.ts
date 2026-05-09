@@ -348,4 +348,50 @@ describe('WebGL2Renderer', () => {
       expect(cellUploads.length).toBeGreaterThan(0);
     });
   });
+
+  describe('text-program render path', () => {
+    test('render() issues drawArraysInstanced with instanceCount = cols*rows', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(20, 5);
+      const stub = getStub();
+      stub.calls.length = 0; // clear init calls
+      const buf = {
+        getLine: () => null,
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 20, rows: 5 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      r.render(buf as any, 0);
+      const draws = stub.calls.filter((c) => c.method === 'drawArraysInstanced');
+      expect(draws.length).toBe(1);
+      const args = draws[0]!.args;
+      expect(args[0]).toBe(stub.TRIANGLES);
+      expect(args[1]).toBe(0);
+      expect(args[2]).toBe(6);
+      expect(args[3]).toBe(20 * 5);
+    });
+
+    test('render() binds gridUBO and paletteUBO via bindBufferBase', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(2, 2);
+      const stub = getStub();
+      stub.calls.length = 0;
+      const buf = {
+        getLine: () => null,
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 2, rows: 2 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      r.render(buf as any, 0);
+      const baseBindings = stub.calls
+        .filter((c) => c.method === 'bindBufferBase')
+        .map((c) => c.args[1] as number); // index slot
+      expect(baseBindings).toContain(0); // gridUBO
+      expect(baseBindings).toContain(1); // paletteUBO
+    });
+  });
 });
