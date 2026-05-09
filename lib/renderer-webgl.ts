@@ -29,8 +29,26 @@ import type {
   RendererOptions,
 } from './renderer-types';
 import type { SelectionManager } from './selection-manager';
+import { CellFlags } from './types';
 
 const warnedUnparseableColors = new Set<string>();
+
+const CELL_BYTES = 32;
+const CELL_U32S = 8;
+
+const FLAG_BOLD = 1 << 0;
+const FLAG_ITALIC = 1 << 1;
+const FLAG_UNDERLINE = 1 << 2;
+const FLAG_STRIKETHROUGH = 1 << 3;
+const FLAG_INVERSE = 1 << 4;
+const FLAG_FAINT = 1 << 5;
+const FLAG_INVISIBLE = 1 << 6;
+const FLAG_IS_SELECTED = 1 << 7;
+const FLAG_IS_HYPERLINK_HOVERED = 1 << 8;
+const FLAG_IS_LINK_RANGE_HOVERED = 1 << 9;
+const FLAG_USE_THEME_FG = 1 << 12;
+const FLAG_USE_THEME_BG = 1 << 13;
+const FLAG_IS_CURSOR_CELL = 1 << 14;
 
 type AtlasSlot = { u: number; v: number; w: number; h: number };
 
@@ -191,6 +209,8 @@ export class WebGL2Renderer implements Renderer {
   private invalidateNext = true;
   private destroyed = false;
   private contextLostListeners: Array<(info: { reason: string }) => void> = [];
+  private cellArray = new Uint32Array(0);
+  private atlas?: GLGlyphAtlas;
 
   static async create(canvas: HTMLCanvasElement, opts: RendererOptions): Promise<WebGL2Renderer> {
     const r = new WebGL2Renderer(canvas, opts);
@@ -251,6 +271,140 @@ export class WebGL2Renderer implements Renderer {
     return [Number.parseInt(m[1]!, 16), Number.parseInt(m[2]!, 16), Number.parseInt(m[3]!, 16)];
   }
 
+  // -------- Cell encoding --------
+
+  private encodeCells(buffer: IRenderable, viewportY: number, sb?: IScrollbackProvider): Uint32Array {
+    const arr = this.cellArray;
+    arr.fill(0);
+    const dims = buffer.getDimensions();
+    const sbLen = sb?.getScrollbackLength() ?? 0;
+    const cursor = buffer.getCursor();
+    const sel = this.selectionManager?.getSelectionCoords() ?? null;
+    const inSel = (x: number, y: number): boolean => {
+      if (!sel) return false;
+      if (sel.startRow === sel.endRow) {
+        return y === sel.startRow && x >= sel.startCol && x <= sel.endCol;
+      }
+      if (y === sel.startRow) return x >= sel.startCol;
+      if (y === sel.endRow) return x <= sel.endCol;
+      return y > sel.startRow && y < sel.endRow;
+    };
+
+    const defaultEmptyFlags = (FLAG_USE_THEME_FG | FLAG_USE_THEME_BG) >>> 0;
+    const cellW = this.metrics.width;
+    const cellH = this.metrics.height;
+    for (let y = 0; y < dims.rows; y++) {
+      let line: ReturnType<IRenderable['getLine']> = null;
+      if (viewportY > 0) {
+        if (y < viewportY && sb) {
+          const off = sbLen - Math.floor(viewportY) + y;
+          line = sb.getScrollbackLine(off);
+        } else {
+          line = buffer.getLine(y - Math.floor(viewportY));
+        }
+      } else {
+        line = buffer.getLine(y);
+      }
+      let pendingRightHalf: {
+        slotU: number;
+        slotV: number;
+        slotH: number;
+        fgPacked: number;
+        bgPacked: number;
+        flags: number;
+      } | null = null;
+      for (let x = 0; x < dims.cols; x++) {
+        const i = (y * dims.cols + x) * CELL_U32S;
+        const c = line && x < line.length ? line[x] : null;
+        if (!c || c.width === 0) {
+          if (pendingRightHalf) {
+            arr[i + 0] = pendingRightHalf.fgPacked;
+            arr[i + 1] = pendingRightHalf.bgPacked;
+            arr[i + 2] =
+              ((pendingRightHalf.slotU + cellW) & 0xffff) |
+              ((pendingRightHalf.slotV & 0xffff) << 16);
+            arr[i + 3] = (cellW & 0xffff) | ((pendingRightHalf.slotH & 0xffff) << 16);
+            arr[i + 4] = pendingRightHalf.flags;
+            pendingRightHalf = null;
+          } else {
+            arr[i + 4] = defaultEmptyFlags;
+          }
+          continue;
+        }
+        pendingRightHalf = null;
+        let flags = 0;
+        if (c.flags & CellFlags.BOLD) flags |= FLAG_BOLD;
+        if (c.flags & CellFlags.ITALIC) flags |= FLAG_ITALIC;
+        if (c.flags & CellFlags.UNDERLINE) flags |= FLAG_UNDERLINE;
+        if (c.flags & CellFlags.STRIKETHROUGH) flags |= FLAG_STRIKETHROUGH;
+        if (c.flags & CellFlags.INVERSE) flags |= FLAG_INVERSE;
+        if (c.flags & CellFlags.FAINT) flags |= FLAG_FAINT;
+        if (c.flags & CellFlags.INVISIBLE) flags |= FLAG_INVISIBLE;
+        if (c.fgIsDefault) flags |= FLAG_USE_THEME_FG;
+        if (c.bgIsDefault) flags |= FLAG_USE_THEME_BG;
+        if (inSel(x, y)) flags |= FLAG_IS_SELECTED;
+        if (c.hyperlink_id !== 0 && c.hyperlink_id === this.hoveredHyperlinkId) {
+          flags |= FLAG_IS_HYPERLINK_HOVERED;
+        }
+        if (this.hoveredLinkRange) {
+          const r = this.hoveredLinkRange;
+          const inRange =
+            (y === r.startY && x >= r.startX && (y < r.endY || x <= r.endX)) ||
+            (y > r.startY && y < r.endY) ||
+            (y === r.endY && x <= r.endX && (y > r.startY || x >= r.startX));
+          if (inRange) flags |= FLAG_IS_LINK_RANGE_HOVERED;
+        }
+        arr[i + 0] = c.fg_r | (c.fg_g << 8) | (c.fg_b << 16);
+        arr[i + 1] = c.bg_r | (c.bg_g << 8) | (c.bg_b << 16);
+        const skipAtlas = (flags & FLAG_INVISIBLE) !== 0;
+        if (!skipAtlas && this.atlas) {
+          const grapheme =
+            c.grapheme_len > 0 && buffer.getGraphemeString
+              ? buffer.getGraphemeString(y, x)
+              : String.fromCodePoint(c.codepoint || 32);
+          const styleBits =
+            (flags & FLAG_BOLD ? 1 : 0) |
+            (flags & FLAG_ITALIC ? 2 : 0) |
+            (flags & FLAG_FAINT ? 4 : 0);
+          const widthInCells = c.width === 2 ? 2 : 1;
+          const slot = this.atlas.getOrRaster(
+            grapheme,
+            styleBits,
+            this.metrics.baseline,
+            widthInCells
+          );
+          arr[i + 2] = (slot.u & 0xffff) | ((slot.v & 0xffff) << 16);
+          arr[i + 3] =
+            widthInCells === 2
+              ? (cellW & 0xffff) | ((cellH & 0xffff) << 16)
+              : (slot.w & 0xffff) | ((slot.h & 0xffff) << 16);
+          if (widthInCells === 2) {
+            pendingRightHalf = {
+              slotU: slot.u,
+              slotV: slot.v,
+              slotH: slot.h,
+              fgPacked: arr[i + 0]!,
+              bgPacked: arr[i + 1]!,
+              flags: 0,
+            };
+          }
+        }
+        arr[i + 4] = flags >>> 0;
+        if (pendingRightHalf) pendingRightHalf.flags = flags >>> 0;
+      }
+    }
+
+    if (
+      cursor.visible &&
+      this.cursorBlink_.isVisible() &&
+      this.cursorStyle === 'block'
+    ) {
+      const ci = (cursor.y * dims.cols + cursor.x) * CELL_U32S;
+      arr[ci + 4] = (arr[ci + 4]! | FLAG_IS_CURSOR_CELL) >>> 0;
+    }
+    return arr;
+  }
+
   // -------- Renderer interface --------
 
   getMetrics(): FontMetrics {
@@ -267,6 +421,23 @@ export class WebGL2Renderer implements Renderer {
     this.canvas.width = Math.round(cssW * this.dpr);
     this.canvas.height = Math.round(cssH * this.dpr);
     this.invalidateNext = true;
+
+    const requiredU32s = Math.max(1, cols * rows * CELL_U32S);
+    if (this.cellArray.length !== requiredU32s) {
+      this.cellArray = new Uint32Array(requiredU32s);
+    }
+
+    if (!this.atlas) {
+      this.atlas = new GLGlyphAtlas(
+        this.gl,
+        this.metrics.width,
+        this.metrics.height,
+        this.fontSize,
+        this.fontFamily
+      );
+    } else {
+      this.atlas.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
+    }
   }
 
   render(_buffer: IRenderable, _viewportY: number = 0, _sb?: IScrollbackProvider): void {

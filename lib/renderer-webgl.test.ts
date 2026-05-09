@@ -77,6 +77,80 @@ describe('WebGL2Renderer', () => {
     });
   });
 
+  describe('encodeCells', () => {
+    function fakeCell(overrides: Partial<any> = {}) {
+      return {
+        codepoint: 0x41, // 'A'
+        width: 1,
+        flags: 0,
+        fg_r: 200, fg_g: 200, fg_b: 200,
+        bg_r: 30, bg_g: 30, bg_b: 30,
+        fgIsDefault: false,
+        bgIsDefault: false,
+        hyperlink_id: 0,
+        grapheme_len: 0,
+        ...overrides,
+      };
+    }
+
+    test('empty cells get FLAG_USE_THEME_FG | FLAG_USE_THEME_BG', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(2, 1);
+      const buf = {
+        getLine: () => null,
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 2, rows: 1 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      const arr = (r as any).encodeCells(buf, 0);
+      // CELL_U32S = 8; flags is index 4 within each cell.
+      // Each empty cell flags = (USE_THEME_FG | USE_THEME_BG) = (1<<12) | (1<<13) = 0x3000
+      expect(arr[4]).toBe(0x3000);
+      expect(arr[12]).toBe(0x3000);
+    });
+
+    test('cell with explicit fg/bg packs colors little-endian', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(1, 1);
+      const cell = fakeCell({ fg_r: 0xab, fg_g: 0xcd, fg_b: 0xef, bg_r: 0x12, bg_g: 0x34, bg_b: 0x56 });
+      const buf = {
+        getLine: () => [cell],
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 1, rows: 1 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      const arr = (r as any).encodeCells(buf, 0);
+      // fg = 0xab | (0xcd << 8) | (0xef << 16) = 0xefcdab
+      expect(arr[0]).toBe(0xefcdab);
+      // bg = 0x12 | (0x34 << 8) | (0x56 << 16) = 0x563412
+      expect(arr[1]).toBe(0x563412);
+    });
+
+    test('cursor cell receives FLAG_IS_CURSOR_CELL when block-style cursor visible', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'block' });
+      r.resize(2, 1);
+      // Force cursor blink to "visible" deterministically (setEnabled(false) sets visible=true).
+      (r as any).cursorBlink_.setEnabled(false);
+      const cell = fakeCell();
+      const buf = {
+        getLine: () => [cell, cell],
+        getCursor: () => ({ x: 1, y: 0, visible: true }),
+        getDimensions: () => ({ cols: 2, rows: 1 }),
+        isRowDirty: () => false,
+        clearDirty: () => {},
+      };
+      const arr = (r as any).encodeCells(buf, 0);
+      const FLAG_IS_CURSOR_CELL = 1 << 14;
+      expect((arr[4] & FLAG_IS_CURSOR_CELL) !== 0).toBe(false); // cell 0
+      expect((arr[12] & FLAG_IS_CURSOR_CELL) !== 0).toBe(true); // cell 1 (cursor)
+    });
+  });
+
   describe('GLGlyphAtlas', () => {
     test('packs glyphs left-to-right, then wraps to next shelf row', async () => {
       const { GLGlyphAtlas } = await import('./renderer-webgl');
