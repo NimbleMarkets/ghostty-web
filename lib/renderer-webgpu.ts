@@ -26,7 +26,6 @@ import type {
   Renderer,
   RendererOptions,
 } from './renderer-types';
-import { KittyImageFormat } from './types';
 import {
   CELL_BYTES,
   CELL_U32S,
@@ -37,6 +36,7 @@ import {
   GlyphAtlasBase,
   encodeCells as coreEncodeCells,
   type AtlasSlot,
+  KittyTextureCacheBase,
 } from './renderer-core';
 import type { GridUBOState } from './renderer-core';
 
@@ -437,15 +437,33 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
 // GlyphAtlas
 // ---------------------------------------------------------------------------
 
-type KittyTextureEntry = {
-  texture: GPUTexture;
-  view: GPUTextureView;
-  width: number;
-  height: number;
-  format: number; // KittyImageFormat enum value
-  dataPtr: number;
-  dataLen: number;
-};
+class WebGPUKittyTextureCache extends KittyTextureCacheBase<GPUTexture> {
+  constructor(private device: GPUDevice) {
+    super();
+  }
+  protected createTexture(width: number, height: number): GPUTexture | null {
+    return this.device.createTexture({
+      size: { width, height },
+      format: 'rgba8unorm',
+      usage:
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.RENDER_ATTACHMENT,
+      label: 'kittyImg',
+    });
+  }
+  protected uploadFull(handle: GPUTexture, rgba: Uint8Array, width: number, height: number): void {
+    this.device.queue.writeTexture(
+      { texture: handle },
+      rgba.buffer,
+      { bytesPerRow: width * 4, rowsPerImage: height },
+      { width, height }
+    );
+  }
+  protected destroyTexture(handle: GPUTexture): void {
+    handle.destroy();
+  }
+}
 
 class GlyphAtlas extends GlyphAtlasBase {
   private device: GPUDevice;
@@ -542,7 +560,7 @@ export class WebGPURenderer implements Renderer {
   private cursorBindGroup?: GPUBindGroup;
 
   // Kitty pipeline
-  private kittyTextures = new Map<number, KittyTextureEntry>();
+  private kittyTextures!: WebGPUKittyTextureCache;
   private kittySampler?: GPUSampler;
   private kittyPipeline?: GPURenderPipeline;
   private kittyBindGroupLayout?: GPUBindGroupLayout;
@@ -566,6 +584,7 @@ export class WebGPURenderer implements Renderer {
   private constructor(canvas: HTMLCanvasElement, device: GPUDevice, opts: RendererOptions) {
     this.canvas = canvas;
     this.device = device;
+    this.kittyTextures = new WebGPUKittyTextureCache(device);
     this.fontSize = opts.fontSize ?? 15;
     this.fontFamily = opts.fontFamily ?? 'monospace';
     this.cursorStyle = opts.cursorStyle ?? 'block';
@@ -821,91 +840,6 @@ export class WebGPURenderer implements Renderer {
     }
   }
 
-  private getOrUploadKittyTexture(
-    graphics: number,
-    imageId: number,
-    buffer: IRenderable
-  ): KittyTextureEntry | null {
-    const pixels = buffer.getKittyImagePixels?.(graphics, imageId);
-    if (!pixels) return this.kittyTextures.get(imageId) ?? null;
-
-    const cached = this.kittyTextures.get(imageId);
-    const sigMatches =
-      cached &&
-      cached.width === pixels.width &&
-      cached.height === pixels.height &&
-      cached.format === pixels.format &&
-      cached.dataPtr === pixels.data.byteOffset &&
-      cached.dataLen === pixels.data.length;
-    if (sigMatches) return cached;
-
-    if (cached) cached.texture.destroy();
-
-    const { width, height, format, data } = pixels;
-    if (width === 0 || height === 0) return null;
-    const rgba = new Uint8Array(width * height * 4);
-    switch (format) {
-      case KittyImageFormat.RGBA:
-        rgba.set(data);
-        break;
-      case KittyImageFormat.RGB:
-        for (let i = 0, o = 0; i < data.length; i += 3, o += 4) {
-          rgba[o] = data[i]!;
-          rgba[o + 1] = data[i + 1]!;
-          rgba[o + 2] = data[i + 2]!;
-          rgba[o + 3] = 255;
-        }
-        break;
-      case KittyImageFormat.GRAY:
-        for (let i = 0, o = 0; i < data.length; i++, o += 4) {
-          const v = data[i]!;
-          rgba[o] = v;
-          rgba[o + 1] = v;
-          rgba[o + 2] = v;
-          rgba[o + 3] = 255;
-        }
-        break;
-      case KittyImageFormat.GRAY_ALPHA:
-        for (let i = 0, o = 0; i < data.length; i += 2, o += 4) {
-          const v = data[i]!;
-          rgba[o] = v;
-          rgba[o + 1] = v;
-          rgba[o + 2] = v;
-          rgba[o + 3] = data[i + 1]!;
-        }
-        break;
-      default:
-        return null; // PNG (should be pre-decoded) / unknown
-    }
-
-    const texture = this.device.createTexture({
-      size: { width, height },
-      format: 'rgba8unorm',
-      usage:
-        GPUTextureUsage.TEXTURE_BINDING |
-        GPUTextureUsage.COPY_DST |
-        GPUTextureUsage.RENDER_ATTACHMENT,
-      label: `kittyImg#${imageId}`,
-    });
-    this.device.queue.writeTexture(
-      { texture },
-      rgba.buffer,
-      { bytesPerRow: width * 4, rowsPerImage: height },
-      { width, height }
-    );
-    const entry: KittyTextureEntry = {
-      texture,
-      view: texture.createView(),
-      width,
-      height,
-      format,
-      dataPtr: pixels.data.byteOffset,
-      dataLen: pixels.data.length,
-    };
-    this.kittyTextures.set(imageId, entry);
-    return entry;
-  }
-
   private ensureKittyRingSize(n: number): void {
     while (this.kittyParamsRing.length < n) {
       const buf = this.device.createBuffer({
@@ -1003,8 +937,16 @@ export class WebGPURenderer implements Renderer {
     if (graphics2 !== null) {
       for (let s = 0; s < usedKittyImageIds.length; s++) {
         const id = usedKittyImageIds[s]!;
-        const tex = this.getOrUploadKittyTexture(graphics2, id, buffer);
-        if (tex) frameKittyViews[s] = tex.view;
+        const pixels = buffer.getKittyImagePixels?.(graphics2, id);
+        let view: GPUTextureView | null = null;
+        if (pixels) {
+          const tex = this.kittyTextures.getOrUpload(id, pixels);
+          if (tex) view = tex.createView();
+        } else {
+          const cached = this.kittyTextures.get(id);
+          if (cached) view = cached.createView();
+        }
+        if (view) frameKittyViews[s] = view;
       }
     }
 
@@ -1041,7 +983,9 @@ export class WebGPURenderer implements Renderer {
         const cssH = this.rows * this.metrics.height;
         for (const p of buffer.iterPlacements(graphics, true)) {
           if (p.isVirtual) continue;
-          const tex = this.getOrUploadKittyTexture(graphics, p.imageId, buffer);
+          const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+          if (!pixels) continue;
+          const tex = this.kittyTextures.getOrUpload(p.imageId, pixels);
           if (!tex) continue;
           const params = new Float32Array(16);
           params[0] = p.sourceX;
@@ -1052,11 +996,11 @@ export class WebGPURenderer implements Renderer {
           params[5] = p.viewportRow * this.metrics.height;
           params[6] = p.pixelWidth;
           params[7] = p.pixelHeight;
-          params[8] = tex.width;
-          params[9] = tex.height;
+          params[8] = pixels.width;
+          params[9] = pixels.height;
           params[10] = cssW;
           params[11] = cssH;
-          directPlacements.push({ params, view: tex.view });
+          directPlacements.push({ params, view: tex.createView() });
         }
       }
     }
