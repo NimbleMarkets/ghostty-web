@@ -207,17 +207,34 @@ describe('KittyAtlasBase', () => {
 
   test('overflow triggers clearAndReset and packs at (0,0) again', () => {
     const atlas = new StubAtlas(128); // small atlas
+    // 4 64x64 images fill the atlas exactly: (0,0) (64,0) (0,64) (64,64).
     atlas.addOrUpdate(1, pixels(64, 64));
     atlas.addOrUpdate(2, pixels(64, 64));
-    // shelf 1 full; next add wraps to second shelf at v=64
     atlas.addOrUpdate(3, pixels(64, 64));
-    // now image 4 at 64x64 won't fit (would land at v=128, overflow)
-    const e4 = atlas.addOrUpdate(4, pixels(64, 64));
-    // After clearAndReset, image 4 packs at (0,0). Cache for 1/2/3 cleared.
-    expect(e4).not.toBeNull();
-    expect(e4!.slot).toEqual({ u: 0, v: 0, w: 64, h: 64 });
+    atlas.addOrUpdate(4, pixels(64, 64));
+    // 5th 64x64 image overflows; clearAndReset fires and packs at (0,0).
+    const e5 = atlas.addOrUpdate(5, pixels(64, 64));
+    expect(e5).not.toBeNull();
+    expect(e5!.slot).toEqual({ u: 0, v: 0, w: 64, h: 64 });
+    // Cache for 1-4 cleared.
     expect(atlas.getEntry(1)).toBeUndefined();
-    expect(atlas.getEntry(4)).toBe(e4!);
+    expect(atlas.getEntry(4)).toBeUndefined();
+    expect(atlas.getEntry(5)).toBe(e5!);
+  });
+
+  test('mixed-height images do not pack out-of-bounds after wrap', () => {
+    const atlas = new StubAtlas(128);
+    // Tall image first sets rowHeight = 100.
+    const tall = atlas.addOrUpdate(1, pixels(100, 100));
+    expect(tall!.slot).toEqual({ u: 0, v: 0, w: 100, h: 100 });
+    // Next image at 64×64 wraps horizontally (100+64 > 128) and lands on
+    // shelf row 2 at v=100. With the buggy pre-wrap height check, this
+    // would have packed at v=100 with h=64 → bottom edge at 164 > 128.
+    // Correct algorithm: post-wrap check (100 + 64 > 128) → null → retry.
+    const wrap = atlas.addOrUpdate(2, pixels(64, 64));
+    expect(wrap).not.toBeNull();
+    // After clearAndReset, the 64x64 image packs at (0, 0).
+    expect(wrap!.slot).toEqual({ u: 0, v: 0, w: 64, h: 64 });
   });
 
   test('image larger than atlas returns null after retry', () => {

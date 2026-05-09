@@ -773,15 +773,12 @@ export abstract class KittyAtlasBase {
 
   private tryPack(w: number, h: number): AtlasSlot | null {
     if (w > this.size || h > this.size) return null;
-    // Check vertical overflow at current row position first. If the item won't
-    // fit vertically at the current nextY (even before any horizontal wrap),
-    // fail immediately. This lets the caller detect atlas-full before wrapping.
-    if (this.nextY + h >= this.size) return null;
     if (this.nextX + w > this.size) {
       this.nextX = 0;
       this.nextY += this.rowHeight;
       this.rowHeight = 0;
     }
+    if (this.nextY + h > this.size) return null;
     const slot: AtlasSlot = { u: this.nextX, v: this.nextY, w, h };
     this.nextX += w;
     if (h > this.rowHeight) this.rowHeight = h;
