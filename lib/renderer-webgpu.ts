@@ -1149,8 +1149,10 @@ export class WebGPURenderer implements Renderer {
     this.kittyTextures.destroyAll();
     for (const buf of this.kittyParamsRing) buf.destroy();
     this.kittyParamsRing.length = 0;
-    // device.destroy() left to caller; we don't own it. Non-kitty resources
-    // (paletteUBO, gridUBO, atlas, cellBuffer, pipelines, etc.) are owned by
-    // the device and reclaimed when it is destroyed.
+    this.kittyAtlas?.destroy();
+    if (this.kittyAtlasUBO) this.kittyAtlasUBO.destroy();
+    // device.destroy() left to caller; we don't own it. Other resources
+    // (paletteUBO, gridUBO, glyph atlas, cellBuffer, pipelines, etc.) are
+    // owned by the device and reclaimed when it is destroyed.
   }
 }
