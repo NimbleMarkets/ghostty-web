@@ -471,7 +471,10 @@ export class Terminal implements ITerminalCore {
     } catch (error) {
       this.isOpen = false;
       this.cleanupComponents();
-      throw new Error(`Failed to open terminal: ${error}`);
+      throw new Error(
+        `Failed to open terminal: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
+      );
     }
   }
 
@@ -671,7 +674,10 @@ export class Terminal implements ITerminalCore {
       // Clean up on error
       this.isOpen = false;
       this.cleanupComponents();
-      throw new Error(`Failed to open terminal: ${error}`);
+      throw new Error(
+        `Failed to open terminal: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
+      );
     }
   }
 
