@@ -125,5 +125,25 @@ describe('WebGL2Renderer', () => {
       const after = gl.calls.filter((c: any) => c.method === 'texSubImage2D').length;
       expect(after).toBeGreaterThan(before);
     });
+
+    test('grow() clears cache and resets packing cursor', async () => {
+      const { GLGlyphAtlas } = await import('./renderer-webgl');
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl2') as any;
+      // Use cellW small enough that we can fill the atlas in a single test.
+      const atlas = new GLGlyphAtlas(gl, 10, 20, 15, 'monospace');
+      const initialSize = atlas.atlasSize;
+      // Place a glyph and remember its slot.
+      const before = atlas.getOrRaster('A', 0, 16, 1);
+      // Force grow() by directly invoking it (private but accessible at runtime).
+      (atlas as any).grow();
+      // Same key after grow should NOT return the cached slot — it should
+      // re-rasterize and place at (0, 0) on the new (empty) texture.
+      const after = atlas.getOrRaster('A', 0, 16, 1);
+      expect(atlas.atlasSize).toBe(initialSize * 2);
+      expect(after).not.toBe(before); // cache cleared → new object
+      expect(after.u).toBe(0);
+      expect(after.v).toBe(0);
+    });
   });
 });

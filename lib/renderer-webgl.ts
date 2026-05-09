@@ -151,9 +151,15 @@ export class GLGlyphAtlas {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    // We do not preserve old contents on grow — the cache is going to
-    // re-rasterize misses on demand. (Same trade-off as the WebGPU path's
-    // copyTextureToTexture, just simpler.)
+    // We do not preserve old contents on grow. The WebGPU path uses
+    // copyTextureToTexture; we instead clear the cache + packing cursor
+    // and let getOrRaster re-rasterize each glyph on next miss. Simpler;
+    // callers see the same logical behavior at the cost of one cycle of
+    // re-rasterization right after a grow event.
+    this.cache.clear();
+    this.nextX = 0;
+    this.nextY = 0;
+    this.rowHeight = 0;
     gl.deleteTexture?.(this.texture);
     this.texture = newTex;
     this.size = newSize;
