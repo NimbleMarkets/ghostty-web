@@ -154,7 +154,7 @@
 
       function parseBackend() {
         const q = new URLSearchParams(window.location.search).get('renderer');
-        if (q === 'webgpu' || q === 'canvas2d' || q === 'auto') return q;
+        if (q === 'webgpu' || q === 'webgl' || q === 'canvas2d' || q === 'auto') return q;
         return 'auto';
       }
 
@@ -213,7 +213,7 @@
           if (e.altKey && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
             e.preventDefault();
             const cur = term.renderer ? term.renderer.backend : null;
-            const next = cur === 'webgpu' ? 'canvas2d' : 'webgpu';
+            const next = cur === 'webgpu' ? 'webgl' : cur === 'webgl' ? 'canvas2d' : 'webgpu';
             const url = new URL(window.location.href);
             url.searchParams.set('renderer', next);
             window.location.href = url.toString();
