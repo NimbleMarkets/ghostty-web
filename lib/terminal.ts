@@ -597,6 +597,25 @@ export class Terminal implements ITerminalCore {
       // state changes (cursor blink) wake the loop on demand.
       this.renderer!.setOnRequestRender(() => this.requestRender());
 
+      // Register the appropriate loss handler for whichever renderer is
+      // currently active.  Called both at open() time and after every
+      // successful fallback swap so the cascade (WebGPU → WebGL → Canvas2D)
+      // is re-armed after each hop.
+      const registerLossHandler = (): void => {
+        if (!this.renderer) return;
+        if (this.renderer.backend === 'webgpu') {
+          (this.renderer as WebGPURenderer).onDeviceLost(async (info) => {
+            // Try WebGL first; swapRenderer will fall through to Canvas2D if WebGL also fails.
+            await swapRenderer('webgl', `GPU device lost (${info.reason})`);
+          });
+        } else if (this.renderer.backend === 'webgl') {
+          (this.renderer as WebGL2Renderer).onContextLost(async (info) => {
+            await swapRenderer('canvas2d', `WebGL context lost (${info.reason})`);
+          });
+        }
+        // canvas2d has no loss handler.
+      };
+
       // Rebind the renderer-dependent state after a fallback. Used by both
       // WebGPU device-lost and WebGL context-lost handlers.
       const swapRenderer = async (target: 'webgl' | 'canvas2d', reason: string): Promise<void> => {
@@ -629,18 +648,10 @@ export class Terminal implements ITerminalCore {
         }
         this.renderer.invalidate();
         this.requestRender();
+        registerLossHandler();
       };
 
-      if (this.renderer && this.renderer.backend === 'webgpu') {
-        (this.renderer as WebGPURenderer).onDeviceLost(async (info) => {
-          // Try WebGL first; swapRenderer will fall through to Canvas2D if WebGL also fails.
-          await swapRenderer('webgl', `GPU device lost (${info.reason})`);
-        });
-      } else if (this.renderer && this.renderer.backend === 'webgl') {
-        (this.renderer as WebGL2Renderer).onContextLost(async (info) => {
-          await swapRenderer('canvas2d', `WebGL context lost (${info.reason})`);
-        });
-      }
+      registerLossHandler();
 
       // Mark as open NOW (before renderTick/focus, both of which gate on
       // isOpen) — at this point all renderer-dependent components are wired,
