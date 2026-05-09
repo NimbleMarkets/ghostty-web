@@ -8,7 +8,11 @@
  */
 
 import type { ITheme } from './interfaces';
-import type { FontMetrics } from './renderer-types';
+import type { FontMetrics, IRenderable, IScrollbackProvider, LinkRange } from './renderer-types';
+import type { SelectionManager } from './selection-manager';
+import { CellFlags } from './types';
+import type { KittyPlacementInfo } from './types';
+import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
 
 // ---------------------------------------------------------------------------
 // Cell encoding
@@ -321,4 +325,219 @@ export abstract class GlyphAtlasBase {
   get atlasSize(): number {
     return this.size;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cell encoding (CPU walk → packed Uint32Array)
+// ---------------------------------------------------------------------------
+
+export interface EncodeCellsContext {
+  metrics: FontMetrics;
+  selectionManager: SelectionManager | undefined;
+  hoveredHyperlinkId: number;
+  hoveredLinkRange: LinkRange | null;
+  cursorStyle: 'block' | 'underline' | 'bar';
+  cursorBlinkVisible: boolean;
+  atlas: GlyphAtlasBase | undefined;
+  /** When true, walk kitty placements and set FLAG_IS_KITTY_PLACEHOLDER. */
+  kittyEnabled: boolean;
+  /** When true, set FLAG_IS_BLOCK_ELEMENT for U+2580..U+259F and skip atlas. */
+  blockElementShaderEnabled: boolean;
+}
+
+/**
+ * Walk a renderable buffer and encode the cell grid into the packed
+ * Uint32Array consumed by the GPU shaders. The array layout is 8 u32s
+ * per cell (CELL_U32S); see the WGSL/GLSL shader sources for the field
+ * meanings.
+ *
+ * Side effects:
+ *   - Mutates `cellArray` in place
+ *   - Calls `ctx.atlas?.getOrRaster(...)` for each visible glyph (raster
+ *     misses upload to the atlas texture)
+ *
+ * Returns `usedKittyImageIds` — the (max 16) kitty image ids whose virtual
+ * placements appeared in the encoded grid. The caller binds the
+ * corresponding kitty textures for the next frame's draw. Empty when
+ * `ctx.kittyEnabled` is false.
+ */
+export function encodeCells(
+  cellArray: Uint32Array,
+  buffer: IRenderable,
+  viewportY: number,
+  sb: IScrollbackProvider | undefined,
+  ctx: EncodeCellsContext
+): { usedKittyImageIds: number[] } {
+  const arr = cellArray;
+  arr.fill(0);
+  const dims = buffer.getDimensions();
+  const sbLen = sb?.getScrollbackLength() ?? 0;
+  const cursor = buffer.getCursor();
+  const sel = ctx.selectionManager?.getSelectionCoords() ?? null;
+  const inSel = (x: number, y: number): boolean => {
+    if (!sel) return false;
+    if (sel.startRow === sel.endRow) {
+      return y === sel.startRow && x >= sel.startCol && x <= sel.endCol;
+    }
+    if (y === sel.startRow) return x >= sel.startCol;
+    if (y === sel.endRow) return x <= sel.endCol;
+    return y > sel.startRow && y < sel.endRow;
+  };
+
+  // Build virtual kitty placement index (only when kitty is enabled).
+  const kittyVirtualPlacements = new Map<number, KittyPlacementInfo>();
+  const usedKittyImageIds: number[] = [];
+  const usedKittyImageIndex = new Map<number, number>();
+
+  if (ctx.kittyEnabled && buffer.getKittyGraphics && buffer.iterPlacements) {
+    const graphics = buffer.getKittyGraphics();
+    if (graphics !== null) {
+      for (const p of buffer.iterPlacements(graphics, false)) {
+        if (p.isVirtual) {
+          kittyVirtualPlacements.set(p.imageId, p);
+          if (!usedKittyImageIndex.has(p.imageId) && usedKittyImageIds.length < 16) {
+            usedKittyImageIndex.set(p.imageId, usedKittyImageIds.length);
+            usedKittyImageIds.push(p.imageId);
+          }
+        }
+      }
+    }
+  }
+
+  const defaultEmptyFlags = (FLAG_USE_THEME_FG | FLAG_USE_THEME_BG) >>> 0;
+  const cellW = ctx.metrics.width;
+  const cellH = ctx.metrics.height;
+  for (let y = 0; y < dims.rows; y++) {
+    let line: ReturnType<IRenderable['getLine']> = null;
+    if (viewportY > 0) {
+      if (y < viewportY && sb) {
+        const off = sbLen - Math.floor(viewportY) + y;
+        line = sb.getScrollbackLine(off);
+      } else {
+        line = buffer.getLine(y - Math.floor(viewportY));
+      }
+    } else {
+      line = buffer.getLine(y);
+    }
+    let pendingRightHalf: {
+      slotU: number;
+      slotV: number;
+      slotH: number;
+      fgPacked: number;
+      bgPacked: number;
+      flags: number;
+    } | null = null;
+    for (let x = 0; x < dims.cols; x++) {
+      const i = (y * dims.cols + x) * CELL_U32S;
+      const c = line && x < line.length ? line[x] : null;
+      if (!c || c.width === 0) {
+        if (pendingRightHalf) {
+          arr[i + 0] = pendingRightHalf.fgPacked;
+          arr[i + 1] = pendingRightHalf.bgPacked;
+          arr[i + 2] =
+            ((pendingRightHalf.slotU + cellW) & 0xffff) | ((pendingRightHalf.slotV & 0xffff) << 16);
+          arr[i + 3] = (cellW & 0xffff) | ((pendingRightHalf.slotH & 0xffff) << 16);
+          arr[i + 4] = pendingRightHalf.flags;
+          pendingRightHalf = null;
+        } else {
+          arr[i + 4] = defaultEmptyFlags;
+        }
+        continue;
+      }
+      pendingRightHalf = null;
+      let flags = 0;
+      if (c.flags & CellFlags.BOLD) flags |= FLAG_BOLD;
+      if (c.flags & CellFlags.ITALIC) flags |= FLAG_ITALIC;
+      if (c.flags & CellFlags.UNDERLINE) flags |= FLAG_UNDERLINE;
+      if (c.flags & CellFlags.STRIKETHROUGH) flags |= FLAG_STRIKETHROUGH;
+      if (c.flags & CellFlags.INVERSE) flags |= FLAG_INVERSE;
+      if (c.flags & CellFlags.FAINT) flags |= FLAG_FAINT;
+      if (c.flags & CellFlags.INVISIBLE) flags |= FLAG_INVISIBLE;
+      if (c.fgIsDefault) flags |= FLAG_USE_THEME_FG;
+      if (c.bgIsDefault) flags |= FLAG_USE_THEME_BG;
+      if (inSel(x, y)) flags |= FLAG_IS_SELECTED;
+      if (c.hyperlink_id !== 0 && c.hyperlink_id === ctx.hoveredHyperlinkId) {
+        flags |= FLAG_IS_HYPERLINK_HOVERED;
+      }
+      if (ctx.hoveredLinkRange) {
+        const r = ctx.hoveredLinkRange;
+        const inRange =
+          (y === r.startY && x >= r.startX && (y < r.endY || x <= r.endX)) ||
+          (y > r.startY && y < r.endY) ||
+          (y === r.endY && x <= r.endX && (y > r.startY || x >= r.startX));
+        if (inRange) flags |= FLAG_IS_LINK_RANGE_HOVERED;
+      }
+      const cp = c.codepoint || 0;
+      if (ctx.kittyEnabled && cp === KITTY_PLACEHOLDER) {
+        const codepoints = buffer.getGrapheme?.(y, x);
+        if (codepoints && codepoints.length >= 3) {
+          const rowD = diacriticToInt(codepoints[1]!);
+          const colD = diacriticToInt(codepoints[2]!);
+          if (rowD >= 0 && colD >= 0) {
+            const fgRgb = (c.fg_r << 16) | (c.fg_g << 8) | c.fg_b;
+            let imageId = fgRgb;
+            if (codepoints.length >= 4) {
+              const msb = diacriticToInt(codepoints[3]!);
+              if (msb >= 0) imageId = (msb << 24) | fgRgb;
+            }
+            const placement = kittyVirtualPlacements.get(imageId);
+            const idx = usedKittyImageIndex.get(imageId);
+            if (placement && idx !== undefined) {
+              flags |= FLAG_IS_KITTY_PLACEHOLDER;
+              arr[i + 5] = (colD & 0xffff) | ((rowD & 0xffff) << 16);
+              arr[i + 6] = idx;
+              arr[i + 7] = (placement.gridCols & 0xffff) | ((placement.gridRows & 0xffff) << 16);
+            }
+          }
+        }
+      }
+      if (ctx.blockElementShaderEnabled && cp >= 0x2580 && cp <= 0x259f && c.grapheme_len === 0) {
+        flags |= FLAG_IS_BLOCK_ELEMENT;
+        arr[i + 5] = cp - 0x2580;
+      }
+      // Pack colors as little-endian rgba8.
+      arr[i + 0] = c.fg_r | (c.fg_g << 8) | (c.fg_b << 16);
+      arr[i + 1] = c.bg_r | (c.bg_g << 8) | (c.bg_b << 16);
+      // Skip atlas lookup for invisible / kitty-placeholder / block-element cells.
+      const skipAtlas =
+        (flags & (FLAG_INVISIBLE | FLAG_IS_KITTY_PLACEHOLDER | FLAG_IS_BLOCK_ELEMENT)) !== 0;
+      if (!skipAtlas && ctx.atlas) {
+        const grapheme =
+          c.grapheme_len > 0 && buffer.getGraphemeString
+            ? buffer.getGraphemeString(y, x)
+            : String.fromCodePoint(c.codepoint || 32);
+        const styleBits =
+          (flags & FLAG_BOLD ? 1 : 0) |
+          (flags & FLAG_ITALIC ? 2 : 0) |
+          (flags & FLAG_FAINT ? 4 : 0);
+        const widthInCells = c.width === 2 ? 2 : 1;
+        const slot = ctx.atlas.getOrRaster(grapheme, styleBits, ctx.metrics.baseline, widthInCells);
+        arr[i + 2] = (slot.u & 0xffff) | ((slot.v & 0xffff) << 16);
+        arr[i + 3] =
+          widthInCells === 2
+            ? (cellW & 0xffff) | ((cellH & 0xffff) << 16)
+            : (slot.w & 0xffff) | ((slot.h & 0xffff) << 16);
+        if (widthInCells === 2) {
+          pendingRightHalf = {
+            slotU: slot.u,
+            slotV: slot.v,
+            slotH: slot.h,
+            fgPacked: arr[i + 0]!,
+            bgPacked: arr[i + 1]!,
+            flags: 0,
+          };
+        }
+      }
+      arr[i + 4] = flags >>> 0;
+      if (pendingRightHalf) pendingRightHalf.flags = flags >>> 0;
+    }
+  }
+
+  // Cursor cell flag (block-style only — non-block cursors drawn as separate
+  // quad in the cursor pipeline).
+  if (cursor.visible && ctx.cursorBlinkVisible && ctx.cursorStyle === 'block') {
+    const ci = (cursor.y * dims.cols + cursor.x) * CELL_U32S;
+    arr[ci + 4] = (arr[ci + 4]! | FLAG_IS_CURSOR_CELL) >>> 0;
+  }
+  return { usedKittyImageIds };
 }
