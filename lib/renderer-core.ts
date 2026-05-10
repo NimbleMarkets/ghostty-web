@@ -516,15 +516,21 @@ export function encodeCells(
       }
       const cp = c.codepoint || 0;
       if (ctx.kittyEnabled && cp === KITTY_PLACEHOLDER) {
-        const codepoints = buffer.getGrapheme?.(y, x);
-        if (codepoints && codepoints.length >= 3) {
-          const rowD = diacriticToInt(codepoints[1]!);
-          const colD = diacriticToInt(codepoints[2]!);
+        // Combining diacritics ride on the cell as `c.grapheme` (extras
+        // beyond the base codepoint), populated by GhosttyTerminal.getViewport
+        // during the existing per-cell walk. Reading them here avoids the
+        // O(row) buffer.getGrapheme(y, x) crossing — for placeholder-heavy
+        // viewports that single change drops per-frame WASM crossings from
+        // tens of thousands to ~zero.
+        const extras = c.grapheme;
+        if (extras && extras.length >= 2) {
+          const rowD = diacriticToInt(extras[0]!);
+          const colD = diacriticToInt(extras[1]!);
           if (rowD >= 0 && colD >= 0) {
             const fgRgb = (c.fg_r << 16) | (c.fg_g << 8) | c.fg_b;
             let imageId = fgRgb;
-            if (codepoints.length >= 4) {
-              const msb = diacriticToInt(codepoints[3]!);
+            if (extras.length >= 3) {
+              const msb = diacriticToInt(extras[2]!);
               if (msb >= 0) imageId = (msb << 24) | fgRgb;
             }
             const placement = kittyVirtualPlacements.get(imageId);

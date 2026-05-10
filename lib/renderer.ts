@@ -1107,20 +1107,24 @@ export class CanvasRenderer implements Renderer {
   private renderPlaceholderCell(cell: GhosttyCell, x: number, y: number): boolean {
     const buffer = this.currentRenderBuffer;
     const graphics = this.currentKittyGraphics;
-    if (!buffer || graphics === null || !buffer.getGrapheme) return false;
+    if (!buffer || graphics === null) return false;
 
     // Image id from fg color (low 24 bits) + optional 3rd diacritic
-    // (high byte). The base codepoint at index 0 is U+10EEEE itself;
-    // [1]=row, [2]=col, [3]=image_id_msb (optional).
-    const codepoints = buffer.getGrapheme(y, x);
-    if (!codepoints || codepoints.length < 3) return false;
-    const rowD = diacriticToInt(codepoints[1]!);
-    const colD = diacriticToInt(codepoints[2]!);
+    // (high byte). The base codepoint U+10EEEE is in `cell.codepoint`;
+    // `cell.grapheme` carries the *extras* — [0]=row, [1]=col,
+    // [2]=image_id_msb (optional). Populated by GhosttyTerminal.getViewport
+    // so we don't pay a per-cell WASM crossing here.
+    const extras = cell.grapheme;
+    if (!extras || extras.length < 2) return false;
+    const rowD = diacriticToInt(extras[0]!);
+    const colD = diacriticToInt(extras[1]!);
     if (rowD < 0 || colD < 0) return false;
+    void x;
+    void y;
     const fgRgb = (cell.fg_r << 16) | (cell.fg_g << 8) | cell.fg_b;
     let imageId = fgRgb;
-    if (codepoints.length >= 4) {
-      const msb = diacriticToInt(codepoints[3]!);
+    if (extras.length >= 3) {
+      const msb = diacriticToInt(extras[2]!);
       if (msb >= 0) imageId = (msb << 24) | fgRgb;
     }
 

@@ -1169,6 +1169,15 @@ export class GhosttyTerminal {
     // enum is a 4-byte int.
     const cellRawPtr = this.exports.ghostty_wasm_alloc_u8_array(8);
     const widePtr = this.exports.ghostty_wasm_alloc_u8_array(4);
+    // Scratch for GRAPHEMES_BUF — sized large enough that any realistic
+    // cluster fits in this single allocation and we don't pay alloc/free
+    // per multi-codepoint cell. 32 codepoints covers kitty placeholders
+    // (3-4), the longest standard ZWJ family emoji (~7), and Indic
+    // consonant clusters with comfortable headroom; cells beyond that
+    // fall back to a dynamic alloc below.
+    const GRAPHEME_SCRATCH_CODEPOINTS = 32;
+    const GRAPHEME_SCRATCH_BYTES = GRAPHEME_SCRATCH_CODEPOINTS * 4;
+    const graphemeBufPtr = this.exports.ghostty_wasm_alloc_u8_array(GRAPHEME_SCRATCH_BYTES);
     // Populate the row meta caches as a side effect — saves a redundant
     // iterator walk if the renderer also calls isRowDirty() / isRowWrapped()
     // on this snapshot.
@@ -1220,17 +1229,44 @@ export class GhosttyTerminal {
           cell.grapheme_len = graphemeLen > 0 ? graphemeLen - 1 : 0;
 
           if (graphemeLen > 0) {
-            // GRAPHEMES_BUF writes graphemeLen u32 codepoints. We only need
-            // the base codepoint here; multi-codepoint clusters go through
-            // getGrapheme() separately.
-            this.exports.ghostty_render_state_row_cells_get(
-              this.rowCells,
-              RowCellsData.GRAPHEMES_BUF,
-              u32Ptr
-            );
-            cell.codepoint = new DataView(this.memory.buffer).getUint32(u32Ptr, true);
+            // GRAPHEMES_BUF writes graphemeLen u32 codepoints. Read into the
+            // shared scratch when the cluster fits; fall back to a dedicated
+            // allocation for the rare jumbo cluster (graphemeLen > 32).
+            // Capturing all codepoints here lets coreEncodeCells /
+            // renderPlaceholderCell consume cell.grapheme directly instead of
+            // calling getGrapheme(y, x) per cell — that path re-walks the row
+            // iterator from row 0 and is O(row) per cell, which used to
+            // dominate the per-frame budget for kitty unicode placeholders.
+            let bufPtr = graphemeBufPtr;
+            let usedDynamic = false;
+            const wantBytes = graphemeLen * 4;
+            if (graphemeLen > GRAPHEME_SCRATCH_CODEPOINTS) {
+              bufPtr = this.exports.ghostty_wasm_alloc_u8_array(wantBytes);
+              usedDynamic = true;
+            }
+            try {
+              this.exports.ghostty_render_state_row_cells_get(
+                this.rowCells,
+                RowCellsData.GRAPHEMES_BUF,
+                bufPtr
+              );
+              const view = new DataView(this.memory.buffer);
+              cell.codepoint = view.getUint32(bufPtr, true);
+              if (graphemeLen > 1) {
+                const extras = new Array<number>(graphemeLen - 1);
+                for (let g = 1; g < graphemeLen; g++) {
+                  extras[g - 1] = view.getUint32(bufPtr + g * 4, true);
+                }
+                cell.grapheme = extras;
+              } else {
+                cell.grapheme = null;
+              }
+            } finally {
+              if (usedDynamic) this.exports.ghostty_wasm_free_u8_array(bufPtr, wantBytes);
+            }
           } else {
             cell.codepoint = 0;
+            cell.grapheme = null;
           }
 
           // Resolved fg/bg. Returns INVALID_VALUE (non-zero) when the cell
@@ -1340,6 +1376,7 @@ export class GhosttyTerminal {
       this.exports.ghostty_wasm_free_u8_array(stylePtr, STYLE_SIZE);
       this.exports.ghostty_wasm_free_u8_array(cellRawPtr, 8);
       this.exports.ghostty_wasm_free_u8_array(widePtr, 4);
+      this.exports.ghostty_wasm_free_u8_array(graphemeBufPtr, GRAPHEME_SCRATCH_BYTES);
     }
 
     this.rowDirtyCache = dirtyCache;
@@ -1377,6 +1414,7 @@ export class GhosttyTerminal {
       cell.width = 1;
       cell.hyperlink_id = 0;
       cell.grapheme_len = 0;
+      cell.grapheme = null;
     }
   }
 
@@ -1730,6 +1768,7 @@ export class GhosttyTerminal {
       width: 1,
       hyperlink_id: 0,
       grapheme_len: 0,
+      grapheme: null,
     };
   }
 
@@ -1927,6 +1966,7 @@ export class GhosttyTerminal {
           width: 1,
           hyperlink_id: 0,
           grapheme_len: 0,
+          grapheme: null,
         });
       }
     }

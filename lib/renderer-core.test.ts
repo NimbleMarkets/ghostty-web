@@ -1,10 +1,17 @@
 import { describe, expect, test } from 'bun:test';
+import { KITTY_PLACEHOLDER, ROWCOLUMN_DIACRITICS } from './kitty_diacritics';
 import {
   type AtlasSlot,
+  CELL_BYTES,
+  CELL_U32S,
+  FLAG_IS_KITTY_PLACEHOLDER,
   KittyAtlasBase,
   KittyTextureCacheBase,
+  encodeCells,
   kittyImageToRGBA,
 } from './renderer-core';
+import type { IRenderable } from './renderer-types';
+import type { GhosttyCell, KittyPlacementInfo } from './types';
 import { KittyImageFormat } from './types';
 
 describe('kittyImageToRGBA', () => {
@@ -59,6 +66,184 @@ describe('kittyImageToRGBA', () => {
       data: new Uint8Array(0),
     });
     expect(out).toBeNull();
+  });
+});
+
+describe('encodeCells: kitty placeholder grapheme cache', () => {
+  // Build a fresh GhosttyCell with safe defaults. Tests override fields they care about.
+  function makeCell(overrides: Partial<GhosttyCell> = {}): GhosttyCell {
+    return {
+      codepoint: 0,
+      fg_r: 0,
+      fg_g: 0,
+      fg_b: 0,
+      bg_r: 0,
+      bg_g: 0,
+      bg_b: 0,
+      fgIsDefault: true,
+      bgIsDefault: true,
+      flags: 0,
+      width: 1,
+      hyperlink_id: 0,
+      grapheme_len: 0,
+      grapheme: null,
+      ...overrides,
+    };
+  }
+
+  // Stub IRenderable that counts getGrapheme calls. The test asserts this
+  // counter stays at zero — encodeCells must read cell.grapheme directly.
+  type StubRenderableOpts = {
+    cols: number;
+    rows: number;
+    cells: GhosttyCell[];
+    placements: KittyPlacementInfo[];
+    graphicsHandle?: number;
+  };
+  function makeStubBuffer(opts: StubRenderableOpts): IRenderable & {
+    getGraphemeCalls: number;
+  } {
+    let getGraphemeCalls = 0;
+    const buffer: IRenderable & { getGraphemeCalls: number } = {
+      get getGraphemeCalls() {
+        return getGraphemeCalls;
+      },
+      getLine(y: number): GhosttyCell[] | null {
+        const start = y * opts.cols;
+        return opts.cells.slice(start, start + opts.cols);
+      },
+      getViewport(): GhosttyCell[] {
+        return opts.cells;
+      },
+      getCursor() {
+        return { x: 0, y: 0, visible: false };
+      },
+      getDimensions() {
+        return { cols: opts.cols, rows: opts.rows };
+      },
+      isRowDirty() {
+        return true;
+      },
+      clearDirty() {},
+      getKittyGraphics() {
+        return opts.graphicsHandle ?? 1;
+      },
+      iterPlacements(_g: number, _onlyVisible?: boolean) {
+        return opts.placements[Symbol.iterator]();
+      },
+      getKittyImagePixels() {
+        return null;
+      },
+      getGrapheme(_y: number, _x: number) {
+        getGraphemeCalls++;
+        return null;
+      },
+    };
+    return buffer;
+  }
+
+  test('reads grapheme from cell.grapheme without calling buffer.getGrapheme', () => {
+    const cols = 4;
+    const rows = 3;
+    // Place a kitty placeholder at row 2, col 1 — the row that previously
+    // forced getGrapheme to walk the row iterator from 0 to 2.
+    const cells: GhosttyCell[] = [];
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        if (y === 2 && x === 1) {
+          // image_id 0xAA, row diacritic index 5, col diacritic index 7.
+          cells.push(
+            makeCell({
+              codepoint: KITTY_PLACEHOLDER,
+              grapheme_len: 2,
+              grapheme: [ROWCOLUMN_DIACRITICS[5]!, ROWCOLUMN_DIACRITICS[7]!],
+              fg_r: 0,
+              fg_g: 0,
+              fg_b: 0xaa,
+              fgIsDefault: false,
+            })
+          );
+        } else {
+          cells.push(makeCell());
+        }
+      }
+    }
+
+    const placement: KittyPlacementInfo = {
+      imageId: 0xaa,
+      pixelWidth: 100,
+      pixelHeight: 100,
+      gridCols: 10,
+      gridRows: 10,
+      viewportCol: 0,
+      viewportRow: 0,
+      viewportVisible: false,
+      sourceX: 0,
+      sourceY: 0,
+      sourceWidth: 100,
+      sourceHeight: 100,
+      isVirtual: true,
+    };
+    const buffer = makeStubBuffer({ cols, rows, cells, placements: [placement] });
+    const cellArray = new Uint32Array(cols * rows * CELL_U32S);
+    const ctx = {
+      metrics: { width: 8, height: 16, baseline: 12 },
+      selectionManager: undefined,
+      hoveredHyperlinkId: 0,
+      hoveredLinkRange: null,
+      cursorStyle: 'block' as const,
+      cursorBlinkVisible: false,
+      atlas: undefined,
+      kittyEnabled: true,
+      blockElementShaderEnabled: false,
+      maxKittyImages: 256,
+    };
+
+    const result = encodeCells(cellArray, buffer, 0, undefined, ctx);
+
+    // Grapheme came from cell.grapheme, not from a WASM crossing.
+    expect(buffer.getGraphemeCalls).toBe(0);
+    // Placeholder cell got the placeholder flag set.
+    const placeholderIdx = (2 * cols + 1) * CELL_U32S;
+    expect(cellArray[placeholderIdx + 4]! & FLAG_IS_KITTY_PLACEHOLDER).toBeTruthy();
+    // colD/rowD are packed into u32 at offset +5.
+    expect(cellArray[placeholderIdx + 5]).toBe((7 & 0xffff) | ((5 & 0xffff) << 16));
+    // imageId 0xAA shows up in usedKittyImageIds (index 0 the first time).
+    expect(result.usedKittyImageIds).toEqual([0xaa]);
+  });
+
+  test('skips placeholder when cell.grapheme is missing or too short', () => {
+    const cols = 2;
+    const rows = 1;
+    // Placeholder cell with no grapheme array — should NOT be flagged and
+    // must still not call getGrapheme (the optimization is unconditional).
+    const cells: GhosttyCell[] = [
+      makeCell({ codepoint: KITTY_PLACEHOLDER, grapheme_len: 0, grapheme: null }),
+      makeCell(),
+    ];
+    const buffer = makeStubBuffer({ cols, rows, cells, placements: [] });
+    const cellArray = new Uint32Array(cols * rows * CELL_U32S);
+    const ctx = {
+      metrics: { width: 8, height: 16, baseline: 12 },
+      selectionManager: undefined,
+      hoveredHyperlinkId: 0,
+      hoveredLinkRange: null,
+      cursorStyle: 'block' as const,
+      cursorBlinkVisible: false,
+      atlas: undefined,
+      kittyEnabled: true,
+      blockElementShaderEnabled: false,
+    };
+
+    encodeCells(cellArray, buffer, 0, undefined, ctx);
+
+    expect(buffer.getGraphemeCalls).toBe(0);
+    expect(cellArray[0 * CELL_U32S + 4]! & FLAG_IS_KITTY_PLACEHOLDER).toBeFalsy();
+  });
+
+  // Confirm the test imports are wired — exercises CELL_BYTES so its import is used.
+  test('CELL_BYTES matches CELL_U32S * 4', () => {
+    expect(CELL_BYTES).toBe(CELL_U32S * 4);
   });
 });
 

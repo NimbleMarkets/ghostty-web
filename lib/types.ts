@@ -1033,6 +1033,17 @@ export interface GhosttyCell {
   width: number; // u8 (character width: 1=normal, 2=wide, etc.)
   hyperlink_id: number; // u16 (0 = no link, >0 = hyperlink ID in set)
   grapheme_len: number; // u8 (number of extra codepoints beyond first)
+  /**
+   * Combining codepoints beyond the first (length === grapheme_len). Null
+   * when grapheme_len is 0. Populated by GhosttyTerminal.getViewport during
+   * the existing cell walk so renderers don't need to call getGrapheme(y, x)
+   * — that path re-walks the row iterator from row 0 and is O(row) per call,
+   * which dominated the per-frame budget for kitty unicode placeholders.
+   *
+   * Holds extras only (matching grapheme_len semantics): for a kitty
+   * placeholder the array is [rowDiacritic, colDiacritic, imgIdMsbDiacritic?].
+   */
+  grapheme: number[] | null;
 }
 
 /**

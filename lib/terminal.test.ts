@@ -2793,6 +2793,29 @@ describe('Grapheme Cluster Support', () => {
     const viewport = term.wasmTerm!.getViewport();
     expect(viewport[0].codepoint).toBe(0x48); // 'H'
     expect(viewport[0].grapheme_len).toBe(0);
+    expect(viewport[0].grapheme).toBeNull();
+
+    term.dispose();
+  });
+
+  test('cell.grapheme is populated for kitty placeholder cells', async () => {
+    // U+10EEEE (kitty placeholder) plus two combining diacritics from
+    // ROWCOLUMN_DIACRITICS — this is the on-the-wire pattern kitty
+    // applications emit to render virtual placement slices. The renderer
+    // hot path reads cell.grapheme directly to avoid the O(row)
+    // getGrapheme(y, x) crossing; this test guards the producer side.
+    const term = await createIsolatedTerminal();
+    await term.open(container!);
+    // U+10EEEE = 0xF4 0x8E 0xBB 0xAE; U+0305 = 0xCC 0x85; U+030D = 0xCC 0x8D.
+    const utf8 = '\u{10EEEE}\u{0305}\u{030D}';
+    term.write(utf8);
+
+    const viewport = term.wasmTerm!.getViewport();
+    expect(viewport[0].codepoint).toBe(0x10eeee);
+    // grapheme_len counts extras beyond the base codepoint.
+    expect(viewport[0].grapheme_len).toBe(2);
+    expect(viewport[0].grapheme).not.toBeNull();
+    expect(viewport[0].grapheme).toEqual([0x0305, 0x030d]);
 
     term.dispose();
   });
