@@ -1172,15 +1172,25 @@ export class WebGPURenderer implements Renderer {
   destroy(): void {
     this.destroyed = true;
     this.cursorBlink_.destroy();
-    // Release the renderer-owned bookkeeping. Kitty resources are explicitly
-    // destroyed here; the device.destroy() call below (when we own it) would
-    // clean them up too, but explicit destruction is cheap insurance against
-    // implementations that defer GPU-side reclamation past device destroy.
+    // Release renderer-owned GPU resources. We do this regardless of
+    // ownsDevice — when ownsDevice is true the device.destroy() below would
+    // cascade and release them anyway, but external integrations that pass
+    // their own GPUDevice need their device to keep running while these
+    // per-renderer buffers/textures are reclaimed.
+    //
+    // Pipelines, samplers, and bind-group layouts have no individual
+    // destroy() method in WebGPU — they're owned by the device. When
+    // ownsDevice is false we can't release them; the caller-owned device
+    // will reclaim them on its own destruction.
     this.kittyTextures.destroyAll();
     for (const buf of this.kittyParamsRing) buf.destroy();
     this.kittyParamsRing.length = 0;
     this.kittyAtlas?.destroy();
     if (this.kittyAtlasUBO) this.kittyAtlasUBO.destroy();
+    this.cellBuffer?.destroy();
+    this.paletteUBO?.destroy();
+    this.gridUBO?.destroy();
+    this.atlas?.destroy();
     // Only destroy the device when we own it (factory-created). External
     // callers who passed in a shared device manage its lifetime themselves.
     if (this.ownsDevice) {
