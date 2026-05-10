@@ -484,19 +484,22 @@ export class Terminal implements ITerminalCore {
       // size reports and kitty graphics from the very first vt_write.
       this.updateWasmPixelSize();
 
-      // Create mouse tracking configuration
-      const canvas = this.canvas!;
-      const renderer = this.renderer!;
-      const wasmTerm = this.wasmTerm;
+      // Create mouse tracking configuration. Closures read this.canvas and
+      // this.renderer lazily so they pick up the new instances after a
+      // renderer-swap event (GPU device-lost or WebGL context-lost). The
+      // old code captured locals, which would point at the detached old
+      // canvas + destroyed old renderer after a swap.
       const mouseConfig: MouseTrackingConfig = {
-        hasMouseTracking: () => wasmTerm?.hasMouseTracking() ?? false,
-        hasSgrMouseMode: () => wasmTerm?.getMode(1006, false) ?? true, // SGR extended mode
+        hasMouseTracking: () => this.wasmTerm?.hasMouseTracking() ?? false,
+        hasSgrMouseMode: () => this.wasmTerm?.getMode(1006, false) ?? true, // SGR extended mode
         getCellDimensions: () => {
-          const m = renderer.getMetrics();
+          if (!this.renderer) return { width: 0, height: 0 };
+          const m = this.renderer.getMetrics();
           return { width: m.width, height: m.height };
         },
         getCanvasOffset: () => {
-          const rect = canvas.getBoundingClientRect();
+          if (!this.canvas) return { left: 0, top: 0 };
+          const rect = this.canvas.getBoundingClientRect();
           return { left: rect.left, top: rect.top };
         },
       };
