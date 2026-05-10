@@ -40,7 +40,7 @@ async function tryWebGPU(
     // limit. No requiredLimits bumping needed. See
     // docs/superpowers/specs/2026-05-09-webgpu-kitty-atlas-design.md.
     const device = await adapter.requestDevice();
-    return await WebGPURenderer.create(canvas, device, opts);
+    return await WebGPURenderer.create(canvas, device, opts, /* ownsDevice */ true);
   } catch (e) {
     if (explicit) throw e;
     if (!warnedWebGPUFallback) {

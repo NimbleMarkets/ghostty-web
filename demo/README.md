@@ -84,9 +84,10 @@ Only use for local development and demos. Do not expose to untrusted networks.
 
 The demo selects a renderer via the `?renderer=` query string:
 
-- `?renderer=auto` (default) — WebGPU when available, Canvas2D otherwise.
+- `?renderer=auto` (default) — tries WebGPU first, then WebGL2, then Canvas2D.
 - `?renderer=webgpu` — strict WebGPU; throws if unavailable.
+- `?renderer=webgl` — strict WebGL2; throws if unavailable.
 - `?renderer=canvas2d` — Canvas2D only.
 
-Press **Alt+Shift+R** to toggle between WebGPU and Canvas2D (reloads the page).
+Press **Alt+Shift+R** to cycle through all three backends (webgpu → webgl → canvas2d → webgpu), reloading the page with the new `?renderer=` query string.
 The FPS overlay in the top-right of the terminal shows the active backend.

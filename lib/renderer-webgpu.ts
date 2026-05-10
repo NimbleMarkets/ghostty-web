@@ -547,6 +547,7 @@ export class WebGPURenderer implements Renderer {
   private onRequestRender: (() => void) | null = null;
   private invalidateNext = true;
   private destroyed = false;
+  private ownsDevice: boolean;
   private deviceLostListeners: Array<(info: GPUDeviceLostInfo) => void> = [];
 
   // Buffers
@@ -579,17 +580,37 @@ export class WebGPURenderer implements Renderer {
   private kittyAtlasUBO?: GPUBuffer;
   private kittyAtlasRects = new Float32Array(256 * 4); // host-side staging (256 vec4)
 
+  /**
+   * Create a WebGPURenderer.
+   *
+   * @param canvas - the canvas to render into
+   * @param device - a GPUDevice the renderer will use
+   * @param opts - renderer options
+   * @param ownsDevice - if `true`, `destroy()` will call `device.destroy()`
+   *   to release the GPU device + all resources tied to it. If `false`
+   *   (default), `destroy()` releases only the renderer's own bookkeeping
+   *   (kitty caches, etc.) and leaves the device alone for the caller to
+   *   manage. The renderer factory (`pickRenderer`) creates the device
+   *   internally and passes `true`; external callers sharing a device
+   *   across renderers should pass `false` (the default).
+   */
   static async create(
     canvas: HTMLCanvasElement,
     device: GPUDevice,
-    opts: RendererOptions
+    opts: RendererOptions,
+    ownsDevice = false
   ): Promise<WebGPURenderer> {
-    const r = new WebGPURenderer(canvas, device, opts);
+    const r = new WebGPURenderer(canvas, device, opts, ownsDevice);
     await r.initialize();
     return r;
   }
 
-  private constructor(canvas: HTMLCanvasElement, device: GPUDevice, opts: RendererOptions) {
+  private constructor(
+    canvas: HTMLCanvasElement,
+    device: GPUDevice,
+    opts: RendererOptions,
+    ownsDevice: boolean
+  ) {
     this.canvas = canvas;
     this.device = device;
     this.kittyTextures = new WebGPUKittyTextureCache(device);
@@ -599,6 +620,7 @@ export class WebGPURenderer implements Renderer {
     this.dpr = opts.devicePixelRatio ?? window.devicePixelRatio ?? 1;
     this.theme = { ...DEFAULT_THEME, ...opts.theme };
     this.cursorBlink_.setEnabled(opts.cursorBlink ?? false);
+    this.ownsDevice = ownsDevice;
   }
 
   private async initialize(): Promise<void> {
@@ -1150,18 +1172,19 @@ export class WebGPURenderer implements Renderer {
   destroy(): void {
     this.destroyed = true;
     this.cursorBlink_.destroy();
-    // Destroying the device releases ALL GPUBuffer / GPUTexture / GPUSampler /
-    // GPURenderPipeline / GPUBindGroup it owns — i.e. the entire WebGPU resource
-    // set this renderer ever created (paletteUBO, gridUBO, cellBuffer, glyph
-    // atlas, kitty atlas + UBO + ring, kitty cache textures, all pipelines).
-    // The kitty resources we explicitly destroy below are redundant given the
-    // device.destroy() call but we keep them as a tightening (in case the
-    // browser implementation defers GPU-side reclamation past device destroy).
+    // Release the renderer-owned bookkeeping. Kitty resources are explicitly
+    // destroyed here; the device.destroy() call below (when we own it) would
+    // clean them up too, but explicit destruction is cheap insurance against
+    // implementations that defer GPU-side reclamation past device destroy.
     this.kittyTextures.destroyAll();
     for (const buf of this.kittyParamsRing) buf.destroy();
     this.kittyParamsRing.length = 0;
     this.kittyAtlas?.destroy();
     if (this.kittyAtlasUBO) this.kittyAtlasUBO.destroy();
-    this.device.destroy();
+    // Only destroy the device when we own it (factory-created). External
+    // callers who passed in a shared device manage its lifetime themselves.
+    if (this.ownsDevice) {
+      this.device.destroy();
+    }
   }
 }
