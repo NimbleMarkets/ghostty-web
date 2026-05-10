@@ -1421,6 +1421,31 @@ export class Terminal implements ITerminalCore {
   }
 
   /**
+   * Detach the old canvas from its parent and put a fresh canvas in its
+   * place with the same parent, CSS, and drawing-buffer dimensions. Used
+   * by the renderer-swap path because once a `<canvas>` has been used to
+   * acquire a context (webgpu / webgl2 / 2d), browsers refuse to give it
+   * a different context type — so the cascade fallback needs a fresh
+   * canvas to claim.
+   */
+  private replaceCanvas(oldCanvas: HTMLCanvasElement): HTMLCanvasElement {
+    const parent = oldCanvas.parentNode;
+    if (!parent) {
+      throw new Error('Terminal.replaceCanvas: old canvas has no parent');
+    }
+    const fresh = document.createElement('canvas');
+    // Copy CSS-side state. The renderer will re-set width/height (drawing
+    // buffer pixels) on its first resize; we copy them too to avoid a flash
+    // of zero-sized canvas in the swap window.
+    fresh.style.cssText = oldCanvas.style.cssText;
+    fresh.width = oldCanvas.width;
+    fresh.height = oldCanvas.height;
+    parent.insertBefore(fresh, oldCanvas);
+    parent.removeChild(oldCanvas);
+    return fresh;
+  }
+
+  /**
    * Clean up components (called on dispose or error)
    */
   private cleanupComponents(): void {

@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import type { Terminal } from './terminal';
+import { Terminal } from './terminal';
 import { createIsolatedTerminal } from './test-helpers';
 
 /**
@@ -3060,5 +3060,61 @@ describe('Write PTY response routing', () => {
 
     ta.free();
     tb.free();
+  });
+
+  describe('replaceCanvas', () => {
+    async function fabricate() {
+      const parent = document.createElement('div');
+      document.body.appendChild(parent);
+      const canvas = document.createElement('canvas');
+      canvas.style.cssText = 'display: block; cursor: text;';
+      canvas.width = 800;
+      canvas.height = 600;
+      parent.appendChild(canvas);
+      // We access the private replaceCanvas via type-erased lookup.
+      // The method is logically pure with respect to Terminal state — it
+      // only reads/writes DOM — so we don't need a fully-initialized Terminal.
+      const term = await createIsolatedTerminal();
+      return { term, parent, canvas };
+    }
+
+    test('returns a fresh canvas instance (not the old one)', async () => {
+      const { term, canvas: oldCanvas } = await fabricate();
+      const fresh = (term as any).replaceCanvas(oldCanvas);
+      expect(fresh).not.toBe(oldCanvas);
+      expect(fresh).toBeInstanceOf(HTMLCanvasElement);
+    });
+
+    test('new canvas is attached to the same parent', async () => {
+      const { term, parent, canvas: oldCanvas } = await fabricate();
+      const fresh = (term as any).replaceCanvas(oldCanvas);
+      expect(fresh.parentNode).toBe(parent);
+    });
+
+    test('old canvas is detached from its parent', async () => {
+      const { term, canvas: oldCanvas } = await fabricate();
+      (term as any).replaceCanvas(oldCanvas);
+      expect(oldCanvas.parentNode).toBe(null);
+    });
+
+    test('CSS state (style.cssText) is copied to the new canvas', async () => {
+      const { term, canvas: oldCanvas } = await fabricate();
+      const fresh = (term as any).replaceCanvas(oldCanvas);
+      expect(fresh.style.display).toBe('block');
+      expect(fresh.style.cursor).toBe('text');
+    });
+
+    test('drawing-buffer dimensions are copied to the new canvas', async () => {
+      const { term, canvas: oldCanvas } = await fabricate();
+      const fresh = (term as any).replaceCanvas(oldCanvas);
+      expect(fresh.width).toBe(800);
+      expect(fresh.height).toBe(600);
+    });
+
+    test('throws when old canvas has no parent', async () => {
+      const { term, canvas: oldCanvas } = await fabricate();
+      oldCanvas.parentNode!.removeChild(oldCanvas);
+      expect(() => (term as any).replaceCanvas(oldCanvas)).toThrow(/no parent/i);
+    });
   });
 });
