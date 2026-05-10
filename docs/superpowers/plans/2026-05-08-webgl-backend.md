@@ -14,17 +14,17 @@
 
 ## File Structure
 
-| Path | Status | Purpose |
-|---|---|---|
-| `lib/renderer-types.ts` | modify | Widen `RendererBackend` and `Renderer.backend` union to include `'webgl'` |
-| `lib/renderer-factory.ts` | modify | Add WebGL branch; `'auto'` chain becomes WebGPU → WebGL → Canvas2D |
-| `lib/renderer-factory.test.ts` | modify | Cover new chain |
-| `lib/renderer-webgl.ts` | add | `WebGL2Renderer` class, GL programs, GLGlyphAtlas, encodeCells |
-| `lib/renderer-webgl.test.ts` | add | Stub-context tests for renderer wiring |
-| `lib/test-helpers-webgl.ts` | add | `StubWebGL2Context` recorder + `installStubWebGL2` for happy-dom |
-| `lib/terminal.ts` | modify | WebGPU `onDeviceLost` falls back to WebGL2 first; new `webglcontextlost` handler that falls back to Canvas2D |
-| `demo/index.html` | modify | Accept `?renderer=webgl` |
-| `lib/renderer-webgpu.ts` | untouched | Zero changes |
+| Path                           | Status    | Purpose                                                                                                      |
+| ------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------ |
+| `lib/renderer-types.ts`        | modify    | Widen `RendererBackend` and `Renderer.backend` union to include `'webgl'`                                    |
+| `lib/renderer-factory.ts`      | modify    | Add WebGL branch; `'auto'` chain becomes WebGPU → WebGL → Canvas2D                                           |
+| `lib/renderer-factory.test.ts` | modify    | Cover new chain                                                                                              |
+| `lib/renderer-webgl.ts`        | add       | `WebGL2Renderer` class, GL programs, GLGlyphAtlas, encodeCells                                               |
+| `lib/renderer-webgl.test.ts`   | add       | Stub-context tests for renderer wiring                                                                       |
+| `lib/test-helpers-webgl.ts`    | add       | `StubWebGL2Context` recorder + `installStubWebGL2` for happy-dom                                             |
+| `lib/terminal.ts`              | modify    | WebGPU `onDeviceLost` falls back to WebGL2 first; new `webglcontextlost` handler that falls back to Canvas2D |
+| `demo/index.html`              | modify    | Accept `?renderer=webgl`                                                                                     |
+| `lib/renderer-webgpu.ts`       | untouched | Zero changes                                                                                                 |
 
 The new `WebGL2Renderer` class is single-responsibility (manages its own GL context lifecycle), and the test stub lives in its own file so the helper isn't pulled into production bundles.
 
@@ -48,6 +48,7 @@ These point to the equivalent code in `renderer-webgpu.ts` you'll be adapting. R
 ## Task 1: Widen `RendererBackend` union to include `'webgl'`
 
 **Files:**
+
 - Modify: `lib/renderer-types.ts:24` (the `RendererBackend` type)
 - Modify: `lib/renderer-types.ts:74` (the `Renderer.backend` field)
 - Modify: `lib/renderer-factory.ts` (return error path for unrecognized 'webgl' before factory wiring lands in Task 14)
@@ -77,9 +78,9 @@ export interface Renderer {
 In `lib/renderer-factory.ts`, immediately after the `if (backend === 'canvas2d') { ... }` block, add:
 
 ```ts
-  if (backend === 'webgl') {
-    throw new Error('WebGL backend not yet implemented');
-  }
+if (backend === 'webgl') {
+  throw new Error('WebGL backend not yet implemented');
+}
 ```
 
 This makes explicit `'webgl'` requests fail loudly until Task 14, while `'auto'` continues to use the existing WebGPU-or-Canvas2D path unchanged.
@@ -101,6 +102,7 @@ git commit -m "feat(render): widen RendererBackend to include 'webgl'"
 ## Task 2: Stub `WebGL2RenderingContext` test helper
 
 **Files:**
+
 - Create: `lib/test-helpers-webgl.ts`
 - Test: (no test for the helper itself; it's exercised by Task 3+ tests)
 
@@ -381,6 +383,7 @@ git commit -m "test(render): add stub WebGL2 context recorder"
 ## Task 3: WebGL2Renderer skeleton — context init + clear-only render
 
 **Files:**
+
 - Create: `lib/renderer-webgl.ts`
 - Create: `lib/renderer-webgl.test.ts`
 
@@ -451,7 +454,7 @@ describe('WebGL2Renderer', () => {
       expect(stub.countCalls('clear')).toBeGreaterThan(0);
       const cc = stub.argsOf('clearColor')!;
       // 0x1e / 255 ≈ 0.1176
-      expect((cc[0] as number)).toBeCloseTo(0x1e / 255, 3);
+      expect(cc[0] as number).toBeCloseTo(0x1e / 255, 3);
     });
 
     test('throws when getContext("webgl2") returns null', async () => {
@@ -538,10 +541,7 @@ export class WebGL2Renderer implements Renderer {
   private destroyed = false;
   private contextLostListeners: Array<(info: { reason: string }) => void> = [];
 
-  static async create(
-    canvas: HTMLCanvasElement,
-    opts: RendererOptions
-  ): Promise<WebGL2Renderer> {
+  static async create(canvas: HTMLCanvasElement, opts: RendererOptions): Promise<WebGL2Renderer> {
     const r = new WebGL2Renderer(canvas, opts);
     await r.initialize();
     return r;
@@ -724,6 +724,7 @@ git commit -m "feat(render): WebGL2 renderer skeleton with clear-only render"
 ## Task 4: GLGlyphAtlas — port `GlyphAtlas` from WebGPU
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — add `GLGlyphAtlas` class
 - Modify: `lib/renderer-webgl.test.ts` — add atlas test cases
 
@@ -734,59 +735,59 @@ The `GlyphAtlas` shelf-packing logic is API-agnostic. We copy it as `GLGlyphAtla
 Append to `lib/renderer-webgl.test.ts` (inside the existing `describe('WebGL2Renderer', ...)`):
 
 ```ts
-  describe('GLGlyphAtlas', () => {
-    test('packs glyphs left-to-right, then wraps to next shelf row', async () => {
-      // Use the renderer to construct an atlas indirectly: call resize() so
-      // the atlas is allocated (Task 4 wires this), then trigger glyph
-      // rasterizations via render() (later tasks do this implicitly). For
-      // this isolated test we import the class directly.
-      const { GLGlyphAtlas } = await import('./renderer-webgl');
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2') as any;
-      const atlas = new GLGlyphAtlas(gl, /* cellW */ 10, /* cellH */ 20, 15, 'monospace');
-      const a = atlas.getOrRaster('A', 0, 16, 1);
-      expect(a).toEqual({ u: 0, v: 0, w: 10, h: 20 });
-      const b = atlas.getOrRaster('B', 0, 16, 1);
-      expect(b).toEqual({ u: 10, v: 0, w: 10, h: 20 });
-      // Wide glyph (2 cells)
-      const wide = atlas.getOrRaster('漢', 0, 16, 2);
-      expect(wide).toEqual({ u: 20, v: 0, w: 20, h: 20 });
-    });
-
-    test('returns cached slot for repeat lookup of same key', async () => {
-      const { GLGlyphAtlas } = await import('./renderer-webgl');
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2') as any;
-      const atlas = new GLGlyphAtlas(gl, 10, 20, 15, 'monospace');
-      const first = atlas.getOrRaster('X', 1, 16, 1); // bold
-      const second = atlas.getOrRaster('X', 1, 16, 1);
-      expect(second).toBe(first);
-    });
-
-    test('different style bits produce distinct slots', async () => {
-      const { GLGlyphAtlas } = await import('./renderer-webgl');
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2') as any;
-      const atlas = new GLGlyphAtlas(gl, 10, 20, 15, 'monospace');
-      const plain = atlas.getOrRaster('Y', 0, 16, 1);
-      const bold = atlas.getOrRaster('Y', 1, 16, 1);
-      expect(plain).not.toBe(bold);
-      expect(plain.u).not.toBe(bold.u);
-    });
-
-    test('first getOrRaster issues a texSubImage2D upload', async () => {
-      const { GLGlyphAtlas } = await import('./renderer-webgl');
-      const canvas = document.createElement('canvas');
-      // installStubWebGL2 patches getContext('webgl2') to return the stub
-      // directly, so `gl` here IS the stub — we can read .calls off it.
-      const gl = canvas.getContext('webgl2') as any;
-      const before = gl.calls.filter((c: any) => c.method === 'texSubImage2D').length;
-      const atlas = new GLGlyphAtlas(gl, 10, 20, 15, 'monospace');
-      atlas.getOrRaster('Z', 0, 16, 1);
-      const after = gl.calls.filter((c: any) => c.method === 'texSubImage2D').length;
-      expect(after).toBeGreaterThan(before);
-    });
+describe('GLGlyphAtlas', () => {
+  test('packs glyphs left-to-right, then wraps to next shelf row', async () => {
+    // Use the renderer to construct an atlas indirectly: call resize() so
+    // the atlas is allocated (Task 4 wires this), then trigger glyph
+    // rasterizations via render() (later tasks do this implicitly). For
+    // this isolated test we import the class directly.
+    const { GLGlyphAtlas } = await import('./renderer-webgl');
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') as any;
+    const atlas = new GLGlyphAtlas(gl, /* cellW */ 10, /* cellH */ 20, 15, 'monospace');
+    const a = atlas.getOrRaster('A', 0, 16, 1);
+    expect(a).toEqual({ u: 0, v: 0, w: 10, h: 20 });
+    const b = atlas.getOrRaster('B', 0, 16, 1);
+    expect(b).toEqual({ u: 10, v: 0, w: 10, h: 20 });
+    // Wide glyph (2 cells)
+    const wide = atlas.getOrRaster('漢', 0, 16, 2);
+    expect(wide).toEqual({ u: 20, v: 0, w: 20, h: 20 });
   });
+
+  test('returns cached slot for repeat lookup of same key', async () => {
+    const { GLGlyphAtlas } = await import('./renderer-webgl');
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') as any;
+    const atlas = new GLGlyphAtlas(gl, 10, 20, 15, 'monospace');
+    const first = atlas.getOrRaster('X', 1, 16, 1); // bold
+    const second = atlas.getOrRaster('X', 1, 16, 1);
+    expect(second).toBe(first);
+  });
+
+  test('different style bits produce distinct slots', async () => {
+    const { GLGlyphAtlas } = await import('./renderer-webgl');
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') as any;
+    const atlas = new GLGlyphAtlas(gl, 10, 20, 15, 'monospace');
+    const plain = atlas.getOrRaster('Y', 0, 16, 1);
+    const bold = atlas.getOrRaster('Y', 1, 16, 1);
+    expect(plain).not.toBe(bold);
+    expect(plain.u).not.toBe(bold.u);
+  });
+
+  test('first getOrRaster issues a texSubImage2D upload', async () => {
+    const { GLGlyphAtlas } = await import('./renderer-webgl');
+    const canvas = document.createElement('canvas');
+    // installStubWebGL2 patches getContext('webgl2') to return the stub
+    // directly, so `gl` here IS the stub — we can read .calls off it.
+    const gl = canvas.getContext('webgl2') as any;
+    const before = gl.calls.filter((c: any) => c.method === 'texSubImage2D').length;
+    const atlas = new GLGlyphAtlas(gl, 10, 20, 15, 'monospace');
+    atlas.getOrRaster('Z', 0, 16, 1);
+    const after = gl.calls.filter((c: any) => c.method === 'texSubImage2D').length;
+    expect(after).toBeGreaterThan(before);
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -900,17 +901,7 @@ export class GLGlyphAtlas {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.pixelStorei(/* UNPACK_ALIGNMENT */ 0x0cf5, 1);
-    gl.texSubImage2D(
-      gl.TEXTURE_2D,
-      0,
-      slot.u,
-      slot.v,
-      w,
-      h,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      img.data
-    );
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, slot.u, slot.v, w, h, gl.RGBA, gl.UNSIGNED_BYTE, img.data);
     return slot;
   }
 
@@ -974,6 +965,7 @@ git commit -m "feat(render): port GlyphAtlas to WebGL2 (GLGlyphAtlas)"
 ## Task 5: encodeCells — port from WebGPU, kitty branches removed
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — add cell-encoding constants + `encodeCells` method
 - Modify: `lib/renderer-webgl.test.ts` — add encodeCells tests
 
@@ -984,79 +976,90 @@ The encoding writes a packed `Uint32Array` of `cols*rows*8` u32s. Kitty branches
 Append to `lib/renderer-webgl.test.ts` (inside the existing `describe('WebGL2Renderer', ...)`):
 
 ```ts
-  describe('encodeCells', () => {
-    function fakeCell(overrides: Partial<any> = {}) {
-      return {
-        codepoint: 0x41, // 'A'
-        width: 1,
-        flags: 0,
-        fg_r: 200, fg_g: 200, fg_b: 200,
-        bg_r: 30, bg_g: 30, bg_b: 30,
-        fgIsDefault: false,
-        bgIsDefault: false,
-        hyperlink_id: 0,
-        grapheme_len: 0,
-        ...overrides,
-      };
-    }
+describe('encodeCells', () => {
+  function fakeCell(overrides: Partial<any> = {}) {
+    return {
+      codepoint: 0x41, // 'A'
+      width: 1,
+      flags: 0,
+      fg_r: 200,
+      fg_g: 200,
+      fg_b: 200,
+      bg_r: 30,
+      bg_g: 30,
+      bg_b: 30,
+      fgIsDefault: false,
+      bgIsDefault: false,
+      hyperlink_id: 0,
+      grapheme_len: 0,
+      ...overrides,
+    };
+  }
 
-    test('empty cells get FLAG_USE_THEME_FG | FLAG_USE_THEME_BG', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      r.resize(2, 1);
-      const buf = {
-        getLine: () => null,
-        getCursor: () => ({ x: 0, y: 0, visible: false }),
-        getDimensions: () => ({ cols: 2, rows: 1 }),
-        isRowDirty: () => false,
-        clearDirty: () => {},
-      };
-      const arr = (r as any).encodeCells(buf, 0);
-      // CELL_U32S = 8; flags is index 4 within each cell.
-      // Each empty cell flags = (USE_THEME_FG | USE_THEME_BG) = (1<<12) | (1<<13) = 0x3000
-      expect(arr[4]).toBe(0x3000);
-      expect(arr[12]).toBe(0x3000);
-    });
-
-    test('cell with explicit fg/bg packs colors little-endian', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      r.resize(1, 1);
-      const cell = fakeCell({ fg_r: 0xab, fg_g: 0xcd, fg_b: 0xef, bg_r: 0x12, bg_g: 0x34, bg_b: 0x56 });
-      const buf = {
-        getLine: () => [cell],
-        getCursor: () => ({ x: 0, y: 0, visible: false }),
-        getDimensions: () => ({ cols: 1, rows: 1 }),
-        isRowDirty: () => false,
-        clearDirty: () => {},
-      };
-      const arr = (r as any).encodeCells(buf, 0);
-      // fg = 0xab | (0xcd << 8) | (0xef << 16) = 0xefcdab
-      expect(arr[0]).toBe(0xefcdab);
-      // bg = 0x12 | (0x34 << 8) | (0x56 << 16) = 0x563412
-      expect(arr[1]).toBe(0x563412);
-    });
-
-    test('cursor cell receives FLAG_IS_CURSOR_CELL when block-style cursor visible', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'block' });
-      r.resize(2, 1);
-      // Force cursor blink to "visible" deterministically.
-      (r as any).cursorBlink_.setEnabled(false);
-      const cell = fakeCell();
-      const buf = {
-        getLine: () => [cell, cell],
-        getCursor: () => ({ x: 1, y: 0, visible: true }),
-        getDimensions: () => ({ cols: 2, rows: 1 }),
-        isRowDirty: () => false,
-        clearDirty: () => {},
-      };
-      const arr = (r as any).encodeCells(buf, 0);
-      const FLAG_IS_CURSOR_CELL = 1 << 14;
-      expect((arr[4] & FLAG_IS_CURSOR_CELL) !== 0).toBe(false); // cell 0
-      expect((arr[12] & FLAG_IS_CURSOR_CELL) !== 0).toBe(true); // cell 1 (cursor)
-    });
+  test('empty cells get FLAG_USE_THEME_FG | FLAG_USE_THEME_BG', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {});
+    r.resize(2, 1);
+    const buf = {
+      getLine: () => null,
+      getCursor: () => ({ x: 0, y: 0, visible: false }),
+      getDimensions: () => ({ cols: 2, rows: 1 }),
+      isRowDirty: () => false,
+      clearDirty: () => {},
+    };
+    const arr = (r as any).encodeCells(buf, 0);
+    // CELL_U32S = 8; flags is index 4 within each cell.
+    // Each empty cell flags = (USE_THEME_FG | USE_THEME_BG) = (1<<12) | (1<<13) = 0x3000
+    expect(arr[4]).toBe(0x3000);
+    expect(arr[12]).toBe(0x3000);
   });
+
+  test('cell with explicit fg/bg packs colors little-endian', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {});
+    r.resize(1, 1);
+    const cell = fakeCell({
+      fg_r: 0xab,
+      fg_g: 0xcd,
+      fg_b: 0xef,
+      bg_r: 0x12,
+      bg_g: 0x34,
+      bg_b: 0x56,
+    });
+    const buf = {
+      getLine: () => [cell],
+      getCursor: () => ({ x: 0, y: 0, visible: false }),
+      getDimensions: () => ({ cols: 1, rows: 1 }),
+      isRowDirty: () => false,
+      clearDirty: () => {},
+    };
+    const arr = (r as any).encodeCells(buf, 0);
+    // fg = 0xab | (0xcd << 8) | (0xef << 16) = 0xefcdab
+    expect(arr[0]).toBe(0xefcdab);
+    // bg = 0x12 | (0x34 << 8) | (0x56 << 16) = 0x563412
+    expect(arr[1]).toBe(0x563412);
+  });
+
+  test('cursor cell receives FLAG_IS_CURSOR_CELL when block-style cursor visible', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'block' });
+    r.resize(2, 1);
+    // Force cursor blink to "visible" deterministically.
+    (r as any).cursorBlink_.setEnabled(false);
+    const cell = fakeCell();
+    const buf = {
+      getLine: () => [cell, cell],
+      getCursor: () => ({ x: 1, y: 0, visible: true }),
+      getDimensions: () => ({ cols: 2, rows: 1 }),
+      isRowDirty: () => false,
+      clearDirty: () => {},
+    };
+    const arr = (r as any).encodeCells(buf, 0);
+    const FLAG_IS_CURSOR_CELL = 1 << 14;
+    expect((arr[4] & FLAG_IS_CURSOR_CELL) !== 0).toBe(false); // cell 0
+    expect((arr[12] & FLAG_IS_CURSOR_CELL) !== 0).toBe(true); // cell 1 (cursor)
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1291,6 +1294,7 @@ git commit -m "feat(render): port encodeCells to WebGL renderer (no kitty)"
 ## Task 6: Palette + grid UBO byte construction
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — add UBO byte builders + GL UBO creation/upload
 - Modify: `lib/renderer-webgl.test.ts` — add UBO byte tests
 
@@ -1301,42 +1305,42 @@ The byte layouts match WebGPU exactly (384 B palette, 80 B grid). The constructi
 Append to `lib/renderer-webgl.test.ts`:
 
 ```ts
-  describe('UBO byte construction', () => {
-    test('paletteUBO has 96 floats and starts with parsed ANSI black', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {
-        theme: { black: '#0a141e' } as any,
-      });
-      const data = (r as any).buildPaletteUBOBytes() as Float32Array;
-      expect(data.length).toBe(96);
-      // ANSI[0] = black at vec4 offset 0
-      expect(data[0]).toBeCloseTo(0x0a / 255, 4);
-      expect(data[1]).toBeCloseTo(0x14 / 255, 4);
-      expect(data[2]).toBeCloseTo(0x1e / 255, 4);
-      expect(data[3]).toBe(1);
+describe('UBO byte construction', () => {
+  test('paletteUBO has 96 floats and starts with parsed ANSI black', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {
+      theme: { black: '#0a141e' } as any,
     });
-
-    test('gridUBO is 20 u32s with cols/rows at offsets 0/1', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      r.resize(80, 24);
-      const u32 = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
-      expect(u32.length).toBe(20);
-      expect(u32[0]).toBe(80); // gridSize.x
-      expect(u32[1]).toBe(24); // gridSize.y
-    });
-
-    test('gridUBO encodes cursorStyle correctly (block=0, underline=1, bar=2)', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
-      r.resize(1, 1);
-      const u32 = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
-      expect(u32[8]).toBe(1);
-      r.setCursorStyle('bar');
-      const u32b = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
-      expect(u32b[8]).toBe(2);
-    });
+    const data = (r as any).buildPaletteUBOBytes() as Float32Array;
+    expect(data.length).toBe(96);
+    // ANSI[0] = black at vec4 offset 0
+    expect(data[0]).toBeCloseTo(0x0a / 255, 4);
+    expect(data[1]).toBeCloseTo(0x14 / 255, 4);
+    expect(data[2]).toBeCloseTo(0x1e / 255, 4);
+    expect(data[3]).toBe(1);
   });
+
+  test('gridUBO is 20 u32s with cols/rows at offsets 0/1', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {});
+    r.resize(80, 24);
+    const u32 = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
+    expect(u32.length).toBe(20);
+    expect(u32[0]).toBe(80); // gridSize.x
+    expect(u32[1]).toBe(24); // gridSize.y
+  });
+
+  test('gridUBO encodes cursorStyle correctly (block=0, underline=1, bar=2)', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
+    r.resize(1, 1);
+    const u32 = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
+    expect(u32[8]).toBe(1);
+    r.setCursorStyle('bar');
+    const u32b = (r as any).buildGridUBOBytes(0, { x: 0, y: 0, visible: false }) as Uint32Array;
+    expect(u32b[8]).toBe(2);
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1415,23 +1419,23 @@ Add the byte builders + upload methods near the bottom of the class, before `des
 In `initialize()`, after acquiring the gl context, allocate the UBOs:
 
 ```ts
-    this.paletteUBO = gl.createBuffer() ?? undefined;
-    if (!this.paletteUBO) throw new Error('WebGL2Renderer: createBuffer failed (paletteUBO)');
-    gl.bindBuffer(gl.UNIFORM_BUFFER, this.paletteUBO);
-    gl.bufferData(gl.UNIFORM_BUFFER, 384, gl.DYNAMIC_DRAW);
+this.paletteUBO = gl.createBuffer() ?? undefined;
+if (!this.paletteUBO) throw new Error('WebGL2Renderer: createBuffer failed (paletteUBO)');
+gl.bindBuffer(gl.UNIFORM_BUFFER, this.paletteUBO);
+gl.bufferData(gl.UNIFORM_BUFFER, 384, gl.DYNAMIC_DRAW);
 
-    this.gridUBO = gl.createBuffer() ?? undefined;
-    if (!this.gridUBO) throw new Error('WebGL2Renderer: createBuffer failed (gridUBO)');
-    gl.bindBuffer(gl.UNIFORM_BUFFER, this.gridUBO);
-    gl.bufferData(gl.UNIFORM_BUFFER, 80, gl.DYNAMIC_DRAW);
+this.gridUBO = gl.createBuffer() ?? undefined;
+if (!this.gridUBO) throw new Error('WebGL2Renderer: createBuffer failed (gridUBO)');
+gl.bindBuffer(gl.UNIFORM_BUFFER, this.gridUBO);
+gl.bufferData(gl.UNIFORM_BUFFER, 80, gl.DYNAMIC_DRAW);
 
-    // Upload initial palette (theme already merged in constructor).
-    // Note: we have to do this AFTER the buffer is created.
-    {
-      const data = this.buildPaletteUBOBytes();
-      gl.bindBuffer(gl.UNIFORM_BUFFER, this.paletteUBO);
-      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, data);
-    }
+// Upload initial palette (theme already merged in constructor).
+// Note: we have to do this AFTER the buffer is created.
+{
+  const data = this.buildPaletteUBOBytes();
+  gl.bindBuffer(gl.UNIFORM_BUFFER, this.paletteUBO);
+  gl.bufferSubData(gl.UNIFORM_BUFFER, 0, data);
+}
 ```
 
 In `setTheme()`, after updating `this.theme`, call `this.uploadPaletteUBO()`.
@@ -1458,6 +1462,7 @@ git commit -m "feat(render): WebGL palette + grid UBO byte builders"
 ## Task 7: Cell texture allocation + per-frame upload
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — add cell texture state + upload in render()
 - Modify: `lib/renderer-webgl.test.ts` — add cell-texture upload test
 
@@ -1468,50 +1473,59 @@ A 2D `RGBA32UI` texture sized `(cols * 2, rows)` holds the packed cell data. `te
 Append to `lib/renderer-webgl.test.ts`:
 
 ```ts
-  describe('cell texture upload', () => {
-    test('render() allocates RGBA32UI cell texture sized (cols*2, rows)', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      const stub = getStub();
-      r.resize(40, 12);
-      // Look for a texStorage2D with internalFormat = RGBA32UI = 0x8d70
-      const ts = stub.calls.find(
-        (c) => c.method === 'texStorage2D' && (c.args[2] as number) === 0x8d70
-      );
-      expect(ts).toBeDefined();
-      expect(ts!.args[3]).toBe(40 * 2); // width
-      expect(ts!.args[4]).toBe(12);     // height
-    });
-
-    test('render() uploads cellArray bytes via texSubImage2D', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      r.resize(2, 1);
-      const stub = getStub();
-      const before = stub.countCalls('texSubImage2D');
-      const cell = {
-        codepoint: 0x41, width: 1, flags: 0,
-        fg_r: 0, fg_g: 0, fg_b: 0, bg_r: 0, bg_g: 0, bg_b: 0,
-        fgIsDefault: false, bgIsDefault: false,
-        hyperlink_id: 0, grapheme_len: 0,
-      };
-      const buf = {
-        getLine: () => [cell, cell],
-        getCursor: () => ({ x: 0, y: 0, visible: false }),
-        getDimensions: () => ({ cols: 2, rows: 1 }),
-        isRowDirty: () => false,
-        clearDirty: () => {},
-      };
-      r.render(buf as any, 0);
-      // At least one texSubImage2D call beyond the atlas's glyph upload.
-      // Cell-texture upload uses format = RGBA_INTEGER = 0x8d99; filter for
-      // those specifically.
-      const cellUploads = stub.calls.filter(
-        (c) => c.method === 'texSubImage2D' && c.args.includes(0x8d99)
-      );
-      expect(cellUploads.length).toBeGreaterThan(0);
-    });
+describe('cell texture upload', () => {
+  test('render() allocates RGBA32UI cell texture sized (cols*2, rows)', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {});
+    const stub = getStub();
+    r.resize(40, 12);
+    // Look for a texStorage2D with internalFormat = RGBA32UI = 0x8d70
+    const ts = stub.calls.find(
+      (c) => c.method === 'texStorage2D' && (c.args[2] as number) === 0x8d70
+    );
+    expect(ts).toBeDefined();
+    expect(ts!.args[3]).toBe(40 * 2); // width
+    expect(ts!.args[4]).toBe(12); // height
   });
+
+  test('render() uploads cellArray bytes via texSubImage2D', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {});
+    r.resize(2, 1);
+    const stub = getStub();
+    const before = stub.countCalls('texSubImage2D');
+    const cell = {
+      codepoint: 0x41,
+      width: 1,
+      flags: 0,
+      fg_r: 0,
+      fg_g: 0,
+      fg_b: 0,
+      bg_r: 0,
+      bg_g: 0,
+      bg_b: 0,
+      fgIsDefault: false,
+      bgIsDefault: false,
+      hyperlink_id: 0,
+      grapheme_len: 0,
+    };
+    const buf = {
+      getLine: () => [cell, cell],
+      getCursor: () => ({ x: 0, y: 0, visible: false }),
+      getDimensions: () => ({ cols: 2, rows: 1 }),
+      isRowDirty: () => false,
+      clearDirty: () => {},
+    };
+    r.render(buf as any, 0);
+    // At least one texSubImage2D call beyond the atlas's glyph upload.
+    // Cell-texture upload uses format = RGBA_INTEGER = 0x8d99; filter for
+    // those specifically.
+    const cellUploads = stub.calls.filter(
+      (c) => c.method === 'texSubImage2D' && c.args.includes(0x8d99)
+    );
+    expect(cellUploads.length).toBeGreaterThan(0);
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1532,23 +1546,23 @@ Add fields to `WebGL2Renderer`:
 In `resize()`, after the cellArray block, allocate or re-allocate the cell texture:
 
 ```ts
-    const desiredW = Math.max(1, cols * 2);
-    const desiredH = Math.max(1, rows);
-    if (!this.cellTex || this.cellTexW !== desiredW || this.cellTexH !== desiredH) {
-      if (this.cellTex) gl.deleteTexture(this.cellTex);
-      const tex = this.gl.createTexture();
-      if (!tex) throw new Error('WebGL2Renderer: cellTex createTexture failed');
-      this.cellTex = tex;
-      this.cellTexW = desiredW;
-      this.cellTexH = desiredH;
-      this.gl.bindTexture(this.gl.TEXTURE_2D, tex);
-      this.gl.texStorage2D(this.gl.TEXTURE_2D, 1, this.gl.RGBA32UI, desiredW, desiredH);
-      // Integer textures must use NEAREST filters.
-      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
-      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
-      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-    }
+const desiredW = Math.max(1, cols * 2);
+const desiredH = Math.max(1, rows);
+if (!this.cellTex || this.cellTexW !== desiredW || this.cellTexH !== desiredH) {
+  if (this.cellTex) gl.deleteTexture(this.cellTex);
+  const tex = this.gl.createTexture();
+  if (!tex) throw new Error('WebGL2Renderer: cellTex createTexture failed');
+  this.cellTex = tex;
+  this.cellTexW = desiredW;
+  this.cellTexH = desiredH;
+  this.gl.bindTexture(this.gl.TEXTURE_2D, tex);
+  this.gl.texStorage2D(this.gl.TEXTURE_2D, 1, this.gl.RGBA32UI, desiredW, desiredH);
+  // Integer textures must use NEAREST filters.
+  this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+  this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+  this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+  this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+}
 ```
 
 (Hoist `gl` to a local at top of `resize()` to avoid the verbose `this.gl.` repetition: `const gl = this.gl;`.)
@@ -1613,6 +1627,7 @@ git commit -m "feat(render): WebGL cell texture allocation and per-frame upload"
 ## Task 8: Text shader source + program creation
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — add `TEXT_VS` / `TEXT_FS` GLSL ES 3.00 sources, `createProgram` helper, text-program creation in `initialize()`
 - Modify: `lib/renderer-webgl.test.ts` — add text-program creation test
 
@@ -1623,36 +1638,36 @@ GLSL ES 3.00 shaders that mirror `TEXT_SHADER` from `renderer-webgpu.ts:39-307`,
 Append to `lib/renderer-webgl.test.ts`:
 
 ```ts
-  describe('text program', () => {
-    test('initialize() compiles vertex+fragment shaders and links the text program', async () => {
-      const canvas = document.createElement('canvas');
-      await WebGL2Renderer.create(canvas, {});
-      const stub = getStub();
-      // Two compileShader calls (vs+fs) for the text program — and Task 10
-      // adds two more for the cursor program. After Task 8 specifically we
-      // expect at least 2 compileShader and at least 1 linkProgram.
-      expect(stub.countCalls('compileShader')).toBeGreaterThanOrEqual(2);
-      expect(stub.countCalls('linkProgram')).toBeGreaterThanOrEqual(1);
-    });
-
-    test('text program binds GridUBO/PaletteUBO blocks and texture samplers', async () => {
-      const canvas = document.createElement('canvas');
-      await WebGL2Renderer.create(canvas, {});
-      const stub = getStub();
-      // We expect at minimum: lookups for "GridUBO" and "PaletteUBO" block
-      // indices, and uniform locations for "uCellTex" and "uAtlasTex".
-      const blockNames = stub.calls
-        .filter((c) => c.method === 'getUniformBlockIndex')
-        .map((c) => c.args[1]);
-      expect(blockNames).toContain('GridUBO');
-      expect(blockNames).toContain('PaletteUBO');
-      const uniformNames = stub.calls
-        .filter((c) => c.method === 'getUniformLocation')
-        .map((c) => c.args[1]);
-      expect(uniformNames).toContain('uCellTex');
-      expect(uniformNames).toContain('uAtlasTex');
-    });
+describe('text program', () => {
+  test('initialize() compiles vertex+fragment shaders and links the text program', async () => {
+    const canvas = document.createElement('canvas');
+    await WebGL2Renderer.create(canvas, {});
+    const stub = getStub();
+    // Two compileShader calls (vs+fs) for the text program — and Task 10
+    // adds two more for the cursor program. After Task 8 specifically we
+    // expect at least 2 compileShader and at least 1 linkProgram.
+    expect(stub.countCalls('compileShader')).toBeGreaterThanOrEqual(2);
+    expect(stub.countCalls('linkProgram')).toBeGreaterThanOrEqual(1);
   });
+
+  test('text program binds GridUBO/PaletteUBO blocks and texture samplers', async () => {
+    const canvas = document.createElement('canvas');
+    await WebGL2Renderer.create(canvas, {});
+    const stub = getStub();
+    // We expect at minimum: lookups for "GridUBO" and "PaletteUBO" block
+    // indices, and uniform locations for "uCellTex" and "uAtlasTex".
+    const blockNames = stub.calls
+      .filter((c) => c.method === 'getUniformBlockIndex')
+      .map((c) => c.args[1]);
+    expect(blockNames).toContain('GridUBO');
+    expect(blockNames).toContain('PaletteUBO');
+    const uniformNames = stub.calls
+      .filter((c) => c.method === 'getUniformLocation')
+      .map((c) => c.args[1]);
+    expect(uniformNames).toContain('uCellTex');
+    expect(uniformNames).toContain('uAtlasTex');
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1857,7 +1872,7 @@ Add a `setupTextProgram` method, called from `initialize()` after the UBO setup:
 Call it from `initialize()` after the UBO blocks:
 
 ```ts
-    this.setupTextProgram();
+this.setupTextProgram();
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1882,6 +1897,7 @@ git commit -m "feat(render): WebGL text shaders + program (GLSL ES 3.00)"
 ## Task 9: Text-program render path — drawArraysInstanced
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — wire bindings + draw in `render()`
 - Modify: `lib/renderer-webgl.test.ts` — add draw test
 
@@ -1892,51 +1908,51 @@ After uploading cell texture and UBOs, bind the text program, bind UBOs at indic
 Append to `lib/renderer-webgl.test.ts`:
 
 ```ts
-  describe('text-program render path', () => {
-    test('render() issues drawArraysInstanced with instanceCount = cols*rows', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      r.resize(20, 5);
-      const stub = getStub();
-      stub.calls.length = 0; // clear init calls
-      const buf = {
-        getLine: () => null,
-        getCursor: () => ({ x: 0, y: 0, visible: false }),
-        getDimensions: () => ({ cols: 20, rows: 5 }),
-        isRowDirty: () => false,
-        clearDirty: () => {},
-      };
-      r.render(buf as any, 0);
-      const draws = stub.calls.filter((c) => c.method === 'drawArraysInstanced');
-      expect(draws.length).toBe(1);
-      const args = draws[0]!.args;
-      expect(args[0]).toBe(stub.TRIANGLES);
-      expect(args[1]).toBe(0);
-      expect(args[2]).toBe(6);
-      expect(args[3]).toBe(20 * 5);
-    });
-
-    test('render() binds gridUBO and paletteUBO via bindBufferBase', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      r.resize(2, 2);
-      const stub = getStub();
-      stub.calls.length = 0;
-      const buf = {
-        getLine: () => null,
-        getCursor: () => ({ x: 0, y: 0, visible: false }),
-        getDimensions: () => ({ cols: 2, rows: 2 }),
-        isRowDirty: () => false,
-        clearDirty: () => {},
-      };
-      r.render(buf as any, 0);
-      const baseBindings = stub.calls
-        .filter((c) => c.method === 'bindBufferBase')
-        .map((c) => c.args[1] as number); // index slot
-      expect(baseBindings).toContain(0); // gridUBO
-      expect(baseBindings).toContain(1); // paletteUBO
-    });
+describe('text-program render path', () => {
+  test('render() issues drawArraysInstanced with instanceCount = cols*rows', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {});
+    r.resize(20, 5);
+    const stub = getStub();
+    stub.calls.length = 0; // clear init calls
+    const buf = {
+      getLine: () => null,
+      getCursor: () => ({ x: 0, y: 0, visible: false }),
+      getDimensions: () => ({ cols: 20, rows: 5 }),
+      isRowDirty: () => false,
+      clearDirty: () => {},
+    };
+    r.render(buf as any, 0);
+    const draws = stub.calls.filter((c) => c.method === 'drawArraysInstanced');
+    expect(draws.length).toBe(1);
+    const args = draws[0]!.args;
+    expect(args[0]).toBe(stub.TRIANGLES);
+    expect(args[1]).toBe(0);
+    expect(args[2]).toBe(6);
+    expect(args[3]).toBe(20 * 5);
   });
+
+  test('render() binds gridUBO and paletteUBO via bindBufferBase', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {});
+    r.resize(2, 2);
+    const stub = getStub();
+    stub.calls.length = 0;
+    const buf = {
+      getLine: () => null,
+      getCursor: () => ({ x: 0, y: 0, visible: false }),
+      getDimensions: () => ({ cols: 2, rows: 2 }),
+      isRowDirty: () => false,
+      clearDirty: () => {},
+    };
+    r.render(buf as any, 0);
+    const baseBindings = stub.calls
+      .filter((c) => c.method === 'bindBufferBase')
+      .map((c) => c.args[1] as number); // index slot
+    expect(baseBindings).toContain(0); // gridUBO
+    expect(baseBindings).toContain(1); // paletteUBO
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1955,9 +1971,9 @@ A VAO is needed because WebGL2 requires one to be bound for any draw call. Add a
 In `initialize()`, after `setupTextProgram()`:
 
 ```ts
-    const vao = gl.createVertexArray();
-    if (!vao) throw new Error('WebGL2Renderer: createVertexArray failed');
-    this.vao = vao;
+const vao = gl.createVertexArray();
+if (!vao) throw new Error('WebGL2Renderer: createVertexArray failed');
+this.vao = vao;
 ```
 
 Modify `render()` to perform the text draw after the cell-texture upload, just before the existing clear:
@@ -2028,6 +2044,7 @@ git commit -m "feat(render): WebGL text-program render path"
 ## Task 10: Cursor shader source + program
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — add `CURSOR_VS` / `CURSOR_FS` GLSL sources + `cursorProgram` setup
 - Modify: `lib/renderer-webgl.test.ts` — assert cursor program compiled
 
@@ -2038,16 +2055,16 @@ The cursor shader mirrors `CURSOR_SHADER` in `renderer-webgpu.ts:313-378`. It is
 Append to `lib/renderer-webgl.test.ts`:
 
 ```ts
-  describe('cursor program', () => {
-    test('initialize() compiles + links cursor program (vs/fs pair)', async () => {
-      const canvas = document.createElement('canvas');
-      await WebGL2Renderer.create(canvas, {});
-      const stub = getStub();
-      // After Tasks 8 + 10: 2 programs total → 4 compileShader, 2 linkProgram.
-      expect(stub.countCalls('compileShader')).toBeGreaterThanOrEqual(4);
-      expect(stub.countCalls('linkProgram')).toBeGreaterThanOrEqual(2);
-    });
+describe('cursor program', () => {
+  test('initialize() compiles + links cursor program (vs/fs pair)', async () => {
+    const canvas = document.createElement('canvas');
+    await WebGL2Renderer.create(canvas, {});
+    const stub = getStub();
+    // After Tasks 8 + 10: 2 programs total → 4 compileShader, 2 linkProgram.
+    expect(stub.countCalls('compileShader')).toBeGreaterThanOrEqual(4);
+    expect(stub.countCalls('linkProgram')).toBeGreaterThanOrEqual(2);
   });
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -2120,7 +2137,7 @@ Add field + setup method:
 Call it from `initialize()` after `setupTextProgram()`:
 
 ```ts
-    this.setupCursorProgram();
+this.setupCursorProgram();
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -2145,6 +2162,7 @@ git commit -m "feat(render): WebGL cursor shaders + program"
 ## Task 11: Cursor render path + cursor-blink wiring
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — add cursor draw in `render()`
 - Modify: `lib/renderer-webgl.test.ts` — assert cursor draw is invoked iff visible AND non-block
 
@@ -2155,67 +2173,67 @@ After the text pass, draw the cursor if `cursor.visible && cursorBlink_.isVisibl
 Append to `lib/renderer-webgl.test.ts`:
 
 ```ts
-  describe('cursor render path', () => {
-    test('non-block visible cursor: drawArrays(TRIANGLES, 0, 6) is called once', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
-      r.resize(2, 1);
-      // Disable blink so isVisible() returns true deterministically.
-      (r as any).cursorBlink_.setEnabled(false);
-      const stub = getStub();
-      stub.calls.length = 0;
-      const buf = {
-        getLine: () => null,
-        getCursor: () => ({ x: 0, y: 0, visible: true }),
-        getDimensions: () => ({ cols: 2, rows: 1 }),
-        isRowDirty: () => false,
-        clearDirty: () => {},
-      };
-      r.render(buf as any, 0);
-      const cursorDraws = stub.calls.filter(
-        (c) => c.method === 'drawArrays' && (c.args[2] as number) === 6
-      );
-      expect(cursorDraws.length).toBe(1);
-    });
-
-    test('block cursor: no drawArrays (block handled by text pass)', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'block' });
-      r.resize(2, 1);
-      (r as any).cursorBlink_.setEnabled(false);
-      const stub = getStub();
-      stub.calls.length = 0;
-      const buf = {
-        getLine: () => null,
-        getCursor: () => ({ x: 0, y: 0, visible: true }),
-        getDimensions: () => ({ cols: 2, rows: 1 }),
-        isRowDirty: () => false,
-        clearDirty: () => {},
-      };
-      r.render(buf as any, 0);
-      const cursorDraws = stub.calls.filter((c) => c.method === 'drawArrays');
-      expect(cursorDraws.length).toBe(0);
-    });
-
-    test('hidden cursor: no drawArrays', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
-      r.resize(2, 1);
-      (r as any).cursorBlink_.setEnabled(false);
-      const stub = getStub();
-      stub.calls.length = 0;
-      const buf = {
-        getLine: () => null,
-        getCursor: () => ({ x: 0, y: 0, visible: false }),
-        getDimensions: () => ({ cols: 2, rows: 1 }),
-        isRowDirty: () => false,
-        clearDirty: () => {},
-      };
-      r.render(buf as any, 0);
-      const cursorDraws = stub.calls.filter((c) => c.method === 'drawArrays');
-      expect(cursorDraws.length).toBe(0);
-    });
+describe('cursor render path', () => {
+  test('non-block visible cursor: drawArrays(TRIANGLES, 0, 6) is called once', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
+    r.resize(2, 1);
+    // Disable blink so isVisible() returns true deterministically.
+    (r as any).cursorBlink_.setEnabled(false);
+    const stub = getStub();
+    stub.calls.length = 0;
+    const buf = {
+      getLine: () => null,
+      getCursor: () => ({ x: 0, y: 0, visible: true }),
+      getDimensions: () => ({ cols: 2, rows: 1 }),
+      isRowDirty: () => false,
+      clearDirty: () => {},
+    };
+    r.render(buf as any, 0);
+    const cursorDraws = stub.calls.filter(
+      (c) => c.method === 'drawArrays' && (c.args[2] as number) === 6
+    );
+    expect(cursorDraws.length).toBe(1);
   });
+
+  test('block cursor: no drawArrays (block handled by text pass)', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'block' });
+    r.resize(2, 1);
+    (r as any).cursorBlink_.setEnabled(false);
+    const stub = getStub();
+    stub.calls.length = 0;
+    const buf = {
+      getLine: () => null,
+      getCursor: () => ({ x: 0, y: 0, visible: true }),
+      getDimensions: () => ({ cols: 2, rows: 1 }),
+      isRowDirty: () => false,
+      clearDirty: () => {},
+    };
+    r.render(buf as any, 0);
+    const cursorDraws = stub.calls.filter((c) => c.method === 'drawArrays');
+    expect(cursorDraws.length).toBe(0);
+  });
+
+  test('hidden cursor: no drawArrays', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, { cursorStyle: 'underline' });
+    r.resize(2, 1);
+    (r as any).cursorBlink_.setEnabled(false);
+    const stub = getStub();
+    stub.calls.length = 0;
+    const buf = {
+      getLine: () => null,
+      getCursor: () => ({ x: 0, y: 0, visible: false }),
+      getDimensions: () => ({ cols: 2, rows: 1 }),
+      isRowDirty: () => false,
+      clearDirty: () => {},
+    };
+    r.render(buf as any, 0);
+    const cursorDraws = stub.calls.filter((c) => c.method === 'drawArrays');
+    expect(cursorDraws.length).toBe(0);
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -2228,27 +2246,27 @@ Expected: FAIL — render() never calls drawArrays.
 Modify `render()`, immediately after the text pass:
 
 ```ts
-    // Cursor pass — only for non-block styles. Block cursor is handled by the
-    // text pass via FLAG_IS_CURSOR_CELL.
-    if (
-      this.cursorProgram &&
-      this.vao &&
-      this.gridUBO &&
-      this.paletteUBO &&
-      cursor.visible &&
-      this.cursorBlink_.isVisible() &&
-      this.cursorStyle !== 'block'
-    ) {
-      gl.useProgram(this.cursorProgram);
-      gl.bindVertexArray(this.vao);
-      gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.gridUBO);
-      gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, this.paletteUBO);
-      gl.enable(gl.BLEND);
-      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      gl.blendEquation(gl.FUNC_ADD);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-      gl.disable(gl.BLEND);
-    }
+// Cursor pass — only for non-block styles. Block cursor is handled by the
+// text pass via FLAG_IS_CURSOR_CELL.
+if (
+  this.cursorProgram &&
+  this.vao &&
+  this.gridUBO &&
+  this.paletteUBO &&
+  cursor.visible &&
+  this.cursorBlink_.isVisible() &&
+  this.cursorStyle !== 'block'
+) {
+  gl.useProgram(this.cursorProgram);
+  gl.bindVertexArray(this.vao);
+  gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.gridUBO);
+  gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, this.paletteUBO);
+  gl.enable(gl.BLEND);
+  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.blendEquation(gl.FUNC_ADD);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.disable(gl.BLEND);
+}
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -2273,6 +2291,7 @@ git commit -m "feat(render): WebGL cursor render path (underline, bar)"
 ## Task 12: Setters that need re-uploads + lifecycle
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — make `setTheme` re-upload the palette UBO; make font/theme setters re-allocate the atlas
 
 The skeleton's setters set fields and `invalidateNext = true`, which is enough for theme changes that only affect cells (selection, link colors). But for theme changes that affect the palette UBO (`defaultFg`, `defaultBg`, etc.), we must call `uploadPaletteUBO()`. Font changes must re-allocate the atlas.
@@ -2282,35 +2301,35 @@ The skeleton's setters set fields and `invalidateNext = true`, which is enough f
 Append to `lib/renderer-webgl.test.ts`:
 
 ```ts
-  describe('setters', () => {
-    test('setTheme triggers a paletteUBO upload', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      const stub = getStub();
-      const before = stub.calls.filter(
-        (c) => c.method === 'bufferSubData' && (c.args[0] as number) === stub.UNIFORM_BUFFER
-      ).length;
-      r.setTheme({ background: '#abcdef' } as any);
-      const after = stub.calls.filter(
-        (c) => c.method === 'bufferSubData' && (c.args[0] as number) === stub.UNIFORM_BUFFER
-      ).length;
-      expect(after).toBeGreaterThan(before);
-    });
-
-    test('setFontSize resets the atlas', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, { fontSize: 14 });
-      r.resize(4, 2);
-      const atlasBefore = (r as any).atlas;
-      r.setFontSize(20);
-      // Same instance, but reset.
-      expect((r as any).atlas).toBe(atlasBefore);
-      // We don't have a direct cache-cleared probe, so verify the metric
-      // change propagated.
-      const m = r.getMetrics();
-      expect(m.height).toBeGreaterThan(0);
-    });
+describe('setters', () => {
+  test('setTheme triggers a paletteUBO upload', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {});
+    const stub = getStub();
+    const before = stub.calls.filter(
+      (c) => c.method === 'bufferSubData' && (c.args[0] as number) === stub.UNIFORM_BUFFER
+    ).length;
+    r.setTheme({ background: '#abcdef' } as any);
+    const after = stub.calls.filter(
+      (c) => c.method === 'bufferSubData' && (c.args[0] as number) === stub.UNIFORM_BUFFER
+    ).length;
+    expect(after).toBeGreaterThan(before);
   });
+
+  test('setFontSize resets the atlas', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, { fontSize: 14 });
+    r.resize(4, 2);
+    const atlasBefore = (r as any).atlas;
+    r.setFontSize(20);
+    // Same instance, but reset.
+    expect((r as any).atlas).toBe(atlasBefore);
+    // We don't have a direct cache-cleared probe, so verify the metric
+    // change propagated.
+    const m = r.getMetrics();
+    expect(m.height).toBeGreaterThan(0);
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail (or pass already)**
@@ -2375,6 +2394,7 @@ git commit -m "feat(render): WebGL setters re-upload palette and reset atlas"
 ## Task 13: webglcontextlost listener API
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts` — wire `addEventListener('webglcontextlost')`
 - Modify: `lib/renderer-webgl.test.ts` — assert dispatching the event fires registered callbacks
 
@@ -2385,22 +2405,22 @@ Mirrors WebGPU's `onDeviceLost`. `terminal.ts` (Task 15) registers a callback th
 Append to `lib/renderer-webgl.test.ts`:
 
 ```ts
-  describe('context-loss listener', () => {
-    test('dispatching webglcontextlost fires registered callback', async () => {
-      const canvas = document.createElement('canvas');
-      const r = await WebGL2Renderer.create(canvas, {});
-      let fired = false;
-      let reason = '';
-      r.onContextLost((info) => {
-        fired = true;
-        reason = info.reason;
-      });
-      const ev = new Event('webglcontextlost', { cancelable: true });
-      canvas.dispatchEvent(ev);
-      expect(fired).toBe(true);
-      expect(reason.length).toBeGreaterThanOrEqual(0); // any string ok
+describe('context-loss listener', () => {
+  test('dispatching webglcontextlost fires registered callback', async () => {
+    const canvas = document.createElement('canvas');
+    const r = await WebGL2Renderer.create(canvas, {});
+    let fired = false;
+    let reason = '';
+    r.onContextLost((info) => {
+      fired = true;
+      reason = info.reason;
     });
+    const ev = new Event('webglcontextlost', { cancelable: true });
+    canvas.dispatchEvent(ev);
+    expect(fired).toBe(true);
+    expect(reason.length).toBeGreaterThanOrEqual(0); // any string ok
   });
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -2413,13 +2433,13 @@ Expected: FAIL — no listener wired.
 In `initialize()`, after `this.gl = gl`, add:
 
 ```ts
-    this.canvas.addEventListener('webglcontextlost', (e) => {
-      if (this.destroyed) return;
-      e.preventDefault();
-      const info = { reason: 'webglcontextlost' };
-      console.error('[ghostty-web] WebGL context lost');
-      for (const fn of this.contextLostListeners) fn(info);
-    });
+this.canvas.addEventListener('webglcontextlost', (e) => {
+  if (this.destroyed) return;
+  e.preventDefault();
+  const info = { reason: 'webglcontextlost' };
+  console.error('[ghostty-web] WebGL context lost');
+  for (const fn of this.contextLostListeners) fn(info);
+});
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -2444,6 +2464,7 @@ git commit -m "feat(render): WebGL context-lost listener API"
 ## Task 14: Factory wiring — explicit 'webgl' + auto chain
 
 **Files:**
+
 - Modify: `lib/renderer-factory.ts`
 - Modify: `lib/renderer-factory.test.ts`
 
@@ -2454,65 +2475,65 @@ Replace the placeholder throw from Task 1 with the real WebGL2 instantiation. Up
 Append to `lib/renderer-factory.test.ts`:
 
 ```ts
-  test("returns WebGL2 when backend='webgl'", async () => {
-    // Stub canvas.getContext('webgl2') to return a stub.
-    const { installStubWebGL2 } = await import('./test-helpers-webgl');
-    const { uninstall } = installStubWebGL2();
-    try {
-      const canvas = document.createElement('canvas');
-      const r = await pickRenderer('webgl', canvas, {});
-      expect(r.backend).toBe('webgl');
-    } finally {
-      uninstall();
-    }
-  });
+test("returns WebGL2 when backend='webgl'", async () => {
+  // Stub canvas.getContext('webgl2') to return a stub.
+  const { installStubWebGL2 } = await import('./test-helpers-webgl');
+  const { uninstall } = installStubWebGL2();
+  try {
+    const canvas = document.createElement('canvas');
+    const r = await pickRenderer('webgl', canvas, {});
+    expect(r.backend).toBe('webgl');
+  } finally {
+    uninstall();
+  }
+});
 
-  test("throws under 'webgl' when getContext returns null", async () => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (t: string) {
-      if (t === 'webgl2') return null as any;
-      return original.call(this, t);
-    } as any;
-    try {
-      const canvas = document.createElement('canvas');
-      await expect(pickRenderer('webgl', canvas, {})).rejects.toThrow(/webgl2/i);
-    } finally {
-      HTMLCanvasElement.prototype.getContext = original;
-    }
-  });
+test("throws under 'webgl' when getContext returns null", async () => {
+  const original = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (t: string) {
+    if (t === 'webgl2') return null as any;
+    return original.call(this, t);
+  } as any;
+  try {
+    const canvas = document.createElement('canvas');
+    await expect(pickRenderer('webgl', canvas, {})).rejects.toThrow(/webgl2/i);
+  } finally {
+    HTMLCanvasElement.prototype.getContext = original;
+  }
+});
 
-  test("falls through WebGPU → WebGL → Canvas2D under 'auto'", async () => {
-    (navigator as any).gpu = undefined; // skip WebGPU
-    const { installStubWebGL2 } = await import('./test-helpers-webgl');
-    const { uninstall } = installStubWebGL2();
-    try {
-      const canvas = document.createElement('canvas');
-      const r = await pickRenderer('auto', canvas, {});
-      expect(r.backend).toBe('webgl');
-    } finally {
-      uninstall();
-    }
-  });
+test("falls through WebGPU → WebGL → Canvas2D under 'auto'", async () => {
+  (navigator as any).gpu = undefined; // skip WebGPU
+  const { installStubWebGL2 } = await import('./test-helpers-webgl');
+  const { uninstall } = installStubWebGL2();
+  try {
+    const canvas = document.createElement('canvas');
+    const r = await pickRenderer('auto', canvas, {});
+    expect(r.backend).toBe('webgl');
+  } finally {
+    uninstall();
+  }
+});
 
-  test("'auto' falls back to Canvas2D when both WebGPU and WebGL are unavailable", async () => {
-    (navigator as any).gpu = undefined;
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (t: string, opts?: any) {
-      if (t === 'webgl2') return null as any;
-      return original.call(this, t, opts);
-    } as any;
-    // Silence the factory's one-time warn.
-    const originalWarn = console.warn;
-    console.warn = () => {};
-    try {
-      const canvas = document.createElement('canvas');
-      const r = await pickRenderer('auto', canvas, {});
-      expect(r.backend).toBe('canvas2d');
-    } finally {
-      console.warn = originalWarn;
-      HTMLCanvasElement.prototype.getContext = original;
-    }
-  });
+test("'auto' falls back to Canvas2D when both WebGPU and WebGL are unavailable", async () => {
+  (navigator as any).gpu = undefined;
+  const original = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (t: string, opts?: any) {
+    if (t === 'webgl2') return null as any;
+    return original.call(this, t, opts);
+  } as any;
+  // Silence the factory's one-time warn.
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const canvas = document.createElement('canvas');
+    const r = await pickRenderer('auto', canvas, {});
+    expect(r.backend).toBe('canvas2d');
+  } finally {
+    console.warn = originalWarn;
+    HTMLCanvasElement.prototype.getContext = original;
+  }
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -2645,6 +2666,7 @@ git commit -m "feat(render): factory chain WebGPU → WebGL → Canvas2D"
 ## Task 15: Terminal integration — fallback chains for device-lost / context-lost
 
 **Files:**
+
 - Modify: `lib/terminal.ts` — extend WebGPU device-lost handler to try WebGL first, and add a symmetric WebGL context-lost handler that falls back to Canvas2D
 
 The existing handler at `lib/terminal.ts:602-622` re-creates Canvas2D when WebGPU's device is lost. After this change, WebGPU loss tries WebGL2 first; if that also fails, falls back to Canvas2D. WebGL2 context loss falls back directly to Canvas2D.
@@ -2666,50 +2688,50 @@ import type { WebGL2Renderer } from './renderer-webgl';
 Replace the existing block at `lib/terminal.ts:599-623` with:
 
 ```ts
-      // Rebind the renderer-dependent state after a fallback. Used by both
-      // WebGPU device-lost and WebGL context-lost handlers.
-      const swapRenderer = async (target: 'webgl' | 'canvas2d', reason: string): Promise<void> => {
-        if (this.isDisposed || !this.canvas) return;
-        console.warn(`[ghostty-web] renderer falling back to ${target}:`, reason);
-        this.renderer?.destroy();
-        try {
-          this.renderer = await pickRenderer(target, this.canvas, {
-            fontSize: this.options.fontSize,
-            fontFamily: this.options.fontFamily,
-            cursorStyle: this.options.cursorStyle,
-            cursorBlink: this.options.cursorBlink,
-            theme: this.options.theme,
-          });
-        } catch (e) {
-          // If the requested target also fails, drop straight to Canvas2D.
-          console.warn(`[ghostty-web] ${target} fallback failed; using canvas2d:`, e);
-          this.renderer = await pickRenderer('canvas2d', this.canvas, {
-            fontSize: this.options.fontSize,
-            fontFamily: this.options.fontFamily,
-            cursorStyle: this.options.cursorStyle,
-            cursorBlink: this.options.cursorBlink,
-            theme: this.options.theme,
-          });
-        }
-        this.renderer.resize(this.cols, this.rows);
-        this.renderer.setOnRequestRender(() => this.requestRender());
-        if (this.selectionManager) {
-          this.renderer.setSelectionManager(this.selectionManager);
-        }
-        this.renderer.invalidate();
-        this.requestRender();
-      };
+// Rebind the renderer-dependent state after a fallback. Used by both
+// WebGPU device-lost and WebGL context-lost handlers.
+const swapRenderer = async (target: 'webgl' | 'canvas2d', reason: string): Promise<void> => {
+  if (this.isDisposed || !this.canvas) return;
+  console.warn(`[ghostty-web] renderer falling back to ${target}:`, reason);
+  this.renderer?.destroy();
+  try {
+    this.renderer = await pickRenderer(target, this.canvas, {
+      fontSize: this.options.fontSize,
+      fontFamily: this.options.fontFamily,
+      cursorStyle: this.options.cursorStyle,
+      cursorBlink: this.options.cursorBlink,
+      theme: this.options.theme,
+    });
+  } catch (e) {
+    // If the requested target also fails, drop straight to Canvas2D.
+    console.warn(`[ghostty-web] ${target} fallback failed; using canvas2d:`, e);
+    this.renderer = await pickRenderer('canvas2d', this.canvas, {
+      fontSize: this.options.fontSize,
+      fontFamily: this.options.fontFamily,
+      cursorStyle: this.options.cursorStyle,
+      cursorBlink: this.options.cursorBlink,
+      theme: this.options.theme,
+    });
+  }
+  this.renderer.resize(this.cols, this.rows);
+  this.renderer.setOnRequestRender(() => this.requestRender());
+  if (this.selectionManager) {
+    this.renderer.setSelectionManager(this.selectionManager);
+  }
+  this.renderer.invalidate();
+  this.requestRender();
+};
 
-      if (this.renderer && this.renderer.backend === 'webgpu') {
-        (this.renderer as WebGPURenderer).onDeviceLost(async (info) => {
-          // Try WebGL first; swapRenderer will fall through to Canvas2D if WebGL also fails.
-          await swapRenderer('webgl', `GPU device lost (${info.reason})`);
-        });
-      } else if (this.renderer && this.renderer.backend === 'webgl') {
-        (this.renderer as WebGL2Renderer).onContextLost(async (info) => {
-          await swapRenderer('canvas2d', `WebGL context lost (${info.reason})`);
-        });
-      }
+if (this.renderer && this.renderer.backend === 'webgpu') {
+  (this.renderer as WebGPURenderer).onDeviceLost(async (info) => {
+    // Try WebGL first; swapRenderer will fall through to Canvas2D if WebGL also fails.
+    await swapRenderer('webgl', `GPU device lost (${info.reason})`);
+  });
+} else if (this.renderer && this.renderer.backend === 'webgl') {
+  (this.renderer as WebGL2Renderer).onContextLost(async (info) => {
+    await swapRenderer('canvas2d', `WebGL context lost (${info.reason})`);
+  });
+}
 ```
 
 - [ ] **Step 4: Run the existing terminal/renderer tests**
@@ -2734,6 +2756,7 @@ git commit -m "feat(terminal): cascade GPU loss WebGPU → WebGL → Canvas2D"
 ## Task 16: Demo wiring + manual verification
 
 **Files:**
+
 - Modify: `demo/index.html` — accept `?renderer=webgl`
 
 The FPS overlay in `demo/index.html` already reads `term.renderer.backend`, so the label updates automatically once `pickRenderer` is given the new string. We just need to plumb the query string through.
@@ -2815,4 +2838,3 @@ After all 16 tasks land, verify:
   - WGSL `select(a, b, cond)` → GLSL `cond ? b : a` (note arg order reversal, but in our use `select(mask, mask*0.5, FAINT)` becomes `FAINT ? mask*0.5 : mask`)
   - WGSL `array<vec2<f32>, 6>` initializer → GLSL `vec2[6](...)`
   - Storage buffer + `arrayLength` → `texelFetch` from RGBA32UI integer texture
-

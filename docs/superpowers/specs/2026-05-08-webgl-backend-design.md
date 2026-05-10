@@ -17,29 +17,29 @@ Add a WebGL2 rendering backend to `ghostty-web` so the project has a hardware-ac
 
 ## Decisions
 
-| Question | Decision |
-|---|---|
-| Feature parity | Core text only: text + colors, cursor, selection, link/hyperlink underlines |
-| GL version | WebGL2 only |
-| Code sharing | Standalone parallel file; copy-and-adapt API-agnostic blocks from WebGPU |
-| Auto fallback chain | WebGPU → WebGL2 → Canvas2D |
-| Test approach | Logic tests + stub `WebGL2RenderingContext` recorder; manual demo verification |
-| Kitty placements | Silent skip |
+| Question            | Decision                                                                       |
+| ------------------- | ------------------------------------------------------------------------------ |
+| Feature parity      | Core text only: text + colors, cursor, selection, link/hyperlink underlines    |
+| GL version          | WebGL2 only                                                                    |
+| Code sharing        | Standalone parallel file; copy-and-adapt API-agnostic blocks from WebGPU       |
+| Auto fallback chain | WebGPU → WebGL2 → Canvas2D                                                     |
+| Test approach       | Logic tests + stub `WebGL2RenderingContext` recorder; manual demo verification |
+| Kitty placements    | Silent skip                                                                    |
 
 ## Architecture
 
 ### File layout
 
-| File | Change |
-|---|---|
-| `lib/renderer-webgl.ts` | **add** — `WebGL2Renderer` class, ~700–900 lines |
-| `lib/renderer-webgl.test.ts` | **add** — stub-context unit tests |
-| `lib/renderer-types.ts` | **modify** — widen `RendererBackend` to `'webgpu' \| 'webgl' \| 'canvas2d' \| 'auto'`; widen `Renderer.backend` to `'webgpu' \| 'webgl' \| 'canvas2d'` |
-| `lib/renderer-factory.ts` | **modify** — add WebGL branch; `'auto'` chain becomes WebGPU → WebGL → Canvas2D |
-| `lib/renderer-factory.test.ts` | **modify** — extend to cover the new chain |
-| `lib/terminal.ts` | **modify** — WebGPU `onDeviceLost` falls back to WebGL2 first; new symmetric `webglcontextlost` handler that falls back to Canvas2D |
-| `demo/index.html` | **modify** — accept `?renderer=webgl` (the FPS overlay already reads `term.renderer.backend`) |
-| `lib/renderer-webgpu.ts` | **untouched** — zero changes |
+| File                           | Change                                                                                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib/renderer-webgl.ts`        | **add** — `WebGL2Renderer` class, ~700–900 lines                                                                                                       |
+| `lib/renderer-webgl.test.ts`   | **add** — stub-context unit tests                                                                                                                      |
+| `lib/renderer-types.ts`        | **modify** — widen `RendererBackend` to `'webgpu' \| 'webgl' \| 'canvas2d' \| 'auto'`; widen `Renderer.backend` to `'webgpu' \| 'webgl' \| 'canvas2d'` |
+| `lib/renderer-factory.ts`      | **modify** — add WebGL branch; `'auto'` chain becomes WebGPU → WebGL → Canvas2D                                                                        |
+| `lib/renderer-factory.test.ts` | **modify** — extend to cover the new chain                                                                                                             |
+| `lib/terminal.ts`              | **modify** — WebGPU `onDeviceLost` falls back to WebGL2 first; new symmetric `webglcontextlost` handler that falls back to Canvas2D                    |
+| `demo/index.html`              | **modify** — accept `?renderer=webgl` (the FPS overlay already reads `term.renderer.backend`)                                                          |
+| `lib/renderer-webgpu.ts`       | **untouched** — zero changes                                                                                                                           |
 
 ### Components inside `WebGL2Renderer`
 
@@ -53,7 +53,7 @@ Add a WebGL2 rendering backend to `ghostty-web` so the project has a hardware-ac
    - **`textProgram`**: instanced quad, 6 vertices × `cols*rows` instances. Fragment shader does the work of WebGPU's `TEXT_SHADER` minus the kitty branch and minus the procedural block-element fillRects: cell decode → bg fill → atlas sample → fg/selection/underline/strikethrough/cursor-cell inversion.
    - **`cursorProgram`**: a small program drawing the underline/bar cursor as a single quad. Block-style cursor stays handled by `FLAG_IS_CURSOR_CELL` inside `textProgram` (same pattern as WebGPU).
 
-5. **Uniform buffers** — std140-laid-out UBOs with the *same byte layouts* as the WebGPU `paletteUBO` (384 B) and `gridUBO` (80 B). The byte-construction code is copied from WebGPU verbatim; only the upload call differs (`gl.bufferSubData(UNIFORM_BUFFER, …)` vs `device.queue.writeBuffer(…)`).
+5. **Uniform buffers** — std140-laid-out UBOs with the _same byte layouts_ as the WebGPU `paletteUBO` (384 B) and `gridUBO` (80 B). The byte-construction code is copied from WebGPU verbatim; only the upload call differs (`gl.bufferSubData(UNIFORM_BUFFER, …)` vs `device.queue.writeBuffer(…)`).
 
 6. **Frame state & lifecycle** — `cursorBlink_`, `selectionManager`, `hoveredHyperlinkId`, `hoveredLinkRange`, `theme`, `metrics`, `dpr`, `invalidateNext`, `destroyed` — carried over verbatim. DPR-aware canvas sizing follows the pattern fixed in `afc445f`. Context-loss is handled via `canvas.addEventListener('webglcontextlost', …)`, plumbed through a public `onContextLost(cb)` API that mirrors WebGPU's `onDeviceLost`.
 
@@ -75,13 +75,13 @@ No render-pass / command-encoder concept; immediate-mode draws to the default fr
 
 ## Error handling
 
-| Failure mode | Handling |
-|---|---|
-| `getContext('webgl2')` returns `null` | Throw with clear message; factory catches under `'auto'` and falls through |
-| Shader compile / program link failure | Throw with `getShaderInfoLog` / `getProgramInfoLog`; same propagation as above |
-| `webglcontextlost` event | `e.preventDefault()`; fire registered listeners; `terminal.ts` falls back directly to Canvas2D (no retry to WebGPU — context loss usually indicates deeper GPU trouble) |
-| Atlas grow OOM | Catch, log one-line warning, keep existing atlas; new glyph fails this frame and retries next frame. Same as WebGPU. |
-| Kitty content in buffer | Silently skipped. No warnings, no renderer churn. |
+| Failure mode                          | Handling                                                                                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getContext('webgl2')` returns `null` | Throw with clear message; factory catches under `'auto'` and falls through                                                                                              |
+| Shader compile / program link failure | Throw with `getShaderInfoLog` / `getProgramInfoLog`; same propagation as above                                                                                          |
+| `webglcontextlost` event              | `e.preventDefault()`; fire registered listeners; `terminal.ts` falls back directly to Canvas2D (no retry to WebGPU — context loss usually indicates deeper GPU trouble) |
+| Atlas grow OOM                        | Catch, log one-line warning, keep existing atlas; new glyph fails this frame and retries next frame. Same as WebGPU.                                                    |
+| Kitty content in buffer               | Silently skipped. No warnings, no renderer churn.                                                                                                                       |
 
 ## Auto-fallback chain
 
