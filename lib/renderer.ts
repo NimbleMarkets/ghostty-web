@@ -189,6 +189,30 @@ export class CanvasRenderer implements Renderer {
   >();
 
   /**
+   * Last frame's virtual-placement image-byte signatures, keyed by image
+   * id. Virtual placements aren't composited by renderKittyImages — they
+   * paint via per-cell renderPlaceholderCell substitution — so cells only
+   * repaint when the row is otherwise dirty (cursor, selection, text
+   * change). When the application transmits new bytes for the same
+   * image_id, the placeholder cells themselves stay clean and Canvas2D
+   * would skip them. Tracking these signatures lets us flag the whole
+   * viewport as damaged on bytes-change so the per-cell substitution
+   * runs and picks up the new (already re-decoded by getOrDecodeKittyImage)
+   * bitmap. WebGPU/WebGL don't need this because they re-encode the cell
+   * grid and re-sample the kitty atlas every frame.
+   */
+  private lastKittyVirtualSigs = new Map<
+    number,
+    {
+      imgWidth: number;
+      imgHeight: number;
+      imgFormat: KittyImageFormat;
+      dataPtr: number;
+      dataLen: number;
+    }
+  >();
+
+  /**
    * Rows whose image footprint changed since last frame (placement added,
    * removed, moved, resized, or re-decoded under the same id). Added to
    * rowsToRender so the underlying text repaints — which clears stale
@@ -202,6 +226,16 @@ export class CanvasRenderer implements Renderer {
    * through every helper. Set at the top of render(), cleared at the end.
    */
   private currentRenderBuffer: IRenderable | null = null;
+
+  /** @internal Test-only accessor for kittyDamagedRows. Not part of the public API. */
+  public _testGetKittyDamagedRows(): ReadonlySet<number> {
+    return this.kittyDamagedRows;
+  }
+
+  /** @internal Test-only entry to precomputeKittyState. Not part of the public API. */
+  public _testPrecomputeKittyState(buffer: IRenderable, rows: number): void {
+    this.precomputeKittyState(buffer, rows);
+  }
   private currentKittyGraphics: number | null = null;
 
   // Selection manager (for rendering selection)
@@ -878,6 +912,12 @@ export class CanvasRenderer implements Renderer {
       for (let r = rowStart; r < rowEnd; r++) this.kittyDamagedRows.add(r);
     };
 
+    const newVirtualSigs: typeof this.lastKittyVirtualSigs = new Map();
+    let virtualBytesChanged = false;
+    const markAllRows = (): void => {
+      for (let r = 0; r < dimsRows; r++) this.kittyDamagedRows.add(r);
+    };
+
     if (buffer.getKittyGraphics && buffer.iterPlacements) {
       const graphics = buffer.getKittyGraphics();
       if (graphics !== null) {
@@ -888,6 +928,44 @@ export class CanvasRenderer implements Renderer {
         for (const p of buffer.iterPlacements(graphics, false)) {
           if (p.isVirtual) {
             this.kittyVirtualPlacements.set(p.imageId, p);
+            // Sign the image bytes so we can spot bytes-change between
+            // frames. Cheap: getKittyImagePixels returns a borrowed view,
+            // we copy 5 numbers out. See lastKittyVirtualSigs for the full
+            // rationale (Canvas2D-only damage gap, doesn't affect GPU
+            // renderers).
+            if (!virtualBytesChanged) {
+              const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+              const sig = {
+                imgWidth: pixels?.width ?? 0,
+                imgHeight: pixels?.height ?? 0,
+                imgFormat: pixels?.format ?? (0 as KittyImageFormat),
+                dataPtr: pixels?.data.byteOffset ?? 0,
+                dataLen: pixels?.data.length ?? 0,
+              };
+              newVirtualSigs.set(p.imageId, sig);
+              const prev = this.lastKittyVirtualSigs.get(p.imageId);
+              if (
+                !prev ||
+                prev.imgWidth !== sig.imgWidth ||
+                prev.imgHeight !== sig.imgHeight ||
+                prev.imgFormat !== sig.imgFormat ||
+                prev.dataPtr !== sig.dataPtr ||
+                prev.dataLen !== sig.dataLen
+              ) {
+                virtualBytesChanged = true;
+              }
+            } else {
+              // Already going to invalidate everything; still record sig so
+              // future frames have something to compare against.
+              const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+              newVirtualSigs.set(p.imageId, {
+                imgWidth: pixels?.width ?? 0,
+                imgHeight: pixels?.height ?? 0,
+                imgFormat: pixels?.format ?? (0 as KittyImageFormat),
+                dataPtr: pixels?.data.byteOffset ?? 0,
+                dataLen: pixels?.data.length ?? 0,
+              });
+            }
             continue;
           }
           this.currentDirectPlacements.push(p);
@@ -938,6 +1016,23 @@ export class CanvasRenderer implements Renderer {
       if (!newSigs.has(id)) markRows(prev.viewportRow, prev.pixelHeight);
     }
     this.lastKittyDirectSigs = newSigs;
+
+    // Virtual-placement bookkeeping. Bytes-change OR removed-virtual flips
+    // virtualBytesChanged; we then mark every row in the viewport damaged.
+    // Coarse but correct: there's no cheap "rows referencing image_id X"
+    // query at this point (the cell pool isn't populated until renderLine),
+    // and in placeholder-heavy workloads (heatmaps, inline previews) most
+    // rows already contain placeholder cells anyway.
+    if (!virtualBytesChanged) {
+      for (const id of this.lastKittyVirtualSigs.keys()) {
+        if (!newVirtualSigs.has(id)) {
+          virtualBytesChanged = true;
+          break;
+        }
+      }
+    }
+    if (virtualBytesChanged) markAllRows();
+    this.lastKittyVirtualSigs = newVirtualSigs;
   }
 
   /**
