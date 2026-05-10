@@ -58,7 +58,7 @@ const term = new Terminal({
   },
 });
 
-term.open(document.getElementById('terminal'));
+await term.open(document.getElementById('terminal'));
 term.onData((data) => websocket.send(data));
 websocket.onmessage = (e) => term.write(e.data);
 ```
@@ -67,9 +67,19 @@ For a comprehensive client <-> server example, refer to the [demo](./demo/index.
 
 ### Renderers
 
-WebGPU (primary) with Canvas2D fallback. Pass `{ renderer: 'webgpu' | 'canvas2d' | 'auto' }`
-(default `'auto'`) to the `Terminal` constructor. WebGPU init failure or device-loss falls
-back to Canvas2D automatically.
+Three GPU/CPU rendering backends are supported. Pass
+`{ renderer: 'webgpu' | 'webgl' | 'canvas2d' | 'auto' }` (default `'auto'`) to the
+`Terminal` constructor.
+
+- **WebGPU** — preferred; required for full kitty graphics atlas performance
+- **WebGL2** — fallback for browsers without WebGPU (notably Safari < 26 and
+  Firefox without the flag); shares the same atlas-based kitty path
+- **Canvas2D** — universal fallback; supports kitty graphics via 2D context
+
+`'auto'` tries WebGPU → WebGL2 → Canvas2D in order, transparently falling
+through to the next on init failure. At runtime, GPU device-loss (WebGPU) or
+context-loss (WebGL) automatically demotes to the next available backend on
+a fresh canvas.
 
 ## Development
 
