@@ -12,6 +12,7 @@
  * - Task 14: cursor pass + blink wiring
  * - Task 15: kitty direct placements
  * - Task 16: kitty virtual placements (U+10EEEE)
+ * - Phase B: migrate virtual placements to shared KittyAtlasBase; drop requiredLimits
  */
 
 import { CursorBlink } from './cursor-blink';
@@ -441,10 +442,7 @@ class WebGPUKittyAtlas extends KittyAtlasBase {
     this.texture = device.createTexture({
       size: { width: size, height: size },
       format: 'rgba8unorm',
-      usage:
-        GPUTextureUsage.TEXTURE_BINDING |
-        GPUTextureUsage.COPY_DST |
-        GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
       label: 'kittyAtlas',
     });
   }
@@ -572,7 +570,7 @@ export class WebGPURenderer implements Renderer {
   private kittyBindGroupLayout?: GPUBindGroupLayout;
   private kittyParamsRing: GPUBuffer[] = [];
 
-  // Kitty atlas (PB1 — wired in PB2)
+  // Kitty atlas for virtual placements (Phase B).
   private kittyAtlas?: WebGPUKittyAtlas;
   private kittyAtlasUBO?: GPUBuffer;
   private kittyAtlasRects = new Float32Array(256 * 4); // host-side staging (256 vec4)
@@ -731,6 +729,8 @@ export class WebGPURenderer implements Renderer {
     this.kittySampler = this.device.createSampler({
       magFilter: 'linear',
       minFilter: 'linear',
+      addressModeU: 'clamp-to-edge',
+      addressModeV: 'clamp-to-edge',
       label: 'kittySampler',
     });
 
