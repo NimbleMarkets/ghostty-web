@@ -5,7 +5,8 @@
  * renderer's surface.
  *
  * Thumb size and position match the logic that lived in CanvasRenderer
- * before commit history (see git log lib/renderer.ts for renderScrollbar).
+ * before commit history (see git log lib/renderer-canvas2d.ts — formerly
+ * lib/renderer.ts — for renderScrollbar).
  */
 
 const SCROLLBAR_WIDTH = 8;

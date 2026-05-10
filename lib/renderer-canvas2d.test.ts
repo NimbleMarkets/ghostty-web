@@ -7,7 +7,8 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { CanvasRenderer, DEFAULT_THEME } from './renderer';
+import { CanvasRenderer } from './renderer-canvas2d';
+import { DEFAULT_THEME } from './renderer-core';
 import type { IRenderable } from './renderer-types';
 import type { GhosttyCell, KittyImagePixels, KittyPlacementInfo } from './types';
 import { KittyImageFormat } from './types';

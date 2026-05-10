@@ -34,7 +34,7 @@ import type {
 import { LinkDetector } from './link-detector';
 import { OSC8LinkProvider } from './providers/osc8-link-provider';
 import { UrlRegexProvider } from './providers/url-regex-provider';
-import { CanvasRenderer } from './renderer';
+import { CanvasRenderer } from './renderer-canvas2d';
 import { pickRenderer } from './renderer-factory';
 import type { Renderer } from './renderer-types';
 import type { WebGL2Renderer } from './renderer-webgl';

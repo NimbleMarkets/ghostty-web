@@ -42,6 +42,45 @@ export const FLAG_USE_THEME_BG = 1 << 13;
 export const FLAG_IS_CURSOR_CELL = 1 << 14;
 
 // ---------------------------------------------------------------------------
+// Default theme
+// ---------------------------------------------------------------------------
+
+/**
+ * Default colors used when an ITheme override doesn't specify a slot.
+ * Shared by every renderer backend; lives here (not in any one renderer
+ * file) so backends can be added or removed without re-locating the
+ * default palette.
+ *
+ * Selection colors follow Ghostty's convention: selection bg = default fg,
+ * selection fg = default bg — solid colors that *replace* cell colors when
+ * a cell is selected, rather than a translucent overlay.
+ */
+export const DEFAULT_THEME: Required<ITheme> = {
+  foreground: '#d4d4d4',
+  background: '#1e1e1e',
+  cursor: '#ffffff',
+  cursorAccent: '#1e1e1e',
+  selectionBackground: '#d4d4d4',
+  selectionForeground: '#1e1e1e',
+  black: '#000000',
+  red: '#cd3131',
+  green: '#0dbc79',
+  yellow: '#e5e510',
+  blue: '#2472c8',
+  magenta: '#bc3fbc',
+  cyan: '#11a8cd',
+  white: '#e5e5e5',
+  brightBlack: '#666666',
+  brightRed: '#f14c4c',
+  brightGreen: '#23d18b',
+  brightYellow: '#f5f543',
+  brightBlue: '#3b8eea',
+  brightMagenta: '#d670d6',
+  brightCyan: '#29b8db',
+  brightWhite: '#ffffff',
+};
+
+// ---------------------------------------------------------------------------
 // Color parsing
 // ---------------------------------------------------------------------------
 

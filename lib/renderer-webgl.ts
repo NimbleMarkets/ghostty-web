@@ -19,7 +19,7 @@
 
 import { CursorBlink } from './cursor-blink';
 import type { ITheme } from './interfaces';
-import { DEFAULT_THEME } from './renderer';
+import { DEFAULT_THEME } from './renderer-core';
 import {
   type AtlasSlot,
   CELL_U32S,

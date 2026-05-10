@@ -83,7 +83,7 @@ export { Key, KeyAction, Mods } from './types';
 export type { KeyEvent, GhosttyCell, RGB, Cursor, TerminalHandle } from './types';
 
 // Low-level components (for custom integrations)
-export { CanvasRenderer } from './renderer';
+export { CanvasRenderer } from './renderer-canvas2d';
 export type {
   Renderer,
   RendererBackend,

@@ -328,8 +328,7 @@ describe('WebGL2Renderer', () => {
 
   describe('UBO byte construction', () => {
     test('paletteUBO has 96 floats and starts with parsed ANSI black', async () => {
-      const { buildPaletteUBOBytes } = await import('./renderer-core');
-      const { DEFAULT_THEME } = await import('./renderer');
+      const { buildPaletteUBOBytes, DEFAULT_THEME } = await import('./renderer-core');
       const data = buildPaletteUBOBytes({ ...DEFAULT_THEME, black: '#0a141e' });
       expect(data.length).toBe(96);
       // ANSI[0] = black at vec4 offset 0

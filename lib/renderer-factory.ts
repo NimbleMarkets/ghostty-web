@@ -9,7 +9,7 @@
  *                Logs a one-line warning on each fallback (one per kind).
  */
 
-import { CanvasRenderer } from './renderer';
+import { CanvasRenderer } from './renderer-canvas2d';
 import type { Renderer, RendererBackend, RendererOptions } from './renderer-types';
 import { WebGL2Renderer } from './renderer-webgl';
 import { WebGPURenderer } from './renderer-webgpu';

@@ -13,7 +13,7 @@
 import { CursorBlink } from './cursor-blink';
 import type { ITheme } from './interfaces';
 import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
-import { measureFont as coreMeasureFont } from './renderer-core';
+import { DEFAULT_THEME, measureFont as coreMeasureFont } from './renderer-core';
 import type {
   FontMetrics,
   IRenderable,
@@ -25,44 +25,6 @@ import type {
 import type { SelectionManager } from './selection-manager';
 import type { GhosttyCell, ILink, KittyImagePixels, KittyPlacementInfo } from './types';
 import { CellFlags, KittyImageFormat } from './types';
-
-export type {
-  FontMetrics,
-  IRenderable,
-  IScrollbackProvider,
-  RendererOptions,
-} from './renderer-types';
-
-// ============================================================================
-// Default Theme
-// ============================================================================
-
-export const DEFAULT_THEME: Required<ITheme> = {
-  foreground: '#d4d4d4',
-  background: '#1e1e1e',
-  cursor: '#ffffff',
-  cursorAccent: '#1e1e1e',
-  // Selection colors: solid colors that replace cell bg/fg when selected
-  // Using Ghostty's approach: selection bg = default fg, selection fg = default bg
-  selectionBackground: '#d4d4d4',
-  selectionForeground: '#1e1e1e',
-  black: '#000000',
-  red: '#cd3131',
-  green: '#0dbc79',
-  yellow: '#e5e510',
-  blue: '#2472c8',
-  magenta: '#bc3fbc',
-  cyan: '#11a8cd',
-  white: '#e5e5e5',
-  brightBlack: '#666666',
-  brightRed: '#f14c4c',
-  brightGreen: '#23d18b',
-  brightYellow: '#f5f543',
-  brightBlue: '#3b8eea',
-  brightMagenta: '#d670d6',
-  brightCyan: '#29b8db',
-  brightWhite: '#ffffff',
-};
 
 // ============================================================================
 // CanvasRenderer Class

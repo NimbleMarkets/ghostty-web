@@ -57,7 +57,7 @@ This is a **fully functional terminal emulator** (MVP complete) that uses Ghostt
             ├─► GhosttyTerminal (WASM)
             │   └─ VT100 state machine, screen buffer
             │
-            ├─► CanvasRenderer (lib/renderer.ts)
+            ├─► CanvasRenderer (lib/renderer-canvas2d.ts)
             │   └─ 60 FPS rendering, all colors/styles
             │
             ├─► InputHandler (lib/input-handler.ts)
@@ -78,7 +78,7 @@ Ghostty WASM Bridge (lib/ghostty.ts)
 | --------------------------- | ----- | ----------------------------------- |
 | `lib/terminal.ts`           | 427   | Main Terminal class, xterm.js API   |
 | `lib/ghostty.ts`            | 552   | WASM bridge, memory management      |
-| `lib/renderer.ts`           | 610   | Canvas renderer with font metrics   |
+| `lib/renderer-canvas2d.ts`  | ~1700 | Canvas2D renderer (CanvasRenderer)  |
 | `lib/input-handler.ts`      | 438   | Keyboard → escape sequences         |
 | `lib/selection-manager.ts`  | 442   | Text selection + clipboard          |
 | `lib/types.ts`              | 454   | TypeScript definitions for WASM ABI |
