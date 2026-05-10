@@ -204,7 +204,8 @@ export type AtlasSlot = { u: number; v: number; w: number; h: number };
  * is 1 for narrow glyphs and 2 for CJK / emoji; the slot is `cellW *
  * widthInCells` pixels wide.
  *
- * Style bits: 0x1 = bold, 0x2 = italic, 0x4 = faint (50% alpha fill).
+ * Style bits: 0x1 = bold, 0x2 = italic. FAINT is intentionally excluded —
+ * atlas always rasterizes at full alpha; shaders apply the 0.5 multiplier.
  */
 export abstract class GlyphAtlasBase {
   protected size: number; // square; powers of 2
@@ -304,7 +305,10 @@ export abstract class GlyphAtlasBase {
     ctx.font = `${style}${this.fontSize}px ${this.fontFamily}`;
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left';
-    ctx.fillStyle = styleBits & 4 ? 'rgba(255, 255, 255, 0.5)' : '#ffffff'; // FAINT
+    // Always full alpha. FAINT is applied in the shader as a 0.5 mask multiplier
+    // rather than baked into the rasterization, so faint and non-faint glyphs
+    // share the same atlas slot (the cache key drops the FAINT bit too).
+    ctx.fillStyle = '#ffffff';
     ctx.fillText(grapheme, 0, baseline);
 
     const img = ctx.getImageData(0, 0, w, h);
@@ -381,14 +385,41 @@ export function encodeCells(
   const sbLen = sb?.getScrollbackLength() ?? 0;
   const cursor = buffer.getCursor();
   const sel = ctx.selectionManager?.getSelectionCoords() ?? null;
-  const inSel = (x: number, y: number): boolean => {
-    if (!sel) return false;
-    if (sel.startRow === sel.endRow) {
-      return y === sel.startRow && x >= sel.startCol && x <= sel.endCol;
+  // Per-row selection bounds: precompute once per row instead of branching
+  // per cell. selStartCol/selEndCol are inclusive [start, end] when this row
+  // is in the selection; (-1, -1) when it isn't (the per-cell check
+  // `x >= start && x <= end` is always false for that pair).
+  let selStartCol = -1;
+  let selEndCol = -1;
+  const updateRowSel = (y: number): void => {
+    if (!sel) {
+      selStartCol = -1;
+      selEndCol = -1;
+      return;
     }
-    if (y === sel.startRow) return x >= sel.startCol;
-    if (y === sel.endRow) return x <= sel.endCol;
-    return y > sel.startRow && y < sel.endRow;
+    if (sel.startRow === sel.endRow) {
+      if (y === sel.startRow) {
+        selStartCol = sel.startCol;
+        selEndCol = sel.endCol;
+      } else {
+        selStartCol = -1;
+        selEndCol = -1;
+      }
+      return;
+    }
+    if (y === sel.startRow) {
+      selStartCol = sel.startCol;
+      selEndCol = Number.MAX_SAFE_INTEGER;
+    } else if (y === sel.endRow) {
+      selStartCol = 0;
+      selEndCol = sel.endCol;
+    } else if (y > sel.startRow && y < sel.endRow) {
+      selStartCol = 0;
+      selEndCol = Number.MAX_SAFE_INTEGER;
+    } else {
+      selStartCol = -1;
+      selEndCol = -1;
+    }
   };
 
   // Build virtual kitty placement index (only when kitty is enabled).
@@ -416,6 +447,7 @@ export function encodeCells(
   const cellW = ctx.metrics.width;
   const cellH = ctx.metrics.height;
   for (let y = 0; y < dims.rows; y++) {
+    updateRowSel(y);
     let line: ReturnType<IRenderable['getLine']> = null;
     if (viewportY > 0) {
       if (y < viewportY && sb) {
@@ -463,7 +495,7 @@ export function encodeCells(
       if (c.flags & CellFlags.INVISIBLE) flags |= FLAG_INVISIBLE;
       if (c.fgIsDefault) flags |= FLAG_USE_THEME_FG;
       if (c.bgIsDefault) flags |= FLAG_USE_THEME_BG;
-      if (inSel(x, y)) flags |= FLAG_IS_SELECTED;
+      if (x >= selStartCol && x <= selEndCol) flags |= FLAG_IS_SELECTED;
       if (c.hyperlink_id !== 0 && c.hyperlink_id === ctx.hoveredHyperlinkId) {
         flags |= FLAG_IS_HYPERLINK_HOVERED;
       }
@@ -514,10 +546,12 @@ export function encodeCells(
           c.grapheme_len > 0 && buffer.getGraphemeString
             ? buffer.getGraphemeString(y, x)
             : String.fromCodePoint(c.codepoint || 32);
-        const styleBits =
-          (flags & FLAG_BOLD ? 1 : 0) |
-          (flags & FLAG_ITALIC ? 2 : 0) |
-          (flags & FLAG_FAINT ? 4 : 0);
+        // FAINT is intentionally NOT included in the atlas style bits. The atlas
+        // always rasterizes glyphs at full alpha; shaders apply the 0.5 alpha
+        // multiplier for FAINT cells. Including FAINT here would (a) double the
+        // fade (atlas 0.5 × shader 0.5 = 0.25) and (b) inflate the atlas cache
+        // with redundant per-glyph faint variants.
+        const styleBits = (flags & FLAG_BOLD ? 1 : 0) | (flags & FLAG_ITALIC ? 2 : 0);
         const widthInCells = c.width === 2 ? 2 : 1;
         const slot = ctx.atlas.getOrRaster(grapheme, styleBits, ctx.metrics.baseline, widthInCells);
         arr[i + 2] = (slot.u & 0xffff) | ((slot.v & 0xffff) << 16);
