@@ -12,7 +12,7 @@ import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
 import type { FontMetrics, IRenderable, IScrollbackProvider, LinkRange } from './renderer-types';
 import type { SelectionManager } from './selection-manager';
 import { CellFlags, KittyImageFormat } from './types';
-import type { KittyImagePixels, KittyPlacementInfo } from './types';
+import type { GhosttyCell, KittyImagePixels, KittyPlacementInfo } from './types';
 
 // ---------------------------------------------------------------------------
 // Cell encoding
@@ -385,10 +385,8 @@ export function encodeCells(
   const sbLen = sb?.getScrollbackLength() ?? 0;
   const cursor = buffer.getCursor();
   const sel = ctx.selectionManager?.getSelectionCoords() ?? null;
-  // Per-row selection bounds: precompute once per row instead of branching
-  // per cell. selStartCol/selEndCol are inclusive [start, end] when this row
-  // is in the selection; (-1, -1) when it isn't (the per-cell check
-  // `x >= start && x <= end` is always false for that pair).
+
+  // Pre-calculate selection range for the rows we'll be visiting.
   let selStartCol = -1;
   let selEndCol = -1;
   const updateRowSel = (y: number): void => {
@@ -446,19 +444,28 @@ export function encodeCells(
   const defaultEmptyFlags = (FLAG_USE_THEME_FG | FLAG_USE_THEME_BG) >>> 0;
   const cellW = ctx.metrics.width;
   const cellH = ctx.metrics.height;
+
+  // Batch-fetch the entire viewport once to avoid the WASM crossing cost
+  // of getLine(y) inside the loop.
+  const viewport = buffer.getViewport();
+
   for (let y = 0; y < dims.rows; y++) {
     updateRowSel(y);
-    let line: ReturnType<IRenderable['getLine']> = null;
+    let line: GhosttyCell[] | null = null;
     if (viewportY > 0) {
       if (y < viewportY && sb) {
         const off = sbLen - Math.floor(viewportY) + y;
         line = sb.getScrollbackLine(off);
       } else {
-        line = buffer.getLine(y - Math.floor(viewportY));
+        const viewportRelativeY = y - Math.floor(viewportY);
+        const start = viewportRelativeY * dims.cols;
+        line = viewport.slice(start, start + dims.cols);
       }
     } else {
-      line = buffer.getLine(y);
+      const start = y * dims.cols;
+      line = viewport.slice(start, start + dims.cols);
     }
+
     let pendingRightHalf: {
       slotU: number;
       slotV: number;

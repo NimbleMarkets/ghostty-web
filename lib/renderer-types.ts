@@ -49,6 +49,7 @@ export interface LinkRange {
  */
 export interface IRenderable {
   getLine(y: number): GhosttyCell[] | null;
+  getViewport(): GhosttyCell[];
   getCursor(): { x: number; y: number; visible: boolean };
   getDimensions(): { cols: number; rows: number };
   isRowDirty(y: number): boolean;
