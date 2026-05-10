@@ -489,6 +489,10 @@ class GlyphAtlas extends GlyphAtlasBase {
     return this.texture.createView();
   }
 
+  destroy(): void {
+    this.texture.destroy();
+  }
+
   private createBackingTexture(size: number): GPUTexture {
     return this.device.createTexture({
       size: { width: size, height: size },
@@ -1146,13 +1150,18 @@ export class WebGPURenderer implements Renderer {
   destroy(): void {
     this.destroyed = true;
     this.cursorBlink_.destroy();
+    // Destroying the device releases ALL GPUBuffer / GPUTexture / GPUSampler /
+    // GPURenderPipeline / GPUBindGroup it owns — i.e. the entire WebGPU resource
+    // set this renderer ever created (paletteUBO, gridUBO, cellBuffer, glyph
+    // atlas, kitty atlas + UBO + ring, kitty cache textures, all pipelines).
+    // The kitty resources we explicitly destroy below are redundant given the
+    // device.destroy() call but we keep them as a tightening (in case the
+    // browser implementation defers GPU-side reclamation past device destroy).
     this.kittyTextures.destroyAll();
     for (const buf of this.kittyParamsRing) buf.destroy();
     this.kittyParamsRing.length = 0;
     this.kittyAtlas?.destroy();
     if (this.kittyAtlasUBO) this.kittyAtlasUBO.destroy();
-    // device.destroy() left to caller; we don't own it. Other resources
-    // (paletteUBO, gridUBO, glyph atlas, cellBuffer, pipelines, etc.) are
-    // owned by the device and reclaimed when it is destroyed.
+    this.device.destroy();
   }
 }

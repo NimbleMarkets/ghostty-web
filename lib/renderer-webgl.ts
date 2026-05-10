@@ -290,6 +290,10 @@ export class GLGlyphAtlas extends GlyphAtlasBase {
     return this.texture;
   }
 
+  destroy(): void {
+    this.gl.deleteTexture(this.texture);
+  }
+
   private createBackingTexture(size: number): WebGLTexture | null {
     const gl = this.gl;
     const tex = gl.createTexture();
@@ -939,15 +943,24 @@ export class WebGL2Renderer implements Renderer {
   destroy(): void {
     this.destroyed = true;
     this.cursorBlink_.destroy();
+    // Kitty resources
     this.kittyAtlas?.destroy();
     this.kittyTextures.destroyAll();
     if (this.kittyAtlasUBO) this.gl.deleteBuffer(this.kittyAtlasUBO);
     if (this.kittyProgram) this.gl.deleteProgram(this.kittyProgram);
     for (const buf of this.kittyParamsRing) this.gl.deleteBuffer(buf);
     this.kittyParamsRing.length = 0;
-    // TODO (existing follow-up): also gl.deleteBuffer(paletteUBO, gridUBO),
-    // gl.deleteTexture(cellTex, glyph atlas), gl.deleteProgram(textProgram,
-    // cursorProgram), gl.deleteVertexArray(vao). Tracked separately.
+    // Text + cursor + glyph atlas + cell texture
+    if (this.paletteUBO) this.gl.deleteBuffer(this.paletteUBO);
+    if (this.gridUBO) this.gl.deleteBuffer(this.gridUBO);
+    if (this.cellTex) this.gl.deleteTexture(this.cellTex);
+    this.atlas?.destroy();
+    if (this.textProgram) this.gl.deleteProgram(this.textProgram);
+    if (this.cursorProgram) this.gl.deleteProgram(this.cursorProgram);
+    if (this.vao) this.gl.deleteVertexArray(this.vao);
+    // The WebGL context itself isn't explicitly deletable; it dies when the
+    // canvas is GC'd. Our renderer-swap path detaches the canvas so GC can
+    // reclaim it.
   }
 
   /** T13 will register a callback fired on webglcontextlost. */
