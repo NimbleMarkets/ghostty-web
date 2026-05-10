@@ -328,6 +328,7 @@ export class CanvasRenderer implements Renderer {
    */
   public remeasureFont(): void {
     this.metrics = this.measureFont();
+    this.invalidateNext = true;
   }
 
   // ==========================================================================
@@ -367,6 +368,7 @@ export class CanvasRenderer implements Renderer {
     // Fill background after resize
     this.ctx.fillStyle = this.theme.background;
     this.ctx.fillRect(0, 0, cssWidth, cssHeight);
+    this.invalidateNext = true;
   }
 
   // ==========================================================================
@@ -1531,6 +1533,8 @@ export class CanvasRenderer implements Renderer {
       this.theme.brightCyan,
       this.theme.brightWhite,
     ];
+    this.invalidateNext = true;
+    this.onRequestRender?.();
   }
 
   /**
@@ -1539,6 +1543,8 @@ export class CanvasRenderer implements Renderer {
   public setFontSize(size: number): void {
     this.fontSize = size;
     this.metrics = this.measureFont();
+    this.invalidateNext = true;
+    this.onRequestRender?.();
   }
 
   /**
@@ -1547,6 +1553,8 @@ export class CanvasRenderer implements Renderer {
   public setFontFamily(family: string): void {
     this.fontFamily = family;
     this.metrics = this.measureFont();
+    this.invalidateNext = true;
+    this.onRequestRender?.();
   }
 
   /**
@@ -1554,6 +1562,8 @@ export class CanvasRenderer implements Renderer {
    */
   public setCursorStyle(style: 'block' | 'underline' | 'bar'): void {
     this.cursorStyle = style;
+    this.invalidateNext = true;
+    this.onRequestRender?.();
   }
 
   /**
@@ -1581,6 +1591,7 @@ export class CanvasRenderer implements Renderer {
    */
   public setSelectionManager(manager: SelectionManager): void {
     this.selectionManager = manager;
+    this.invalidateNext = true;
   }
 
   /**
@@ -1619,6 +1630,7 @@ export class CanvasRenderer implements Renderer {
   public setHoveredHyperlinkId(hyperlinkId: number): void {
     if (this.hoveredHyperlinkId === hyperlinkId) return;
     this.hoveredHyperlinkId = hyperlinkId;
+    this.invalidateNext = true;
     this.onRequestRender?.();
   }
 
@@ -1639,6 +1651,7 @@ export class CanvasRenderer implements Renderer {
     // comparison is enough to dedupe back-to-back clears.
     if (this.hoveredLinkRange === range) return;
     this.hoveredLinkRange = range;
+    this.invalidateNext = true;
     this.onRequestRender?.();
   }
 

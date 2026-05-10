@@ -247,6 +247,79 @@ describe('CanvasRenderer', () => {
       renderer.destroy();
     });
 
+    test('frame-skip: each visible-state setter breaks the skip', () => {
+      const canvas = document.createElement('canvas');
+      const renderer = new CanvasRenderer(canvas);
+      renderer.resize(4, 2);
+
+      const empty = (): GhosttyCell => ({
+        codepoint: 0,
+        fg_r: 0,
+        fg_g: 0,
+        fg_b: 0,
+        bg_r: 0,
+        bg_g: 0,
+        bg_b: 0,
+        fgIsDefault: true,
+        bgIsDefault: true,
+        flags: 0,
+        width: 1,
+        hyperlink_id: 0,
+        grapheme_len: 0,
+        grapheme: null,
+      });
+
+      let dirtyCleared = 0;
+      const buf: IRenderable = {
+        getLine: () => Array.from({ length: 4 }, empty),
+        getViewport: () => Array.from({ length: 8 }, empty),
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 4, rows: 2 }),
+        isRowDirty: () => false,
+        needsFullRedraw: () => false,
+        clearDirty: () => {
+          dirtyCleared++;
+        },
+      };
+
+      // Helper: settle into a no-op steady state, then run mutator and
+      // assert the next render() actually does work.
+      function expectMutatorBreaksSkip(label: string, mutate: () => void): void {
+        // Drain pending invalidations.
+        renderer.render(buf, 0);
+        renderer.render(buf, 0); // baseline — must skip
+        const before = dirtyCleared;
+        mutate();
+        renderer.render(buf, 0);
+        if (dirtyCleared === before) {
+          throw new Error(
+            `${label}: render() was skipped after the setter — frame-skip gate swallowed the change`
+          );
+        }
+      }
+
+      // Each setter that mutates visible renderer state must mark
+      // invalidateNext = true so the new top-of-render gate doesn't
+      // swallow it. Pre-frame-skip these survived because the renderer
+      // walked all rows on every call; with the gate they need an
+      // explicit invalidation signal.
+      expectMutatorBreaksSkip('setTheme', () =>
+        renderer.setTheme({ background: '#123456' } as Parameters<typeof renderer.setTheme>[0])
+      );
+      expectMutatorBreaksSkip('setFontSize', () => renderer.setFontSize(20));
+      expectMutatorBreaksSkip('setFontFamily', () => renderer.setFontFamily('serif'));
+      expectMutatorBreaksSkip('setCursorStyle', () => renderer.setCursorStyle('underline'));
+      expectMutatorBreaksSkip('setHoveredHyperlinkId', () => renderer.setHoveredHyperlinkId(7));
+      expectMutatorBreaksSkip('setHoveredLinkRange', () =>
+        renderer.setHoveredLinkRange({ startX: 0, startY: 0, endX: 1, endY: 0 })
+      );
+      expectMutatorBreaksSkip('remeasureFont', () => renderer.remeasureFont());
+      expectMutatorBreaksSkip('invalidate', () => renderer.invalidate());
+      expectMutatorBreaksSkip('resize', () => renderer.resize(6, 3));
+
+      renderer.destroy();
+    });
+
     test('virtual placement removed since last frame triggers full repaint', () => {
       const canvas = document.createElement('canvas');
       const renderer = new CanvasRenderer(canvas);
