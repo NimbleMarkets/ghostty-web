@@ -108,6 +108,7 @@ export class Terminal implements ITerminalCore {
   // Lifecycle state
   private isOpen = false;
   private isDisposed = false;
+  private isSwapping = false;
   private animationFrameId?: number;
   private writeQueue: Uint8Array[] = [];
 
@@ -432,17 +433,7 @@ export class Terminal implements ITerminalCore {
       parent.appendChild(this.textarea);
 
       // Focus textarea on interaction - preventDefault before focus
-      const textarea = this.textarea;
-      // Desktop: mousedown
-      this.canvas.addEventListener('mousedown', (ev) => {
-        ev.preventDefault();
-        textarea.focus();
-      });
-      // Mobile: touchend with preventDefault to suppress iOS caret
-      this.canvas.addEventListener('touchend', (ev) => {
-        ev.preventDefault();
-        textarea.focus();
-      });
+      this.attachCanvasFocusListeners(this.canvas, this.textarea);
 
       // Create scrollbar overlay canvas (sibling, pointer-events: none)
       const scrollbarCanvas = document.createElement('canvas');
@@ -622,36 +613,69 @@ export class Terminal implements ITerminalCore {
       // Rebind the renderer-dependent state after a fallback. Used by both
       // WebGPU device-lost and WebGL context-lost handlers.
       const swapRenderer = async (target: 'webgl' | 'canvas2d', reason: string): Promise<void> => {
-        if (this.isDisposed || !this.canvas) return;
-        console.warn(`[ghostty-web] renderer falling back to ${target}:`, reason);
-        this.renderer?.destroy();
+        if (this.isDisposed || !this.canvas || !this.textarea || !this.wasmTerm) return;
+        if (this.isSwapping) return;
+        this.isSwapping = true;
         try {
-          this.renderer = await pickRenderer(target, this.canvas, {
-            fontSize: this.options.fontSize,
-            fontFamily: this.options.fontFamily,
-            cursorStyle: this.options.cursorStyle,
-            cursorBlink: this.options.cursorBlink,
-            theme: this.options.theme,
-          });
-        } catch (e) {
-          // If the requested target also fails, drop straight to Canvas2D.
-          console.warn(`[ghostty-web] ${target} fallback failed; using canvas2d:`, e);
-          this.renderer = await pickRenderer('canvas2d', this.canvas, {
-            fontSize: this.options.fontSize,
-            fontFamily: this.options.fontFamily,
-            cursorStyle: this.options.cursorStyle,
-            cursorBlink: this.options.cursorBlink,
-            theme: this.options.theme,
-          });
-        }
-        this.renderer.resize(this.cols, this.rows);
-        this.renderer.setOnRequestRender(() => this.requestRender());
-        if (this.selectionManager) {
+          console.warn(`[ghostty-web] renderer falling back to ${target}:`, reason);
+
+          // Tear down the old renderer's GPU resources and the SelectionManager
+          // (which holds canvas-attached event listeners on the old canvas).
+          this.renderer?.destroy();
+          this.selectionManager?.dispose();
+
+          // Replace the canvas DOM node. Browsers refuse to give an existing
+          // canvas a second context type, so the new renderer needs a fresh
+          // canvas to claim.
+          const oldCanvas = this.canvas;
+          this.canvas = this.replaceCanvas(oldCanvas);
+          this.attachCanvasFocusListeners(this.canvas, this.textarea);
+
+          // Resolve the new renderer; fall back to canvas2d on failure.
+          try {
+            this.renderer = await pickRenderer(target, this.canvas, {
+              fontSize: this.options.fontSize,
+              fontFamily: this.options.fontFamily,
+              cursorStyle: this.options.cursorStyle,
+              cursorBlink: this.options.cursorBlink,
+              theme: this.options.theme,
+            });
+          } catch (e) {
+            // If the requested target also fails, drop straight to Canvas2D.
+            console.warn(`[ghostty-web] ${target} fallback failed; using canvas2d:`, e);
+            this.renderer = await pickRenderer('canvas2d', this.canvas, {
+              fontSize: this.options.fontSize,
+              fontFamily: this.options.fontFamily,
+              cursorStyle: this.options.cursorStyle,
+              cursorBlink: this.options.cursorBlink,
+              theme: this.options.theme,
+            });
+          }
+
+          this.renderer.resize(this.cols, this.rows);
+          this.renderer.setOnRequestRender(() => this.requestRender());
+
+          // Recreate the SelectionManager around the new renderer + canvas.
+          // Selection state in progress is dropped — acceptable during a
+          // GPU-loss swap event.
+          this.selectionManager = new SelectionManager(
+            this,
+            this.renderer,
+            this.wasmTerm,
+            this.textarea
+          );
           this.renderer.setSelectionManager(this.selectionManager);
+          this.selectionManager.onSelectionChange(() => {
+            this.selectionChangeEmitter.fire();
+            this.requestRender();
+          });
+
+          this.renderer.invalidate();
+          this.requestRender();
+          registerLossHandler();
+        } finally {
+          this.isSwapping = false;
         }
-        this.renderer.invalidate();
-        this.requestRender();
-        registerLossHandler();
       };
 
       registerLossHandler();
@@ -1418,6 +1442,26 @@ export class Terminal implements ITerminalCore {
   public getScrollbackLength(): number {
     if (!this.wasmTerm) return 0;
     return this.wasmTerm.getScrollbackLength();
+  }
+
+  /**
+   * Attach the click-to-focus-textarea listeners on a canvas. Extracted so
+   * the renderer-swap path can re-attach them after canvas replacement.
+   */
+  private attachCanvasFocusListeners(
+    canvas: HTMLCanvasElement,
+    textarea: HTMLTextAreaElement
+  ): void {
+    // Desktop: mousedown
+    canvas.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      textarea.focus();
+    });
+    // Mobile: touchend with preventDefault to suppress iOS caret
+    canvas.addEventListener('touchend', (ev) => {
+      ev.preventDefault();
+      textarea.focus();
+    });
   }
 
   /**
