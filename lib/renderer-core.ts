@@ -555,9 +555,15 @@ export function encodeCells(
       const skipAtlas =
         (flags & (FLAG_INVISIBLE | FLAG_IS_KITTY_PLACEHOLDER | FLAG_IS_BLOCK_ELEMENT)) !== 0;
       if (!skipAtlas && ctx.atlas) {
+        // Build the grapheme cluster string from cell-resident data.
+        // c.grapheme (extras) was populated by GhosttyTerminal.getViewport
+        // during its existing per-cell walk; reading it here avoids the
+        // O(row) buffer.getGraphemeString(y, x) crossing for every emoji /
+        // ZWJ / Indic-cluster cell.
+        const extras = c.grapheme;
         const grapheme =
-          c.grapheme_len > 0 && buffer.getGraphemeString
-            ? buffer.getGraphemeString(y, x)
+          extras && extras.length > 0
+            ? String.fromCodePoint(c.codepoint || 32, ...extras)
             : String.fromCodePoint(c.codepoint || 32);
         // FAINT is intentionally NOT included in the atlas style bits. The atlas
         // always rasterizes glyphs at full alpha; shaders apply the 0.5 alpha

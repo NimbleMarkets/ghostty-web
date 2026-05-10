@@ -5,6 +5,7 @@ import {
   CELL_BYTES,
   CELL_U32S,
   FLAG_IS_KITTY_PLACEHOLDER,
+  type GlyphAtlasBase,
   KittyAtlasBase,
   KittyTextureCacheBase,
   encodeCells,
@@ -102,11 +103,19 @@ describe('encodeCells: kitty placeholder grapheme cache', () => {
   };
   function makeStubBuffer(opts: StubRenderableOpts): IRenderable & {
     getGraphemeCalls: number;
+    getGraphemeStringCalls: number;
   } {
     let getGraphemeCalls = 0;
-    const buffer: IRenderable & { getGraphemeCalls: number } = {
+    let getGraphemeStringCalls = 0;
+    const buffer: IRenderable & {
+      getGraphemeCalls: number;
+      getGraphemeStringCalls: number;
+    } = {
       get getGraphemeCalls() {
         return getGraphemeCalls;
+      },
+      get getGraphemeStringCalls() {
+        return getGraphemeStringCalls;
       },
       getLine(y: number): GhosttyCell[] | null {
         const start = y * opts.cols;
@@ -137,6 +146,10 @@ describe('encodeCells: kitty placeholder grapheme cache', () => {
       getGrapheme(_y: number, _x: number) {
         getGraphemeCalls++;
         return null;
+      },
+      getGraphemeString(_y: number, _x: number) {
+        getGraphemeStringCalls++;
+        return ' ';
       },
     };
     return buffer;
@@ -239,6 +252,71 @@ describe('encodeCells: kitty placeholder grapheme cache', () => {
 
     expect(buffer.getGraphemeCalls).toBe(0);
     expect(cellArray[0 * CELL_U32S + 4]! & FLAG_IS_KITTY_PLACEHOLDER).toBeFalsy();
+  });
+
+  test('builds grapheme string from cell.grapheme without calling buffer.getGraphemeString', () => {
+    // Non-placeholder multi-codepoint cell — e.g. a ZWJ family emoji
+    // sequence. Pre-fix, encodeCells crossed into WASM via
+    // buffer.getGraphemeString(y, x) for every such cell, which itself
+    // walked the row iterator from row 0 (O(row) per call).
+    const cols = 2;
+    const rows = 2;
+    // Minimal atlas stub — only getOrRaster is read; record the
+    // grapheme strings encodeCells asks us to raster so we can verify
+    // cell.grapheme actually flowed through.
+    const rasterRequests: string[] = [];
+    const stubAtlas = {
+      getOrRaster: (grapheme: string) => {
+        rasterRequests.push(grapheme);
+        return { u: 0, v: 0, w: 8, h: 16 };
+      },
+    };
+
+    // Cell at (1, 1) is a ZWJ family: 👨‍👩‍👧.
+    // Codepoints: 0x1F468 0x200D 0x1F469 0x200D 0x1F467.
+    const cells: GhosttyCell[] = [];
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        if (y === 1 && x === 1) {
+          cells.push(
+            makeCell({
+              codepoint: 0x1f468,
+              grapheme_len: 4,
+              grapheme: [0x200d, 0x1f469, 0x200d, 0x1f467],
+              fg_r: 200,
+              fg_g: 200,
+              fg_b: 200,
+              fgIsDefault: false,
+            })
+          );
+        } else {
+          cells.push(makeCell({ codepoint: 0x41 })); // 'A'
+        }
+      }
+    }
+    const buffer = makeStubBuffer({ cols, rows, cells, placements: [] });
+    const cellArray = new Uint32Array(cols * rows * CELL_U32S);
+    const ctx = {
+      metrics: { width: 8, height: 16, baseline: 12 },
+      selectionManager: undefined,
+      hoveredHyperlinkId: 0,
+      hoveredLinkRange: null,
+      cursorStyle: 'block' as const,
+      cursorBlinkVisible: false,
+      atlas: stubAtlas as unknown as GlyphAtlasBase,
+      kittyEnabled: false,
+      blockElementShaderEnabled: false,
+    };
+
+    encodeCells(cellArray, buffer, 0, undefined, ctx);
+
+    // Zero WASM crossings for grapheme lookup — neither getGrapheme nor
+    // getGraphemeString should fire when cell.grapheme is populated.
+    expect(buffer.getGraphemeCalls).toBe(0);
+    expect(buffer.getGraphemeStringCalls).toBe(0);
+    // The ZWJ cluster reached the atlas as a single grapheme string
+    // built from cell.codepoint + cell.grapheme.
+    expect(rasterRequests).toContain('👨‍👩‍👧');
   });
 
   // Confirm the test imports are wired — exercises CELL_BYTES so its import is used.

@@ -868,15 +868,15 @@ export class CanvasRenderer implements Renderer {
     const textX = cellX;
     const textY = cellY + this.metrics.baseline;
 
-    // Get the character to render - use grapheme lookup for complex scripts
-    let char: string;
-    if (cell.grapheme_len > 0 && this.currentBuffer?.getGraphemeString) {
-      // Cell has additional codepoints - get full grapheme cluster
-      char = this.currentBuffer.getGraphemeString(y, x);
-    } else {
-      // Simple cell - single codepoint
-      char = String.fromCodePoint(cell.codepoint || 32); // Default to space if null
-    }
+    // Get the character to render. cell.grapheme (extras) is populated
+    // by GhosttyTerminal.getViewport during its per-cell walk, so we
+    // build the cluster locally — going through getGraphemeString would
+    // cost an O(row) WASM crossing per multi-codepoint cell.
+    const extras = cell.grapheme;
+    const char =
+      extras && extras.length > 0
+        ? String.fromCodePoint(cell.codepoint || 32, ...extras)
+        : String.fromCodePoint(cell.codepoint || 32);
 
     // Block elements (U+2580..U+259F) draw as fillRect using the same
     // fillStyle. The browser's font rasterization of these glyphs leaves
