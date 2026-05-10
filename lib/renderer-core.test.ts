@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  kittyImageToRGBA,
-  KittyTextureCacheBase,
-  KittyAtlasBase,
   type AtlasSlot,
+  KittyAtlasBase,
+  KittyTextureCacheBase,
+  kittyImageToRGBA,
 } from './renderer-core';
 import { KittyImageFormat } from './types';
 

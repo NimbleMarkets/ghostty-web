@@ -17,8 +17,21 @@
 
 import { CursorBlink } from './cursor-blink';
 import type { ITheme } from './interfaces';
-import type { SelectionManager } from './selection-manager';
 import { DEFAULT_THEME } from './renderer';
+import {
+  type AtlasSlot,
+  CELL_BYTES,
+  CELL_U32S,
+  GlyphAtlasBase,
+  KittyAtlasBase,
+  KittyTextureCacheBase,
+  buildGridUBOBytes,
+  buildPaletteUBOBytes,
+  encodeCells as coreEncodeCells,
+  measureFont as coreMeasureFont,
+  parseHexColor as coreParseHexColor,
+} from './renderer-core';
+import type { GridUBOState } from './renderer-core';
 import type {
   FontMetrics,
   IRenderable,
@@ -27,20 +40,7 @@ import type {
   Renderer,
   RendererOptions,
 } from './renderer-types';
-import {
-  CELL_BYTES,
-  CELL_U32S,
-  measureFont as coreMeasureFont,
-  parseHexColor as coreParseHexColor,
-  buildPaletteUBOBytes,
-  buildGridUBOBytes,
-  GlyphAtlasBase,
-  encodeCells as coreEncodeCells,
-  type AtlasSlot,
-  KittyTextureCacheBase,
-  KittyAtlasBase,
-} from './renderer-core';
-import type { GridUBOState } from './renderer-core';
+import type { SelectionManager } from './selection-manager';
 
 // ---------------------------------------------------------------------------
 // TEXT_SHADER

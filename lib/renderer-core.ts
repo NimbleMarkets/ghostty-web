@@ -8,11 +8,11 @@
  */
 
 import type { ITheme } from './interfaces';
+import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
 import type { FontMetrics, IRenderable, IScrollbackProvider, LinkRange } from './renderer-types';
 import type { SelectionManager } from './selection-manager';
 import { CellFlags, KittyImageFormat } from './types';
-import type { KittyPlacementInfo, KittyImagePixels } from './types';
-import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
+import type { KittyImagePixels, KittyPlacementInfo } from './types';
 
 // ---------------------------------------------------------------------------
 // Cell encoding

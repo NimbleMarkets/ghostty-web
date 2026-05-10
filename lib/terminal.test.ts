@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { Terminal } from './terminal';
+import type { Terminal } from './terminal';
 import { createIsolatedTerminal } from './test-helpers';
 
 /**

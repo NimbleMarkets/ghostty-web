@@ -4,6 +4,7 @@
 **Date:** 2026-05-09
 **Branch (anticipated):** `nm-webgpu` (continuation)
 **Predecessor specs:**
+
 - `docs/superpowers/specs/2026-05-08-webgl-backend-design.md` (T15 introduced the cascade)
 
 ## Goal
@@ -25,13 +26,13 @@ The HTMLCanvasElement spec is unambiguous: once `canvas.getContext('webgpu')` re
 
 ### File layout
 
-| Path | Status | Purpose |
-|---|---|---|
-| `lib/terminal.ts` | modify | Add `replaceCanvas(oldCanvas)` private helper. Refactor `swapRenderer(target, reason)` to call `replaceCanvas` before `pickRenderer`, re-attach Terminal-level listeners on the new canvas, recreate `SelectionManager`. Add an `isSwapping` guard to prevent re-entrancy. |
-| `lib/terminal.test.ts` | modify | New test cases for `replaceCanvas` helper (parent attachment, style preservation, old-canvas detachment, fresh-instance return). |
-| `lib/selection-manager.ts` | untouched | Existing `destroy()` already detaches all listeners cleanly; we use destroy + recreate. |
-| `lib/renderer-webgpu.ts`, `lib/renderer-webgl.ts`, `lib/renderer.ts` | untouched | The fix is at the Terminal level. |
-| `lib/renderer-factory.ts` | untouched | The factory's behavior is correct; the bug is the canvas reuse, not the factory. |
+| Path                                                                 | Status    | Purpose                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/terminal.ts`                                                    | modify    | Add `replaceCanvas(oldCanvas)` private helper. Refactor `swapRenderer(target, reason)` to call `replaceCanvas` before `pickRenderer`, re-attach Terminal-level listeners on the new canvas, recreate `SelectionManager`. Add an `isSwapping` guard to prevent re-entrancy. |
+| `lib/terminal.test.ts`                                               | modify    | New test cases for `replaceCanvas` helper (parent attachment, style preservation, old-canvas detachment, fresh-instance return).                                                                                                                                           |
+| `lib/selection-manager.ts`                                           | untouched | Existing `destroy()` already detaches all listeners cleanly; we use destroy + recreate.                                                                                                                                                                                    |
+| `lib/renderer-webgpu.ts`, `lib/renderer-webgl.ts`, `lib/renderer.ts` | untouched | The fix is at the Terminal level.                                                                                                                                                                                                                                          |
+| `lib/renderer-factory.ts`                                            | untouched | The factory's behavior is correct; the bug is the canvas reuse, not the factory.                                                                                                                                                                                           |
 
 ### `replaceCanvas` helper (new)
 
@@ -114,13 +115,13 @@ See Section 2 of the brainstorm transcript. Summary: the swap detaches the dying
 
 ## Error handling
 
-| Failure mode | Behavior |
-|---|---|
-| `replaceCanvas` called when `oldCanvas.parentNode === null` | Throw `Terminal.replaceCanvas: old canvas has no parent`. Shouldn't happen in practice (canvas is always parent-attached after `open()`). |
-| `pickRenderer(target, ...)` throws AND the canvas2d fallback throws | Re-throw. Terminal is left without a renderer. Same as today — no regression. |
-| `selectionManager?.destroy()` called when SM was already destroyed | `SelectionManager.destroy()` is idempotent (guards each detach with the bound-handler null check). Safe. |
-| Concurrent swap calls | `isSwapping` guard prevents re-entrancy. Second call early-returns; the first call wins. |
-| Swap fires before `open()` completes | `if (isDisposed \|\| !canvas) return` guard catches this (`canvas` is undefined until `open()` runs). Same as today. |
+| Failure mode                                                                                       | Behavior                                                                                                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `replaceCanvas` called when `oldCanvas.parentNode === null`                                        | Throw `Terminal.replaceCanvas: old canvas has no parent`. Shouldn't happen in practice (canvas is always parent-attached after `open()`).                                                                                |
+| `pickRenderer(target, ...)` throws AND the canvas2d fallback throws                                | Re-throw. Terminal is left without a renderer. Same as today — no regression.                                                                                                                                            |
+| `selectionManager?.destroy()` called when SM was already destroyed                                 | `SelectionManager.destroy()` is idempotent (guards each detach with the bound-handler null check). Safe.                                                                                                                 |
+| Concurrent swap calls                                                                              | `isSwapping` guard prevents re-entrancy. Second call early-returns; the first call wins.                                                                                                                                 |
+| Swap fires before `open()` completes                                                               | `if (isDisposed \|\| !canvas) return` guard catches this (`canvas` is undefined until `open()` runs). Same as today.                                                                                                     |
 | Browser doesn't allow even the fresh canvas to acquire a context (extreme OOM, GPU process killed) | All of WebGPU/WebGL/Canvas2D would fail. Canvas2D effectively never fails on a fresh canvas in practice; if it does, the catch falls all the way through and the terminal becomes nonfunctional. Acceptable degradation. |
 
 ## Testing

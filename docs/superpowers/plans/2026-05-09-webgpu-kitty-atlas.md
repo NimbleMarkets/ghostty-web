@@ -14,14 +14,14 @@
 
 ## File Structure
 
-| Path | Status | Purpose |
-|---|---|---|
-| `lib/renderer-webgpu.ts` | modify | Add `WebGPUKittyAtlas` subclass + `kittyAtlasUBO` + `kittySampler` + `kittyAtlasRects` host buffer. Rewrite TEXT_SHADER WGSL. Update bind-group layout. Update render() virtual-placement walk. Set `maxKittyImages: 256`. Extend `destroy()`. Remove now-unused `frameKittyViews`/`dummyTexture`/`dummyView`/`placeholderSampler`. |
-| `lib/renderer-factory.ts` | modify | Drop `requiredLimits.maxSampledTexturesPerShaderStage` adapter-bumping from `tryWebGPU`. Replace explanatory comment block. |
-| `lib/renderer-factory.test.ts` | possibly modify | Spot-check whether any test asserts the `requiredLimits` parameter shape. Likely no change needed (existing tests stub at `requestAdapter`). |
-| `lib/renderer-core.ts` | untouched | `KittyAtlasBase` reused as-is. |
-| `lib/renderer-webgl.ts` | untouched | WebGL backend unchanged. |
-| `demo/index.html`, `demo/bin/demo.js` | untouched | No demo changes. |
+| Path                                  | Status          | Purpose                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/renderer-webgpu.ts`              | modify          | Add `WebGPUKittyAtlas` subclass + `kittyAtlasUBO` + `kittySampler` + `kittyAtlasRects` host buffer. Rewrite TEXT_SHADER WGSL. Update bind-group layout. Update render() virtual-placement walk. Set `maxKittyImages: 256`. Extend `destroy()`. Remove now-unused `frameKittyViews`/`dummyTexture`/`dummyView`/`placeholderSampler`. |
+| `lib/renderer-factory.ts`             | modify          | Drop `requiredLimits.maxSampledTexturesPerShaderStage` adapter-bumping from `tryWebGPU`. Replace explanatory comment block.                                                                                                                                                                                                         |
+| `lib/renderer-factory.test.ts`        | possibly modify | Spot-check whether any test asserts the `requiredLimits` parameter shape. Likely no change needed (existing tests stub at `requestAdapter`).                                                                                                                                                                                        |
+| `lib/renderer-core.ts`                | untouched       | `KittyAtlasBase` reused as-is.                                                                                                                                                                                                                                                                                                      |
+| `lib/renderer-webgl.ts`               | untouched       | WebGL backend unchanged.                                                                                                                                                                                                                                                                                                            |
+| `demo/index.html`, `demo/bin/demo.js` | untouched       | No demo changes.                                                                                                                                                                                                                                                                                                                    |
 
 ## Reference snapshots
 
@@ -48,6 +48,7 @@
 ## Task PB1: Allocate `WebGPUKittyAtlas` + supporting state (no wiring yet)
 
 **Files:**
+
 - Modify: `lib/renderer-webgpu.ts`
 
 Add the new `WebGPUKittyAtlas` subclass, the `kittyAtlasUBO` GPU buffer, the `kittySampler`, and the host-side `kittyAtlasRects` Float32Array. Allocate them in the appropriate phases of the renderer lifecycle (constructor / `initialize()` / `resize()`) — but no render-path wiring yet. The renderer remains functionally unchanged after PB1 because nothing references the new fields yet.
@@ -157,6 +158,7 @@ Mirror Phase A's `GLKittyAtlas` lazy-allocation pattern.
 bun run typecheck
 bun test
 ```
+
 Expected: full suite green. No behavior change yet — the new fields exist but nothing uses them.
 
 - [ ] **Step 6: Format + commit**
@@ -175,6 +177,7 @@ DO NOT include unstaged docs changes from earlier work.
 ## Task PB2: Atomic migration — WGSL + bind layout + render walk
 
 **Files:**
+
 - Modify: `lib/renderer-webgpu.ts`
 
 This is the central change. The WGSL shader, the bind-group layout, the per-frame bind group rebuild, the render() virtual-placement walk, and the `encodeCells` context update all change together. Intermediate states are broken; this lands as one commit.
@@ -240,6 +243,7 @@ if ((flags & FLAG_IS_KITTY_PLACEHOLDER) != 0u) {
 Find the existing `this.textBindGroupLayout = this.device.createBindGroupLayout({ entries: [...] })` setup (approximately `lib/renderer-webgpu.ts:707-733`).
 
 The current `entries` array contains:
+
 ```
 { binding: 0, ..., buffer: { type: 'uniform' } },                   // gridUBO
 { binding: 1, ..., buffer: { type: 'uniform' } },                   // paletteUBO
@@ -415,6 +419,7 @@ The `maxKittyImages: 256` line is the only addition.
 bun run typecheck
 bun test
 ```
+
 Expected: full suite green. No tests directly cover WebGPU's render path (no stub-context tests for WebGPU), so we're relying on typecheck + manual demo verification (PB6).
 
 - [ ] **Step 9: Format + commit**
@@ -431,6 +436,7 @@ git commit -m "feat(render): migrate WebGPU virtual placements to shared kitty a
 ## Task PB3: Cleanup — remove unused fields and setup
 
 **Files:**
+
 - Modify: `lib/renderer-webgpu.ts`
 
 After PB2, several fields and setup lines are unused: `frameKittyViews` (was a local in render(), already gone), `dummyTexture`, `dummyView`, `placeholderSampler`. These were used to fill empty kitty texture slots in the old 16-binding layout. Remove them.
@@ -442,6 +448,7 @@ grep -n "dummyTexture\|dummyView\|placeholderSampler\|placeholderSamp" lib/rende
 ```
 
 Should reveal:
+
 - Field declarations (3 `private` lines for `dummyTexture`, `dummyView`, `placeholderSampler`)
 - Allocation in `initialize()` (a `createTexture` for dummyTexture, a `writeTexture` to clear it, a `createSampler` for placeholderSampler)
 - Possibly references in the bind-group-layout setup (already removed in PB2 step 4)
@@ -450,6 +457,7 @@ Should reveal:
 - [ ] **Step 2: Remove field declarations**
 
 Delete the three field declarations:
+
 ```ts
 private dummyTexture?: GPUTexture;
 private dummyView?: GPUTextureView;
@@ -497,6 +505,7 @@ Delete this block.
 ```bash
 grep -n "dummyTexture\|dummyView\|placeholderSampler\|placeholderSamp\|frameKittyViews" lib/renderer-webgpu.ts
 ```
+
 Expected: no results (or only WGSL strings — but those should also be empty since the WGSL was rewritten in PB2).
 
 - [ ] **Step 6: Verify build + tests**
@@ -505,6 +514,7 @@ Expected: no results (or only WGSL strings — but those should also be empty si
 bun run typecheck
 bun test
 ```
+
 Expected: full suite green.
 
 - [ ] **Step 7: Format + commit**
@@ -521,6 +531,7 @@ git commit -m "refactor(render): remove now-unused dummyTexture/placeholderSampl
 ## Task PB4: `destroy()` releases new kitty resources
 
 **Files:**
+
 - Modify: `lib/renderer-webgpu.ts`
 
 PB1 added `kittyAtlas` and `kittyAtlasUBO`. Add their cleanup to `destroy()`. The pre-existing T6-style follow-up TODO for non-kitty resources (paletteUBO, gridUBO, glyph atlas, cellBuffer, pipelines, etc.) stays as-is.
@@ -563,6 +574,7 @@ destroy(): void {
 bun run typecheck
 bun test
 ```
+
 Expected: full suite green.
 
 - [ ] **Step 3: Format + commit**
@@ -579,6 +591,7 @@ git commit -m "feat(render): WebGPU destroy() releases kittyAtlas + UBO"
 ## Task PB5: Drop the factory `requiredLimits` workaround
 
 **Files:**
+
 - Modify: `lib/renderer-factory.ts`
 - Possibly: `lib/renderer-factory.test.ts` (spot-check only)
 
@@ -636,6 +649,7 @@ bun run typecheck
 bun test lib/renderer-factory.test.ts
 bun test
 ```
+
 Expected: full suite green.
 
 - [ ] **Step 4: Format + commit**
@@ -654,6 +668,7 @@ git commit -m "refactor(render): drop maxSampledTexturesPerShaderStage workaroun
 ## Task PB6: Manual demo verification
 
 **Files:**
+
 - (No code changes; verification only)
 
 The same manual verification steps from Phase A's K13, but focused on WebGPU.
@@ -677,6 +692,7 @@ Expected: image renders inline. The direct-placement code path was untouched in 
 - [ ] **Step 3: Test virtual placements**
 
 If you have a TUI tool that uses U+10EEEE virtual placements (ranger image previews, kitty kittens that embed images), navigate to a directory with images and trigger a preview. Compare to:
+
 - `?renderer=webgl` in another tab — visual parity check (both backends now use the atlas approach)
 - Pre-Phase-B WebGPU behavior (anecdotally, from earlier tests) — should match.
 

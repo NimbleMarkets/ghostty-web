@@ -10,8 +10,10 @@
  * - Dirty line optimization for 60 FPS
  */
 
+import { CursorBlink } from './cursor-blink';
 import type { ITheme } from './interfaces';
 import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
+import { measureFont as coreMeasureFont } from './renderer-core';
 import type {
   FontMetrics,
   IRenderable,
@@ -23,8 +25,6 @@ import type {
 import type { SelectionManager } from './selection-manager';
 import type { GhosttyCell, ILink, KittyImagePixels, KittyPlacementInfo } from './types';
 import { CellFlags, KittyImageFormat } from './types';
-import { CursorBlink } from './cursor-blink';
-import { measureFont as coreMeasureFont } from './renderer-core';
 
 export type {
   FontMetrics,
@@ -1054,16 +1054,28 @@ export class CanvasRenderer implements Renderer {
     const QUAD_UR = 0b0100;
     const QUAD_LL = 0b0010;
     const QUAD_LR = 0b0001;
+    // Hex literals are intentional: these are Unicode codepoints for box-drawing
+    // quadrant characters U+2596..U+259F. Decimal would be unreadable.
     const quadMap: Record<number, number> = {
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x2596: QUAD_LL,
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x2597: QUAD_LR,
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x2598: QUAD_UL,
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x2599: QUAD_UL | QUAD_LL | QUAD_LR,
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x259a: QUAD_UL | QUAD_LR,
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x259b: QUAD_UL | QUAD_UR | QUAD_LL,
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x259c: QUAD_UL | QUAD_UR | QUAD_LR,
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x259d: QUAD_UR,
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x259e: QUAD_UR | QUAD_LL,
+      // biome-ignore lint/complexity/useSimpleNumberKeys: unicode codepoints
       0x259f: QUAD_UR | QUAD_LL | QUAD_LR,
     };
     const quads = quadMap[codepoint];

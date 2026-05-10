@@ -4,6 +4,7 @@
 **Date:** 2026-05-09
 **Branch (anticipated):** `nm-webgpu` (continuation)
 **Predecessor specs:**
+
 - `docs/superpowers/specs/2026-05-09-webgl-kitty-design.md` (Phase A — WebGL kitty)
 - `docs/superpowers/specs/2026-05-08-webgl-backend-design.md` (original WebGL backend)
 
@@ -24,14 +25,14 @@ Migrate the WebGPU renderer's virtual-placement code path from the current "16 s
 
 ### File layout
 
-| Path | Status | Purpose |
-|---|---|---|
-| `lib/renderer-webgpu.ts` | modify | Add `WebGPUKittyAtlas extends KittyAtlasBase`; add `kittyAtlasUBO`, `kittyAtlasRects`, `kittySampler` fields. Rewrite WGSL `TEXT_SHADER` (drop 16 sampler bindings + `samplePlaceholder` switch + `placeholderSamp`; add kitty atlas binding + sampler + `KittyAtlasUBO` block + atlas-rect sampling branch). Update bind-group layout (16 entries → 3 entries replaced). Update `render()` virtual-placement walk: call `kittyAtlas.addOrUpdate(id, pixels)`, populate rects, `writeBuffer` to UBO. Update `encodeCells` context to `maxKittyImages: 256`. Extend `destroy()` to release the new resources. Remove `frameKittyViews`, `dummyTexture`, `dummyView`, `placeholderSamp`. |
-| `lib/renderer-factory.ts` | modify | Drop `requiredLimits.maxSampledTexturesPerShaderStage` adapter-bumping (text shader now binds 2 sampled textures, well under default 16). Replace the explanatory comment block with a brief note pointing at this spec. |
-| `lib/renderer-factory.test.ts` | possibly modify | Verify existing tests still pass after dropping `requiredLimits`. If any test asserts the `requiredLimits` argument, update. |
-| `lib/renderer-core.ts` | untouched | `KittyAtlasBase` reused as-is. |
-| `lib/renderer-webgl.ts` | untouched | WebGL backend stays on the atlas it already uses. |
-| `demo/index.html`, `demo/bin/demo.js` | untouched | No demo changes. |
+| Path                                  | Status          | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/renderer-webgpu.ts`              | modify          | Add `WebGPUKittyAtlas extends KittyAtlasBase`; add `kittyAtlasUBO`, `kittyAtlasRects`, `kittySampler` fields. Rewrite WGSL `TEXT_SHADER` (drop 16 sampler bindings + `samplePlaceholder` switch + `placeholderSamp`; add kitty atlas binding + sampler + `KittyAtlasUBO` block + atlas-rect sampling branch). Update bind-group layout (16 entries → 3 entries replaced). Update `render()` virtual-placement walk: call `kittyAtlas.addOrUpdate(id, pixels)`, populate rects, `writeBuffer` to UBO. Update `encodeCells` context to `maxKittyImages: 256`. Extend `destroy()` to release the new resources. Remove `frameKittyViews`, `dummyTexture`, `dummyView`, `placeholderSamp`. |
+| `lib/renderer-factory.ts`             | modify          | Drop `requiredLimits.maxSampledTexturesPerShaderStage` adapter-bumping (text shader now binds 2 sampled textures, well under default 16). Replace the explanatory comment block with a brief note pointing at this spec.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `lib/renderer-factory.test.ts`        | possibly modify | Verify existing tests still pass after dropping `requiredLimits`. If any test asserts the `requiredLimits` argument, update.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `lib/renderer-core.ts`                | untouched       | `KittyAtlasBase` reused as-is.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `lib/renderer-webgl.ts`               | untouched       | WebGL backend stays on the atlas it already uses.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `demo/index.html`, `demo/bin/demo.js` | untouched       | No demo changes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ### `WebGPUKittyAtlas` (new class in `lib/renderer-webgpu.ts`)
 
@@ -93,6 +94,7 @@ struct KittyAtlasUBO {
 ### Updated kitty-placeholder branch in `fsMain`
 
 Old:
+
 ```wgsl
 if ((flags & FLAG_IS_KITTY_PLACEHOLDER) != 0u) {
   let sliceCol = f32(cell.blockOrSlice & 0xffffu);
@@ -106,6 +108,7 @@ if ((flags & FLAG_IS_KITTY_PLACEHOLDER) != 0u) {
 ```
 
 New:
+
 ```wgsl
 if ((flags & FLAG_IS_KITTY_PLACEHOLDER) != 0u) {
   let sliceCol = f32(cell.blockOrSlice & 0xffffu);
@@ -129,6 +132,7 @@ The non-kitty branches (atlas glyph sampling, cursor cell, INVERSE swap, INVISIB
 `textBindGroupLayout` entries reduce from 22 to 8.
 
 **Today (`lib/renderer-webgpu.ts:707-733`):**
+
 ```
 binding 0: gridUBO (uniform)           [vertex|fragment]
 binding 1: paletteUBO (uniform)        [fragment]
@@ -140,6 +144,7 @@ binding 21: placeholderSamp (sampler)  [fragment]   ← removed
 ```
 
 **After Phase B:**
+
 ```
 binding 0: gridUBO (uniform)           [vertex|fragment]
 binding 1: paletteUBO (uniform)        [fragment]
@@ -204,14 +209,14 @@ Also remove the explanatory comment block about the 17-sampler limit; replace wi
 
 ## Error handling
 
-| Failure mode | Handling |
-|---|---|
-| `kittyAtlas.addOrUpdate` returns null | Cell renders as bg only this frame (same as WebGL). |
-| `getKittyImagePixels` returns null | Skip; cell renders as bg only. |
-| `device.createTexture` for kitty atlas fails | Throw at construction; renderer init fails; factory falls through to WebGL/Canvas2D. |
-| `device.createBuffer` for `kittyAtlasUBO` fails | Throw; renderer init fails. |
+| Failure mode                                                 | Handling                                                                                                                                                                                                                    |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kittyAtlas.addOrUpdate` returns null                        | Cell renders as bg only this frame (same as WebGL).                                                                                                                                                                         |
+| `getKittyImagePixels` returns null                           | Skip; cell renders as bg only.                                                                                                                                                                                              |
+| `device.createTexture` for kitty atlas fails                 | Throw at construction; renderer init fails; factory falls through to WebGL/Canvas2D.                                                                                                                                        |
+| `device.createBuffer` for `kittyAtlasUBO` fails              | Throw; renderer init fails.                                                                                                                                                                                                 |
 | **Adapters reporting exactly 16 sampled-textures-per-stage** | **Now work natively on WebGPU.** Previously fell through to WebGL via the factory's `requiredLimits` failure path. This is a positive behavior change — user-facing behavior on those devices switches from WebGL → WebGPU. |
-| Existing virtual-placement edge cases | Same as today + Phase A WebGL behavior. |
+| Existing virtual-placement edge cases                        | Same as today + Phase A WebGL behavior.                                                                                                                                                                                     |
 
 ### Lifecycle
 

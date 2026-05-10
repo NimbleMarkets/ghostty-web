@@ -20,6 +20,19 @@
 import { CursorBlink } from './cursor-blink';
 import type { ITheme } from './interfaces';
 import { DEFAULT_THEME } from './renderer';
+import {
+  type AtlasSlot,
+  CELL_U32S,
+  GlyphAtlasBase,
+  KittyAtlasBase,
+  KittyTextureCacheBase,
+  buildGridUBOBytes,
+  buildPaletteUBOBytes,
+  encodeCells as coreEncodeCells,
+  measureFont as coreMeasureFont,
+  parseHexColor as coreParseHexColor,
+} from './renderer-core';
+import type { GridUBOState } from './renderer-core';
 import type {
   FontMetrics,
   IRenderable,
@@ -29,19 +42,6 @@ import type {
   RendererOptions,
 } from './renderer-types';
 import type { SelectionManager } from './selection-manager';
-import {
-  CELL_U32S,
-  measureFont as coreMeasureFont,
-  parseHexColor as coreParseHexColor,
-  buildPaletteUBOBytes,
-  buildGridUBOBytes,
-  GlyphAtlasBase,
-  KittyTextureCacheBase,
-  KittyAtlasBase,
-  encodeCells as coreEncodeCells,
-  type AtlasSlot,
-} from './renderer-core';
-import type { GridUBOState } from './renderer-core';
 
 const GRID_UBO_GLSL = `
 layout(std140) uniform GridUBO {

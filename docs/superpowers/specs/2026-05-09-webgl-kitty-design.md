@@ -4,6 +4,7 @@
 **Date:** 2026-05-09
 **Branch (anticipated):** `nm-webgpu` (continuation of the WebGL backend work)
 **Predecessor specs:**
+
 - `docs/superpowers/specs/2026-05-08-webgl-backend-design.md`
 
 ## Goal
@@ -20,27 +21,27 @@ Add kitty graphics support (both direct and virtual placements) to the WebGL2 re
 
 ## Decisions
 
-| Question | Decision |
-|---|---|
-| v1 scope | Both direct + virtual placements (full WebGPU parity) |
-| Virtual-placement binding | Shared kitty atlas (option C) — extracted to core, reused by Phase B |
-| Direct-placement path | Per-image textures (current WebGPU pattern) |
-| Eviction policy | Clear-all + re-rasterize on miss when atlas overflows |
-| Migration order | WebGL first (Phase A); WebGPU follows in a separate spec (Phase B) |
-| Atlas UV lookup | UBO of up to 256 `vec4` rects, indexed by `cell.kittyImageIndex` |
-| Test approach | Stub-context tests + manual demo verification (no automated GPU diff) |
+| Question                  | Decision                                                              |
+| ------------------------- | --------------------------------------------------------------------- |
+| v1 scope                  | Both direct + virtual placements (full WebGPU parity)                 |
+| Virtual-placement binding | Shared kitty atlas (option C) — extracted to core, reused by Phase B  |
+| Direct-placement path     | Per-image textures (current WebGPU pattern)                           |
+| Eviction policy           | Clear-all + re-rasterize on miss when atlas overflows                 |
+| Migration order           | WebGL first (Phase A); WebGPU follows in a separate spec (Phase B)    |
+| Atlas UV lookup           | UBO of up to 256 `vec4` rects, indexed by `cell.kittyImageIndex`      |
+| Test approach             | Stub-context tests + manual demo verification (no automated GPU diff) |
 
 ## Architecture
 
 ### File layout
 
-| File | Phase A status | Purpose |
-|---|---|---|
-| `lib/renderer-core.ts` | **modify** | Add `KittyAtlasBase`, `kittyImageToRGBA`, `KittyTextureCacheBase`, raise `EncodeCellsContext.maxKittyImages` (default 16, WebGL passes 256) |
-| `lib/renderer-webgl.ts` | **modify** | New `GLKittyAtlas`, `GLKittyTextureCache`, `KITTY_VS`/`KITTY_FS` GLSL shaders, kitty pipeline + UBO ring, `TEXT_FS` extended for atlas-based virtual placements, kitty rect UBO, `encodeCells` flag flip to `kittyEnabled: true` and `maxKittyImages: 256` |
-| `lib/renderer-webgl.test.ts` | **modify** | Stub-context tests for kitty pipeline init, atlas packing, format conversion, render-path call shape |
-| `lib/renderer-webgpu.ts` | **modify** (small) | Subclass `KittyTextureCacheBase` for direct-placement cache (extracts the existing `kittyTextures` map + format conversion); WebGPU virtual-placement code path is **untouched** in Phase A and continues to use the 16-sampler shader |
-| `demo/index.html`, `demo/bin/demo.js` | **untouched** | Existing `?renderer=webgl` query string already exercises this path |
+| File                                  | Phase A status     | Purpose                                                                                                                                                                                                                                                    |
+| ------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/renderer-core.ts`                | **modify**         | Add `KittyAtlasBase`, `kittyImageToRGBA`, `KittyTextureCacheBase`, raise `EncodeCellsContext.maxKittyImages` (default 16, WebGL passes 256)                                                                                                                |
+| `lib/renderer-webgl.ts`               | **modify**         | New `GLKittyAtlas`, `GLKittyTextureCache`, `KITTY_VS`/`KITTY_FS` GLSL shaders, kitty pipeline + UBO ring, `TEXT_FS` extended for atlas-based virtual placements, kitty rect UBO, `encodeCells` flag flip to `kittyEnabled: true` and `maxKittyImages: 256` |
+| `lib/renderer-webgl.test.ts`          | **modify**         | Stub-context tests for kitty pipeline init, atlas packing, format conversion, render-path call shape                                                                                                                                                       |
+| `lib/renderer-webgpu.ts`              | **modify** (small) | Subclass `KittyTextureCacheBase` for direct-placement cache (extracts the existing `kittyTextures` map + format conversion); WebGPU virtual-placement code path is **untouched** in Phase A and continues to use the 16-sampler shader                     |
+| `demo/index.html`, `demo/bin/demo.js` | **untouched**      | Existing `?renderer=webgl` query string already exercises this path                                                                                                                                                                                        |
 
 ### Components
 
@@ -109,16 +110,16 @@ Texture-binding budget for the text pass: 3 (cell, glyph atlas, kitty atlas). We
 
 ## Error handling
 
-| Failure mode | Handling |
-|---|---|
-| `getKittyImagePixels` returns null | Skip that cell; renders as bg only. Matches WebGPU at `renderer-webgpu.ts:830`. |
-| `kittyImageToRGBA` returns null (unsupported format / undecoded PNG) | Skip; renders as bg only. |
-| Image larger than atlas, even after `clearAndReset` retry | `addOrUpdate` returns null; cell renders as bg only. Logged once per session. |
-| `gl.createTexture()` for kitty atlas fails (OOM) | Throw at construction; renderer init fails; factory falls through to Canvas2D. |
-| `gl.createBuffer()` for `kittyAtlasUBO` or ring slot fails | Throw with descriptive message; init fails; factory falls back. |
-| Direct-placement count exceeds current ring size | Ring grows on demand (no fixed cap). Same as WebGPU. |
-| More than 256 unique virtual-placement imageIds in a frame | encodeCells caps at `maxKittyImages` (256). Excess images don't appear in `usedKittyImageIds`; cells referencing them render as bg only. |
-| `webglcontextlost` mid-frame | Existing handler (T13) fires; renderer falls back to Canvas2D via terminal cascade (T15). All kitty resources released as part of `destroy()`. |
+| Failure mode                                                         | Handling                                                                                                                                       |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getKittyImagePixels` returns null                                   | Skip that cell; renders as bg only. Matches WebGPU at `renderer-webgpu.ts:830`.                                                                |
+| `kittyImageToRGBA` returns null (unsupported format / undecoded PNG) | Skip; renders as bg only.                                                                                                                      |
+| Image larger than atlas, even after `clearAndReset` retry            | `addOrUpdate` returns null; cell renders as bg only. Logged once per session.                                                                  |
+| `gl.createTexture()` for kitty atlas fails (OOM)                     | Throw at construction; renderer init fails; factory falls through to Canvas2D.                                                                 |
+| `gl.createBuffer()` for `kittyAtlasUBO` or ring slot fails           | Throw with descriptive message; init fails; factory falls back.                                                                                |
+| Direct-placement count exceeds current ring size                     | Ring grows on demand (no fixed cap). Same as WebGPU.                                                                                           |
+| More than 256 unique virtual-placement imageIds in a frame           | encodeCells caps at `maxKittyImages` (256). Excess images don't appear in `usedKittyImageIds`; cells referencing them render as bg only.       |
+| `webglcontextlost` mid-frame                                         | Existing handler (T13) fires; renderer falls back to Canvas2D via terminal cascade (T15). All kitty resources released as part of `destroy()`. |
 
 ## Lifecycle
 
@@ -173,6 +174,7 @@ CI gate is unchanged: `bun run fmt && bun run lint && bun run typecheck && bun t
 ## Phase B (separate spec, not implemented here)
 
 After Phase A ships and is verified, a follow-up will:
+
 - Subclass `KittyAtlasBase` for WebGPU (`WebGPUKittyAtlas`)
 - Replace `WebGPURenderer`'s 16-sampler virtual-placement code path with the atlas (drops 14 of the 16 kitty sampler bindings from `TEXT_SHADER`)
 - Drop the `requiredLimits.maxSampledTexturesPerShaderStage` workaround in `lib/renderer-factory.ts`

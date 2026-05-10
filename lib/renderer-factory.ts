@@ -11,8 +11,8 @@
 
 import { CanvasRenderer } from './renderer';
 import type { Renderer, RendererBackend, RendererOptions } from './renderer-types';
-import { WebGPURenderer } from './renderer-webgpu';
 import { WebGL2Renderer } from './renderer-webgl';
+import { WebGPURenderer } from './renderer-webgpu';
 
 let warnedWebGPUFallback = false;
 let warnedWebGLFallback = false;

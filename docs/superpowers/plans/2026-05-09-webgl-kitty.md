@@ -14,13 +14,13 @@
 
 ## File Structure
 
-| Path | Status | Purpose |
-|---|---|---|
-| `lib/renderer-core.ts` | modify | Add `kittyImageToRGBA`, `KittyTextureCacheBase<T>`, `KittyAtlasBase`; raise `EncodeCellsContext` with optional `maxKittyImages` |
-| `lib/renderer-webgpu.ts` | modify (small) | Replace inline `getOrUploadKittyTexture` + `kittyTextures` map with a `WebGPUKittyTextureCache extends KittyTextureCacheBase<GPUTexture>` subclass. Existing virtual-placement code path unchanged. |
-| `lib/renderer-webgl.ts` | modify | Add `GLKittyTextureCache`, `GLKittyAtlas`, kitty UBOs, kitty pipeline, `KITTY_VS`/`KITTY_FS`, extended `TEXT_FS`, kitty render path in `render()`, destroy() cleanup additions, encodeCells flag flip to `kittyEnabled: true, maxKittyImages: 256` |
-| `lib/renderer-webgl.test.ts` | modify | New tests for: kittyImageToRGBA, atlas packing, texture cache, kitty pipeline init, render path call shape |
-| `lib/renderer-core.test.ts` | add | Pure-logic tests for `kittyImageToRGBA`, `KittyTextureCacheBase`, `KittyAtlasBase` (test via stub subclasses without GL) |
+| Path                         | Status         | Purpose                                                                                                                                                                                                                                            |
+| ---------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/renderer-core.ts`       | modify         | Add `kittyImageToRGBA`, `KittyTextureCacheBase<T>`, `KittyAtlasBase`; raise `EncodeCellsContext` with optional `maxKittyImages`                                                                                                                    |
+| `lib/renderer-webgpu.ts`     | modify (small) | Replace inline `getOrUploadKittyTexture` + `kittyTextures` map with a `WebGPUKittyTextureCache extends KittyTextureCacheBase<GPUTexture>` subclass. Existing virtual-placement code path unchanged.                                                |
+| `lib/renderer-webgl.ts`      | modify         | Add `GLKittyTextureCache`, `GLKittyAtlas`, kitty UBOs, kitty pipeline, `KITTY_VS`/`KITTY_FS`, extended `TEXT_FS`, kitty render path in `render()`, destroy() cleanup additions, encodeCells flag flip to `kittyEnabled: true, maxKittyImages: 256` |
+| `lib/renderer-webgl.test.ts` | modify         | New tests for: kittyImageToRGBA, atlas packing, texture cache, kitty pipeline init, render path call shape                                                                                                                                         |
+| `lib/renderer-core.test.ts`  | add            | Pure-logic tests for `kittyImageToRGBA`, `KittyTextureCacheBase`, `KittyAtlasBase` (test via stub subclasses without GL)                                                                                                                           |
 
 ## Reference snapshots
 
@@ -42,6 +42,7 @@
 ## Task K1: `kittyImageToRGBA` utility
 
 **Files:**
+
 - Modify: `lib/renderer-core.ts` — append the function
 - Add: `lib/renderer-core.test.ts` — new test file (or extend if it already exists; check first)
 
@@ -80,14 +81,21 @@ describe('kittyImageToRGBA', () => {
 
   test('GRAY_ALPHA broadcasts gray and uses provided alpha', () => {
     const data = new Uint8Array([100, 50, 200, 150]);
-    const out = kittyImageToRGBA({ width: 2, height: 1, format: KittyImageFormat.GRAY_ALPHA, data });
+    const out = kittyImageToRGBA({
+      width: 2,
+      height: 1,
+      format: KittyImageFormat.GRAY_ALPHA,
+      data,
+    });
     expect(out).not.toBeNull();
     expect(Array.from(out!)).toEqual([100, 100, 100, 50, 200, 200, 200, 150]);
   });
 
   test('PNG (undecoded) returns null', () => {
     const out = kittyImageToRGBA({
-      width: 2, height: 1, format: KittyImageFormat.PNG,
+      width: 2,
+      height: 1,
+      format: KittyImageFormat.PNG,
       data: new Uint8Array([1, 2, 3]),
     });
     expect(out).toBeNull();
@@ -95,7 +103,9 @@ describe('kittyImageToRGBA', () => {
 
   test('zero-dimension image returns null', () => {
     const out = kittyImageToRGBA({
-      width: 0, height: 1, format: KittyImageFormat.RGBA,
+      width: 0,
+      height: 1,
+      format: KittyImageFormat.RGBA,
       data: new Uint8Array(0),
     });
     expect(out).toBeNull();
@@ -108,6 +118,7 @@ describe('kittyImageToRGBA', () => {
 ```bash
 bun test lib/renderer-core.test.ts
 ```
+
 Expected: FAIL — `kittyImageToRGBA` not exported.
 
 - [ ] **Step 3: Add the function to `lib/renderer-core.ts`**
@@ -173,6 +184,7 @@ If `KittyImageFormat` and `KittyImagePixels` aren't already imported at the top 
 ```bash
 bun test lib/renderer-core.test.ts
 ```
+
 Expected: 6 pass.
 
 - [ ] **Step 5: Verify full suite + format**
@@ -183,6 +195,7 @@ bun test
 npx prettier --write lib/renderer-core.ts lib/renderer-core.test.ts
 npx prettier --check lib/renderer-core.ts lib/renderer-core.test.ts
 ```
+
 Expected: typecheck green; full suite green; prettier clean.
 
 - [ ] **Step 6: Commit**
@@ -197,6 +210,7 @@ git commit -m "feat(render): kittyImageToRGBA shared utility in renderer-core"
 ## Task K2: `KittyTextureCacheBase<T>` abstract class
 
 **Files:**
+
 - Modify: `lib/renderer-core.ts`
 - Modify: `lib/renderer-core.test.ts`
 
@@ -232,7 +246,8 @@ describe('KittyTextureCacheBase', () => {
   test('first call creates and uploads', () => {
     const cache = new StubCache();
     const px = {
-      width: 2, height: 1,
+      width: 2,
+      height: 1,
       format: 1, // RGBA
       data: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
     };
@@ -245,7 +260,8 @@ describe('KittyTextureCacheBase', () => {
   test('second call with identical signature returns cached handle', () => {
     const cache = new StubCache();
     const px = {
-      width: 2, height: 1,
+      width: 2,
+      height: 1,
       format: 1,
       data: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
     };
@@ -258,12 +274,14 @@ describe('KittyTextureCacheBase', () => {
   test('signature mismatch destroys old and creates new', () => {
     const cache = new StubCache();
     const px1 = {
-      width: 2, height: 1,
+      width: 2,
+      height: 1,
       format: 1,
       data: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
     };
     const px2 = {
-      width: 2, height: 1,
+      width: 2,
+      height: 1,
       format: 1,
       data: new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80]),
     };
@@ -276,7 +294,8 @@ describe('KittyTextureCacheBase', () => {
   test('unsupported format returns null without creating', () => {
     const cache = new StubCache();
     const px = {
-      width: 2, height: 1,
+      width: 2,
+      height: 1,
       format: 2, // PNG
       data: new Uint8Array([1, 2, 3]),
     };
@@ -288,7 +307,9 @@ describe('KittyTextureCacheBase', () => {
   test('destroyAll cleans up every entry', () => {
     const cache = new StubCache();
     const px = {
-      width: 2, height: 1, format: 1,
+      width: 2,
+      height: 1,
+      format: 1,
       data: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
     };
     cache.getOrUpload(42, px as any);
@@ -304,6 +325,7 @@ describe('KittyTextureCacheBase', () => {
 ```bash
 bun test lib/renderer-core.test.ts -t "KittyTextureCacheBase"
 ```
+
 Expected: FAIL — class not exported.
 
 - [ ] **Step 3: Add the class to `lib/renderer-core.ts`**
@@ -323,14 +345,17 @@ Append after `kittyImageToRGBA`:
  * the byteOffset/length will too).
  */
 export abstract class KittyTextureCacheBase<TBackendTexture> {
-  private cache = new Map<number, {
-    handle: TBackendTexture;
-    width: number;
-    height: number;
-    format: number;
-    dataPtr: number;
-    dataLen: number;
-  }>();
+  private cache = new Map<
+    number,
+    {
+      handle: TBackendTexture;
+      width: number;
+      height: number;
+      format: number;
+      dataPtr: number;
+      dataLen: number;
+    }
+  >();
 
   protected abstract createTexture(width: number, height: number): TBackendTexture | null;
   protected abstract uploadFull(
@@ -393,6 +418,7 @@ export abstract class KittyTextureCacheBase<TBackendTexture> {
 ```bash
 bun test lib/renderer-core.test.ts -t "KittyTextureCacheBase"
 ```
+
 Expected: 5 pass.
 
 - [ ] **Step 5: Verify full suite + format**
@@ -415,6 +441,7 @@ git commit -m "feat(render): KittyTextureCacheBase shared in renderer-core"
 ## Task K3: `KittyAtlasBase` abstract class
 
 **Files:**
+
 - Modify: `lib/renderer-core.ts`
 - Modify: `lib/renderer-core.test.ts`
 
@@ -444,7 +471,8 @@ describe('KittyAtlasBase', () => {
 
   function pixels(width: number, height: number, dataLen = width * height * 4) {
     return {
-      width, height,
+      width,
+      height,
       format: 1, // RGBA
       data: new Uint8Array(dataLen),
     } as any;
@@ -506,6 +534,7 @@ describe('KittyAtlasBase', () => {
 ```bash
 bun test lib/renderer-core.test.ts -t "KittyAtlasBase"
 ```
+
 Expected: FAIL — class not exported.
 
 - [ ] **Step 3: Add the class to `lib/renderer-core.ts`**
@@ -626,6 +655,7 @@ export abstract class KittyAtlasBase {
 ```bash
 bun test lib/renderer-core.test.ts -t "KittyAtlasBase"
 ```
+
 Expected: 6 pass.
 
 - [ ] **Step 5: Verify full suite + format**
@@ -648,6 +678,7 @@ git commit -m "feat(render): KittyAtlasBase shared in renderer-core"
 ## Task K4: `EncodeCellsContext.maxKittyImages`
 
 **Files:**
+
 - Modify: `lib/renderer-core.ts`
 
 Add an optional `maxKittyImages` field to `EncodeCellsContext`, defaulting to 16 (current cap, hardcoded today). WebGPU keeps 16; WebGL will pass 256 in K11.
@@ -690,6 +721,7 @@ if (!usedKittyImageIndex.has(p.imageId) && usedKittyImageIds.length < maxKitty) 
 ```bash
 bun run typecheck && bun test
 ```
+
 Expected: full suite green (all 379+ tests including the new K1-K3 ones; existing encodeCells tests use no `maxKittyImages` so they still get 16 by default).
 
 - [ ] **Step 3: Format + commit**
@@ -705,6 +737,7 @@ git commit -m "feat(render): EncodeCellsContext.maxKittyImages (default 16)"
 ## Task K5: WebGPU adopts `KittyTextureCacheBase` for direct-placement cache
 
 **Files:**
+
 - Modify: `lib/renderer-webgpu.ts`
 
 Replace the existing inline `kittyTextures` map and `getOrUploadKittyTexture` method with a `WebGPUKittyTextureCache extends KittyTextureCacheBase<GPUTexture>` subclass. Pure refactor; existing WebGPU behavior unchanged.
@@ -814,6 +847,7 @@ The `KittyTextureEntry` type can be deleted entirely.
 ```bash
 bun run typecheck && bun test
 ```
+
 Expected: full suite green. The WebGPU renderer's behavior is unchanged from the user's perspective; only the internal cache class differs.
 
 - [ ] **Step 3: Format + commit**
@@ -829,6 +863,7 @@ git commit -m "refactor(render): WebGPU adopts KittyTextureCacheBase for direct-
 ## Task K6: WebGL `GLKittyTextureCache` subclass
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts`
 
 Add `GLKittyTextureCache extends KittyTextureCacheBase<WebGLTexture>` and a private field. No render-path wiring yet — that comes in K11b.
@@ -862,7 +897,12 @@ class GLKittyTextureCache extends KittyTextureCacheBase<WebGLTexture> {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return tex;
   }
-  protected uploadFull(handle: WebGLTexture, rgba: Uint8Array, width: number, height: number): void {
+  protected uploadFull(
+    handle: WebGLTexture,
+    rgba: Uint8Array,
+    width: number,
+    height: number
+  ): void {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, handle);
     gl.pixelStorei(/* UNPACK_ALIGNMENT */ 0x0cf5, 1);
@@ -893,6 +933,7 @@ this.kittyTextures = new GLKittyTextureCache(this.gl);
 ```bash
 bun run typecheck && bun test
 ```
+
 Expected: full suite green. The cache exists but isn't used yet.
 
 - [ ] **Step 3: Format + commit**
@@ -908,6 +949,7 @@ git commit -m "feat(render): GLKittyTextureCache subclass (no wiring yet)"
 ## Task K7: WebGL `GLKittyAtlas` subclass
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts`
 
 Add `GLKittyAtlas extends KittyAtlasBase` and a private field. Lazy-allocated in `resize()` like `GLGlyphAtlas`.
@@ -919,7 +961,7 @@ In `lib/renderer-webgl.ts`:
 1. Add to the renderer-core import:
 
 ```ts
-import { KittyAtlasBase, /* …existing… */ } from './renderer-core';
+import { KittyAtlasBase /* …existing… */ } from './renderer-core';
 ```
 
 2. Add the subclass near `GLKittyTextureCache`:
@@ -951,7 +993,12 @@ class GLKittyAtlas extends KittyAtlasBase {
     this.gl.deleteTexture(this.texture);
   }
 
-  protected uploadRegion(slot: { u: number; v: number; w: number; h: number }, rgba: Uint8Array, w: number, h: number): void {
+  protected uploadRegion(
+    slot: { u: number; v: number; w: number; h: number },
+    rgba: Uint8Array,
+    w: number,
+    h: number
+  ): void {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.pixelStorei(/* UNPACK_ALIGNMENT */ 0x0cf5, 1);
@@ -984,6 +1031,7 @@ if (!this.kittyAtlas) {
 ```bash
 bun run typecheck && bun test
 ```
+
 Expected: full suite green.
 
 - [ ] **Step 3: Format + commit**
@@ -999,6 +1047,7 @@ git commit -m "feat(render): GLKittyAtlas subclass (no wiring yet)"
 ## Task K8: WebGL kittyAtlasUBO allocation
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts`
 
 Allocate the 4096-byte rect lookup UBO in `initialize()` and a host-side `Float32Array(256 * 4)` for staging. No upload happens yet.
@@ -1030,6 +1079,7 @@ gl.bufferData(gl.UNIFORM_BUFFER, 256 * 4 * 4, gl.DYNAMIC_DRAW);
 ```bash
 bun run typecheck && bun test
 ```
+
 Expected: full suite green.
 
 - [ ] **Step 3: Format + commit**
@@ -1045,6 +1095,7 @@ git commit -m "feat(render): WebGL kittyAtlasUBO allocation (no wiring yet)"
 ## Task K9: WebGL kitty direct-placement shaders + program
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts`
 
 Add `KITTY_VS` / `KITTY_FS` GLSL ES 3.00 sources mirroring WGSL `KITTY_SHADER`. Add `setupKittyProgram()` called from `initialize()`. Allocate the `kittyParamsRing`.
@@ -1161,6 +1212,7 @@ describe('kitty program', () => {
 ```bash
 bun run typecheck && bun test lib/renderer-webgl.test.ts
 ```
+
 Expected: new test passes; full suite green.
 
 - [ ] **Step 5: Format + commit**
@@ -1176,6 +1228,7 @@ git commit -m "feat(render): WebGL kitty direct-placement shaders + program"
 ## Task K10: Extend `TEXT_FS` with kitty atlas branch
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts`
 
 Add `uniform highp sampler2D uKittyAtlas` (texture unit 2) and a `KittyAtlasUBO` block to the text fragment shader. Bind in `setupTextProgram()`. The branch is in place but won't render anything yet because no cell will carry `FLAG_IS_KITTY_PLACEHOLDER` until K11.
@@ -1241,6 +1294,7 @@ Also extend `textProgramUniforms` shape if helpful, or leave as-is.
 ```bash
 bun run typecheck && bun test lib/renderer-webgl.test.ts
 ```
+
 Expected: existing tests pass. The added shader code compiles in stub-context (the stub returns COMPILE_STATUS=true regardless). No visual change yet (no cell sets `FLAG_IS_KITTY_PLACEHOLDER` from the WebGL encode walk yet).
 
 - [ ] **Step 4: Format + commit**
@@ -1256,6 +1310,7 @@ git commit -m "feat(render): WebGL TEXT_FS extended with kitty atlas branch"
 ## Task K11a: WebGL virtual-placement render path
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts`
 - Modify: `lib/renderer-webgl.test.ts`
 
@@ -1275,10 +1330,17 @@ describe('virtual kitty placements (WebGL)', () => {
     stub.calls.length = 0;
     const placement = {
       imageId: 7,
-      pixelWidth: 32, pixelHeight: 32,
-      gridCols: 2, gridRows: 1,
-      viewportCol: 0, viewportRow: 0, viewportVisible: true,
-      sourceX: 0, sourceY: 0, sourceWidth: 32, sourceHeight: 32,
+      pixelWidth: 32,
+      pixelHeight: 32,
+      gridCols: 2,
+      gridRows: 1,
+      viewportCol: 0,
+      viewportRow: 0,
+      viewportVisible: true,
+      sourceX: 0,
+      sourceY: 0,
+      sourceWidth: 32,
+      sourceHeight: 32,
       isVirtual: true,
     };
     const buf = {
@@ -1294,7 +1356,9 @@ describe('virtual kitty placements (WebGL)', () => {
       getKittyImagePixels: (_g: number, id: number) =>
         id === 7
           ? {
-              width: 32, height: 32, format: 1,
+              width: 32,
+              height: 32,
+              format: 1,
               data: new Uint8Array(32 * 32 * 4),
             }
           : null,
@@ -1348,6 +1412,7 @@ describe('virtual kitty placements (WebGL)', () => {
 ```bash
 bun test lib/renderer-webgl.test.ts -t "virtual kitty"
 ```
+
 Expected: FAIL — kitty path not wired.
 
 - [ ] **Step 3: Wire the virtual-placement path**
@@ -1449,11 +1514,13 @@ The text pass binding-existence guard (the `if (this.textProgram && this.vao && 
 ```bash
 bun test lib/renderer-webgl.test.ts -t "virtual kitty"
 ```
+
 Expected: 2 pass.
 
 ```bash
 bun run typecheck && bun test
 ```
+
 Expected: full suite green.
 
 - [ ] **Step 5: Format + commit**
@@ -1469,6 +1536,7 @@ git commit -m "feat(render): WebGL virtual kitty placements via shared atlas"
 ## Task K11b: WebGL direct-placement render path
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts`
 - Modify: `lib/renderer-webgl.test.ts`
 
@@ -1488,10 +1556,17 @@ describe('direct kitty placements (WebGL)', () => {
     stub.calls.length = 0;
     const placement = {
       imageId: 5,
-      pixelWidth: 64, pixelHeight: 32,
-      gridCols: 4, gridRows: 2,
-      viewportCol: 0, viewportRow: 0, viewportVisible: true,
-      sourceX: 0, sourceY: 0, sourceWidth: 64, sourceHeight: 32,
+      pixelWidth: 64,
+      pixelHeight: 32,
+      gridCols: 4,
+      gridRows: 2,
+      viewportCol: 0,
+      viewportRow: 0,
+      viewportVisible: true,
+      sourceX: 0,
+      sourceY: 0,
+      sourceWidth: 64,
+      sourceHeight: 32,
       isVirtual: false,
     };
     const buf = {
@@ -1505,9 +1580,7 @@ describe('direct kitty placements (WebGL)', () => {
         yield placement;
       },
       getKittyImagePixels: (_g: number, id: number) =>
-        id === 5
-          ? { width: 64, height: 32, format: 1, data: new Uint8Array(64 * 32 * 4) }
-          : null,
+        id === 5 ? { width: 64, height: 32, format: 1, data: new Uint8Array(64 * 32 * 4) } : null,
     };
     r.render(buf as any, 0);
     // Should issue an extra drawArrays(TRIANGLES, 0, 6) for the direct placement,
@@ -1525,6 +1598,7 @@ describe('direct kitty placements (WebGL)', () => {
 ```bash
 bun test lib/renderer-webgl.test.ts -t "direct kitty"
 ```
+
 Expected: FAIL — direct-placement path not wired.
 
 - [ ] **Step 3: Wire the direct-placement path**
@@ -1595,6 +1669,7 @@ if (this.kittyProgram && directPlacements.length > 0) {
 bun test lib/renderer-webgl.test.ts -t "direct kitty"
 bun run typecheck && bun test
 ```
+
 Expected: new test passes; full suite green.
 
 - [ ] **Step 5: Format + commit**
@@ -1610,6 +1685,7 @@ git commit -m "feat(render): WebGL direct kitty placements"
 ## Task K12: WebGL `destroy()` cleanup additions
 
 **Files:**
+
 - Modify: `lib/renderer-webgl.ts`
 
 Release kitty resources on destroy. The bigger destroy-cleanup TODO (text/cursor programs, glyph atlas, cellTex, gridUBO, paletteUBO, vao) stays unaddressed by this task — it's the existing T6 follow-up.
@@ -1639,6 +1715,7 @@ destroy(): void {
 ```bash
 bun run typecheck && bun test
 ```
+
 Expected: full suite green.
 
 - [ ] **Step 3: Format + commit**
@@ -1654,6 +1731,7 @@ git commit -m "feat(render): WebGL destroy() releases kitty resources"
 ## Task K13: Manual demo verification
 
 **Files:**
+
 - (No code changes; verification only)
 
 The demo's `?renderer=webgl` toggle exists from the original WebGL backend ship. We verify kitty content renders correctly side-by-side with WebGPU.
@@ -1665,6 +1743,7 @@ bun run demo
 ```
 
 Open in two tabs:
+
 - `http://localhost:8080/?renderer=webgl`
 - `http://localhost:8080/?renderer=webgpu`
 
