@@ -580,6 +580,26 @@ export class WebGPURenderer implements Renderer {
   private kittyAtlasUBO?: GPUBuffer;
   private kittyAtlasRects = new Float32Array(256 * 4); // host-side staging (256 vec4)
 
+  // Frame-skip state. Captured at the END of each render() that actually
+  // ran, then compared at the TOP of the next render() to decide whether
+  // anything visible changed. When nothing changed AND invalidateNext is
+  // false, the entire encodeCells + writeBuffer + render-pass dance is
+  // skipped — that's what makes static kitty content cost ~zero per frame
+  // even though the Terminal still wakes us periodically (cursor blink,
+  // event coalescing, etc.).
+  //
+  // What this DOESN'T cover: things that go through setters
+  // (theme/font/cursor-style/font-family/selection-mgr/hover ranges) —
+  // those set invalidateNext directly, so the gate already lets them
+  // through.
+  private lastCursorX = -1;
+  private lastCursorY = -1;
+  private lastCursorVisible = false;
+  private lastCursorBlinkVisible = true;
+  private lastViewportYRendered = Number.NaN;
+  private lastSelectionSig: string | null = null;
+  private lastKittyPlacementSig: string | null = null;
+
   /**
    * Create a WebGPURenderer.
    *
@@ -954,9 +974,86 @@ export class WebGPURenderer implements Renderer {
     this.rebuildBindGroup();
   }
 
+  /**
+   * True when no buffer row reports dirty AND no full-redraw is pending.
+   * Cheap (one needsFullRedraw call + one isRowDirty per row, both backed
+   * by an O(1) cache after the first call per snapshot).
+   */
+  private bufferAnyDirty(buffer: IRenderable): boolean {
+    if (buffer.needsFullRedraw?.()) return true;
+    for (let y = 0; y < this.rows; y++) {
+      if (buffer.isRowDirty(y)) return true;
+    }
+    return false;
+  }
+
+  private computeSelectionSig(): string | null {
+    const sel = this.selectionManager?.getSelectionCoords() ?? null;
+    if (!sel) return null;
+    return `${sel.startRow},${sel.startCol}-${sel.endRow},${sel.endCol}`;
+  }
+
+  /**
+   * Fingerprint every visible kitty placement (direct + virtual). Detects
+   * placement add/remove/move/resize and per-image bytes-change. Called
+   * before encodeCells, which itself walks iterPlacements again — for the
+   * common case (0-2 placements) the extra ~30 boundary crossings per
+   * frame are negligible compared to the GPU work this gate avoids.
+   * Returns null when no placements are visible.
+   */
+  private computeKittyPlacementSig(buffer: IRenderable): string | null {
+    if (!buffer.getKittyGraphics || !buffer.iterPlacements) return null;
+    const graphics = buffer.getKittyGraphics();
+    if (graphics === null) return null;
+    let sig = '';
+    for (const p of buffer.iterPlacements(graphics, false)) {
+      const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+      sig += `${p.imageId}|${p.isVirtual ? 1 : 0}|${p.viewportCol},${p.viewportRow}|${p.pixelWidth}x${p.pixelHeight}|${p.sourceX},${p.sourceY},${p.sourceWidth}x${p.sourceHeight}|${pixels?.width ?? 0}x${pixels?.height ?? 0}|${pixels?.format ?? 0}|${pixels?.data.byteOffset ?? 0}+${pixels?.data.length ?? 0};`;
+    }
+    return sig;
+  }
+
   render(buffer: IRenderable, viewportY: number = 0, sb?: IScrollbackProvider): void {
     if (this.cols === 0 || this.rows === 0) return;
     const cursor = buffer.getCursor();
+
+    // Frame-skip gate. If nothing relevant has changed since the last
+    // rendered frame, return without touching the GPU. The Terminal is
+    // event-driven (rAF only on wake-points), but several wake sources
+    // (cursor-blink interval, coalesced writes that don't actually change
+    // visible state) call us with no real work to do; this gate makes
+    // those calls free.
+    //
+    // ORDER: cheapest checks first. invalidateNext / scalar comparisons
+    // short-circuit before the selection/kitty signatures (which allocate
+    // strings).
+    const cursorBlinkVisible = this.cursorBlink_.isVisible();
+    let stateChanged =
+      this.invalidateNext ||
+      cursor.x !== this.lastCursorX ||
+      cursor.y !== this.lastCursorY ||
+      cursor.visible !== this.lastCursorVisible ||
+      cursorBlinkVisible !== this.lastCursorBlinkVisible ||
+      viewportY !== this.lastViewportYRendered ||
+      this.bufferAnyDirty(buffer);
+    const selSig = stateChanged ? null : this.computeSelectionSig();
+    if (!stateChanged && selSig !== this.lastSelectionSig) stateChanged = true;
+    const kittySig = stateChanged ? null : this.computeKittyPlacementSig(buffer);
+    if (!stateChanged && kittySig !== this.lastKittyPlacementSig) stateChanged = true;
+    if (!stateChanged) return;
+
+    // We're going to render — refresh every tracker so the next frame's
+    // gate has an up-to-date baseline. Recompute the sigs we skipped on
+    // the fast-path; cost is one extra walk in the rare frame where the
+    // gate decides to render.
+    this.lastCursorX = cursor.x;
+    this.lastCursorY = cursor.y;
+    this.lastCursorVisible = cursor.visible;
+    this.lastCursorBlinkVisible = cursorBlinkVisible;
+    this.lastViewportYRendered = viewportY;
+    this.lastSelectionSig = selSig ?? this.computeSelectionSig();
+    this.lastKittyPlacementSig = kittySig ?? this.computeKittyPlacementSig(buffer);
+
     const { usedKittyImageIds } = this.encodeCells(buffer, viewportY, sb);
     this.uploadGridUBO(viewportY, cursor);
 

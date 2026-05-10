@@ -184,6 +184,69 @@ describe('CanvasRenderer', () => {
       renderer.destroy();
     });
 
+    test('frame-skip: second render with no changes is a no-op', () => {
+      const canvas = document.createElement('canvas');
+      const renderer = new CanvasRenderer(canvas);
+      renderer.resize(4, 2);
+
+      const empty = (): GhosttyCell => ({
+        codepoint: 0,
+        fg_r: 0,
+        fg_g: 0,
+        fg_b: 0,
+        bg_r: 0,
+        bg_g: 0,
+        bg_b: 0,
+        fgIsDefault: true,
+        bgIsDefault: true,
+        flags: 0,
+        width: 1,
+        hyperlink_id: 0,
+        grapheme_len: 0,
+        grapheme: null,
+      });
+
+      let dirtyCleared = 0;
+      const buf: IRenderable = {
+        getLine: () => Array.from({ length: 4 }, empty),
+        getViewport: () => Array.from({ length: 8 }, empty),
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 4, rows: 2 }),
+        isRowDirty: () => false,
+        needsFullRedraw: () => false,
+        clearDirty: () => {
+          dirtyCleared++;
+        },
+      };
+
+      // First render: invalidateNext starts true after construction +
+      // resize, so the gate lets it through. clearDirty fires once.
+      renderer.render(buf, 0);
+      expect(dirtyCleared).toBe(1);
+
+      // Second render with identical state: gate must skip; clearDirty
+      // not called.
+      renderer.render(buf, 0);
+      expect(dirtyCleared).toBe(1);
+
+      // Mark a row dirty: gate must let the render through.
+      let probed = false;
+      const dirtyBuf: IRenderable = {
+        ...buf,
+        isRowDirty: () => {
+          if (!probed) {
+            probed = true;
+            return true;
+          }
+          return false;
+        },
+      };
+      renderer.render(dirtyBuf, 0);
+      expect(dirtyCleared).toBe(2);
+
+      renderer.destroy();
+    });
+
     test('virtual placement removed since last frame triggers full repaint', () => {
       const canvas = document.createElement('canvas');
       const renderer = new CanvasRenderer(canvas);

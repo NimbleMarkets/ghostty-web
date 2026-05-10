@@ -63,6 +63,95 @@ describe('WebGL2Renderer', () => {
       expect(cc[0] as number).toBeCloseTo(0x1e / 255, 3);
     });
 
+    test('frame-skip: second render() with no state change does no GL work', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, {});
+      r.resize(4, 2);
+      const stub = getStub();
+
+      let dirtyCleared = 0;
+      const buf = {
+        getLine: () => null,
+        getViewport: () => [],
+        getCursor: () => ({ x: 0, y: 0, visible: false }),
+        getDimensions: () => ({ cols: 4, rows: 2 }),
+        isRowDirty: () => false,
+        needsFullRedraw: () => false,
+        clearDirty: () => {
+          dirtyCleared++;
+        },
+      };
+
+      // First render after resize: invalidateNext is true, so the gate
+      // lets it through. Records baseline GL call count + clearDirty.
+      r.render(buf as any, 0);
+      const firstCalls = stub.calls.length;
+      expect(firstCalls).toBeGreaterThan(0); // sanity: it actually rendered
+      expect(dirtyCleared).toBe(1);
+
+      // Second render with no state change: gate must skip.
+      r.render(buf as any, 0);
+      expect(stub.calls.length).toBe(firstCalls); // no new GL calls
+      expect(dirtyCleared).toBe(1); // clearDirty not called when skipped
+
+      // Third render with a dirty row: gate must let it through.
+      let firstCall = true;
+      const dirtyBuf = {
+        ...buf,
+        isRowDirty: () => {
+          // Only first probe returns true so the gate decides to render;
+          // subsequent probes from inside encodeCells don't matter here.
+          if (firstCall) {
+            firstCall = false;
+            return true;
+          }
+          return false;
+        },
+      };
+      r.render(dirtyBuf as any, 0);
+      expect(stub.calls.length).toBeGreaterThan(firstCalls);
+      expect(dirtyCleared).toBe(2);
+    });
+
+    test('frame-skip: cursor blink phase change breaks the skip', async () => {
+      const canvas = document.createElement('canvas');
+      const r = await WebGL2Renderer.create(canvas, { cursorBlink: true });
+      r.resize(4, 2);
+      const stub = getStub();
+
+      let dirtyCleared = 0;
+      const buf = {
+        getLine: () => null,
+        getViewport: () => [],
+        getCursor: () => ({ x: 0, y: 0, visible: true }),
+        getDimensions: () => ({ cols: 4, rows: 2 }),
+        isRowDirty: () => false,
+        needsFullRedraw: () => false,
+        clearDirty: () => {
+          dirtyCleared++;
+        },
+      };
+      r.render(buf as any, 0);
+      const baseline = stub.calls.length;
+      expect(dirtyCleared).toBe(1);
+
+      // Same state — should skip.
+      r.render(buf as any, 0);
+      expect(stub.calls.length).toBe(baseline);
+      expect(dirtyCleared).toBe(1);
+
+      // Force the blink to flip without waiting for setInterval. The
+      // CursorBlink class doesn't expose a setVisible, so reach into the
+      // private field — this is the same surface tests do for damage
+      // tracking elsewhere in the suite.
+      const blink = (r as any).cursorBlink_;
+      blink.visible = !blink.visible;
+
+      r.render(buf as any, 0);
+      expect(stub.calls.length).toBeGreaterThan(baseline);
+      expect(dirtyCleared).toBe(2);
+    });
+
     test('throws when getContext("webgl2") returns null', async () => {
       uninstall();
       const original = HTMLCanvasElement.prototype.getContext;

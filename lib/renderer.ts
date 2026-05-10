@@ -236,6 +236,16 @@ export class CanvasRenderer implements Renderer {
   public _testPrecomputeKittyState(buffer: IRenderable, rows: number): void {
     this.precomputeKittyState(buffer, rows);
   }
+
+  // Frame-skip state. See WebGPURenderer for the full rationale; same
+  // mechanism, same trade-offs. Canvas2D already had per-row dirty-skipping
+  // inside render(), but the entry-level work (precomputeKittyState,
+  // selection / hyperlink bookkeeping, cursor pass) ran every call. This
+  // gate makes a no-op render() actually a no-op.
+  private lastCursorVisible = false;
+  private lastCursorBlinkVisible = true;
+  private lastSelectionSig: string | null = null;
+  private lastKittyPlacementSig: string | null = null;
   private currentKittyGraphics: number | null = null;
 
   // Selection manager (for rendering selection)
@@ -363,7 +373,13 @@ export class CanvasRenderer implements Renderer {
   // Main Rendering
   // ==========================================================================
 
-  private invalidateNext = false;
+  // Initialized true so the first render() after construction always
+  // paints, matching WebGPU/WebGL. Pre-frame-skip Canvas2D survived a
+  // false initial value because render()'s internal needsResize check
+  // forced a full paint on the first call; once the top-level frame-skip
+  // gate exists, an honest "nothing has changed yet" answer would
+  // (incorrectly) skip frame 1.
+  private invalidateNext = true;
 
   public invalidate(): void {
     this.invalidateNext = true;
@@ -372,11 +388,68 @@ export class CanvasRenderer implements Renderer {
   /**
    * Render the terminal buffer to canvas
    */
+  /** See WebGPURenderer.bufferAnyDirty. */
+  private bufferAnyDirty(buffer: IRenderable): boolean {
+    if (buffer.needsFullRedraw?.()) return true;
+    const dims = buffer.getDimensions();
+    for (let y = 0; y < dims.rows; y++) {
+      if (buffer.isRowDirty(y)) return true;
+    }
+    return false;
+  }
+
+  /** See WebGPURenderer.computeSelectionSig. */
+  private computeSelectionSig(): string | null {
+    const sel = this.selectionManager?.getSelectionCoords() ?? null;
+    if (!sel) return null;
+    return `${sel.startRow},${sel.startCol}-${sel.endRow},${sel.endCol}`;
+  }
+
+  /** See WebGPURenderer.computeKittyPlacementSig. */
+  private computeKittyPlacementSig(buffer: IRenderable): string | null {
+    if (!buffer.getKittyGraphics || !buffer.iterPlacements) return null;
+    const graphics = buffer.getKittyGraphics();
+    if (graphics === null) return null;
+    let sig = '';
+    for (const p of buffer.iterPlacements(graphics, false)) {
+      const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+      sig += `${p.imageId}|${p.isVirtual ? 1 : 0}|${p.viewportCol},${p.viewportRow}|${p.pixelWidth}x${p.pixelHeight}|${p.sourceX},${p.sourceY},${p.sourceWidth}x${p.sourceHeight}|${pixels?.width ?? 0}x${pixels?.height ?? 0}|${pixels?.format ?? 0}|${pixels?.data.byteOffset ?? 0}+${pixels?.data.length ?? 0};`;
+    }
+    return sig;
+  }
+
   public render(
     buffer: IRenderable,
     viewportY: number = 0,
     scrollbackProvider?: IScrollbackProvider
   ): void {
+    // Frame-skip gate. See WebGPURenderer.render() for rationale. Must
+    // run BEFORE invalidateNext is reset and BEFORE precomputeKittyState
+    // (which mutates this.lastKittyVirtualSigs) — when the gate decides
+    // to skip, none of the per-frame state should change.
+    const cursorEarly = buffer.getCursor();
+    const cursorBlinkVisible = this.cursorBlink_.isVisible();
+    let stateChanged =
+      this.invalidateNext ||
+      cursorEarly.x !== this.lastCursorPosition.x ||
+      cursorEarly.y !== this.lastCursorPosition.y ||
+      cursorEarly.visible !== this.lastCursorVisible ||
+      cursorBlinkVisible !== this.lastCursorBlinkVisible ||
+      viewportY !== this.lastViewportY ||
+      this.bufferAnyDirty(buffer);
+    const selSig = stateChanged ? null : this.computeSelectionSig();
+    if (!stateChanged && selSig !== this.lastSelectionSig) stateChanged = true;
+    const kittySig = stateChanged ? null : this.computeKittyPlacementSig(buffer);
+    if (!stateChanged && kittySig !== this.lastKittyPlacementSig) stateChanged = true;
+    if (!stateChanged) return;
+    // Refresh trackers managed only by the gate; the existing render()
+    // body keeps lastCursorPosition / lastViewportY / invalidateNext
+    // up to date through its own paths.
+    this.lastCursorVisible = cursorEarly.visible;
+    this.lastCursorBlinkVisible = cursorBlinkVisible;
+    this.lastSelectionSig = selSig ?? this.computeSelectionSig();
+    this.lastKittyPlacementSig = kittySig ?? this.computeKittyPlacementSig(buffer);
+
     const forceAll = this.invalidateNext;
     this.invalidateNext = false;
 

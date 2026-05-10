@@ -421,6 +421,16 @@ export class WebGL2Renderer implements Renderer {
   private invalidateNext = true;
   private destroyed = false;
   private contextLostListeners: Array<(info: { reason: string }) => void> = [];
+
+  // Frame-skip state. See WebGPURenderer for the full rationale; same
+  // mechanism, same trade-offs.
+  private lastCursorX = -1;
+  private lastCursorY = -1;
+  private lastCursorVisible = false;
+  private lastCursorBlinkVisible = true;
+  private lastViewportYRendered = Number.NaN;
+  private lastSelectionSig: string | null = null;
+  private lastKittyPlacementSig: string | null = null;
   private cellArray = new Uint32Array(0);
   private atlas?: GLGlyphAtlas;
   private kittyAtlas?: GLKittyAtlas;
@@ -717,10 +727,64 @@ export class WebGL2Renderer implements Renderer {
     }
   }
 
+  /** See WebGPURenderer.bufferAnyDirty. */
+  private bufferAnyDirty(buffer: IRenderable): boolean {
+    if (buffer.needsFullRedraw?.()) return true;
+    for (let y = 0; y < this.rows; y++) {
+      if (buffer.isRowDirty(y)) return true;
+    }
+    return false;
+  }
+
+  /** See WebGPURenderer.computeSelectionSig. */
+  private computeSelectionSig(): string | null {
+    const sel = this.selectionManager?.getSelectionCoords() ?? null;
+    if (!sel) return null;
+    return `${sel.startRow},${sel.startCol}-${sel.endRow},${sel.endCol}`;
+  }
+
+  /** See WebGPURenderer.computeKittyPlacementSig. */
+  private computeKittyPlacementSig(buffer: IRenderable): string | null {
+    if (!buffer.getKittyGraphics || !buffer.iterPlacements) return null;
+    const graphics = buffer.getKittyGraphics();
+    if (graphics === null) return null;
+    let sig = '';
+    for (const p of buffer.iterPlacements(graphics, false)) {
+      const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+      sig += `${p.imageId}|${p.isVirtual ? 1 : 0}|${p.viewportCol},${p.viewportRow}|${p.pixelWidth}x${p.pixelHeight}|${p.sourceX},${p.sourceY},${p.sourceWidth}x${p.sourceHeight}|${pixels?.width ?? 0}x${pixels?.height ?? 0}|${pixels?.format ?? 0}|${pixels?.data.byteOffset ?? 0}+${pixels?.data.length ?? 0};`;
+    }
+    return sig;
+  }
+
   render(buffer: IRenderable, viewportY: number = 0, sb?: IScrollbackProvider): void {
     if (this.cols === 0 || this.rows === 0) return;
     const gl = this.gl;
     const cursor = buffer.getCursor();
+
+    // Frame-skip gate. See WebGPURenderer.render() for rationale.
+    const cursorBlinkVisible = this.cursorBlink_.isVisible();
+    let stateChanged =
+      this.invalidateNext ||
+      cursor.x !== this.lastCursorX ||
+      cursor.y !== this.lastCursorY ||
+      cursor.visible !== this.lastCursorVisible ||
+      cursorBlinkVisible !== this.lastCursorBlinkVisible ||
+      viewportY !== this.lastViewportYRendered ||
+      this.bufferAnyDirty(buffer);
+    const selSig = stateChanged ? null : this.computeSelectionSig();
+    if (!stateChanged && selSig !== this.lastSelectionSig) stateChanged = true;
+    const kittySig = stateChanged ? null : this.computeKittyPlacementSig(buffer);
+    if (!stateChanged && kittySig !== this.lastKittyPlacementSig) stateChanged = true;
+    if (!stateChanged) return;
+
+    this.lastCursorX = cursor.x;
+    this.lastCursorY = cursor.y;
+    this.lastCursorVisible = cursor.visible;
+    this.lastCursorBlinkVisible = cursorBlinkVisible;
+    this.lastViewportYRendered = viewportY;
+    this.lastSelectionSig = selSig ?? this.computeSelectionSig();
+    this.lastKittyPlacementSig = kittySig ?? this.computeKittyPlacementSig(buffer);
+
     const { usedKittyImageIds } = this.encodeCells(buffer, viewportY, sb);
     this.uploadGridUBO(viewportY, cursor);
 
