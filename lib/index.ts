@@ -113,3 +113,7 @@ export { WebGPURenderer } from './renderer-webgpu';
 export { pickRenderer } from './renderer-factory';
 export { ScrollbarOverlay } from './scrollbar-overlay';
 export { CursorBlink } from './cursor-blink';
+
+// Renderer HUD (active-backend + FPS badge with click + Alt+Shift+R cycling)
+export { installRendererHud, parseRendererFromURL } from './renderer-hud';
+export type { RendererHudOptions } from './renderer-hud';

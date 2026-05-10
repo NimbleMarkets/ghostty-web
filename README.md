@@ -81,6 +81,44 @@ through to the next on init failure. At runtime, GPU device-loss (WebGPU) or
 context-loss (WebGL) automatically demotes to the next available backend on
 a fresh canvas.
 
+### Renderer HUD
+
+A small corner badge that shows the active renderer backend and live FPS,
+with click-to-cycle and `Alt+Shift+R` cycling between renderers. Useful for
+demos and during development; opt-in.
+
+```javascript
+import { init, Terminal, installRendererHud, parseRendererFromURL } from 'ghostty-web';
+
+await init();
+const term = new Terminal({ renderer: parseRendererFromURL() });
+await term.open(document.getElementById('terminal'));
+
+const uninstall = installRendererHud(term, {
+  parent: document.getElementById('terminal'),
+  position: 'absolute',
+});
+// later: uninstall();
+```
+
+`parseRendererFromURL()` reads `?renderer=webgpu|webgl|canvas2d|auto` from
+the current URL and falls back to `window.__ghosttyDefaultRenderer` if a
+server has injected one, then `'auto'`.
+
+`installRendererHud(terminal, opts?)` options:
+
+| Option             | Default                         | Description                                                |
+| ------------------ | ------------------------------- | ---------------------------------------------------------- |
+| `parent`           | `document.body`                 | Where to mount the badge.                                  |
+| `position`         | `'fixed'`                       | `'fixed'` (viewport) or `'absolute'` (relative to parent). |
+| `className`        | —                               | CSS class applied to the badge for custom styling.         |
+| `clickToToggle`    | `true`                          | Click the badge to cycle the renderer.                     |
+| `bindToggleHotkey` | `true`                          | Bind `Alt+Shift+R` on `window` to cycle the renderer.      |
+| `cycle`            | `['webgpu','webgl','canvas2d']` | Cycle order; pass a subset to skip backends.               |
+
+The toggle navigates `window.location.href` with the new `?renderer=` value,
+so the page reloads with the chosen backend.
+
 ## Development
 
 ghostty-web builds from Ghostty's source with a [patch](./patches/ghostty-wasm-api.patch) to expose additional

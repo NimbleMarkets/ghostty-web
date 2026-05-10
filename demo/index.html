@@ -131,7 +131,7 @@
     </div>
 
     <script type="module">
-      import { init, Terminal } from '../lib/index.ts';
+      import { init, Terminal, installRendererHud, parseRendererFromURL } from '../lib/index.ts';
       import { FitAddon } from '../lib/addons/fit.ts';
 
       let term;
@@ -152,12 +152,6 @@
           : { xpixel: 0, ypixel: 0 };
       }
 
-      function parseBackend() {
-        const q = new URLSearchParams(window.location.search).get('renderer');
-        if (q === 'webgpu' || q === 'webgl' || q === 'canvas2d' || q === 'auto') return q;
-        return 'auto';
-      }
-
       async function initTerminal() {
         // Initialize WASM
         await init();
@@ -171,57 +165,18 @@
             foreground: '#d4d4d4',
           },
           scrollback: 10000,
-          renderer: parseBackend(),
+          renderer: parseRendererFromURL(),
         });
 
         fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
 
-        await term.open(document.getElementById('terminal-container'));
+        const container = document.getElementById('terminal-container');
+        await term.open(container);
         fitAddon.fit();
         fitAddon.observeResize(); // Auto-fit when container resizes
 
-        function installFpsOverlay(termEl, term) {
-          const el = document.createElement('div');
-          el.style.cssText =
-            'position: absolute; right: 12px; top: 4px;' +
-            'font: 11px/1 monospace; color: #ccc; background: rgba(0,0,0,0.4);' +
-            'padding: 2px 6px; border-radius: 3px; pointer-events: none; z-index: 10;';
-          termEl.style.position = termEl.style.position || 'relative';
-          termEl.appendChild(el);
-          let frames = 0;
-          let lastTick = performance.now();
-          const tick = () => {
-            frames++;
-            const now = performance.now();
-            if (now - lastTick >= 1000) {
-              el.textContent =
-                (term.renderer && term.renderer.backend ? term.renderer.backend : '?') +
-                '  ' +
-                frames +
-                ' fps';
-              frames = 0;
-              lastTick = now;
-            }
-            requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
-        }
-        installFpsOverlay(document.getElementById('terminal-container'), term);
-
-        window.addEventListener('keydown', (e) => {
-          // Use e.code (physical key) rather than e.key — on macOS, holding
-          // Option transforms 'R' into a dead-key character before keydown,
-          // so e.key would never match.
-          if (e.altKey && e.shiftKey && e.code === 'KeyR') {
-            e.preventDefault();
-            const cur = term.renderer ? term.renderer.backend : null;
-            const next = cur === 'webgpu' ? 'webgl' : cur === 'webgl' ? 'canvas2d' : 'webgpu';
-            const url = new URL(window.location.href);
-            url.searchParams.set('renderer', next);
-            window.location.href = url.toString();
-          }
-        });
+        installRendererHud(term, { parent: container, position: 'absolute' });
 
         // Handle window resize (for browsers that don't trigger ResizeObserver on window resize)
         window.addEventListener('resize', () => {
