@@ -464,8 +464,14 @@ class WebGPUKittyAtlas extends KittyAtlasBase {
     );
   }
 
-  protected growTexture(_newSize: number): void {
-    // v1: never grows; clearAndReset reuses the existing texture.
+  protected growTexture(newSize: number): void {
+    this.texture.destroy();
+    this.texture = this.device.createTexture({
+      size: { width: newSize, height: newSize },
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+      label: 'kittyAtlas',
+    });
   }
 }
 

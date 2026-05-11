@@ -794,12 +794,30 @@ export type KittyAtlasEntry = {
 };
 
 /**
+ * Upper bound for kitty atlas auto-growth. WebGPU & WebGL2 guarantee at least
+ * 8192² for `texture_2d` / `TEXTURE_2D`; staying at-or-below keeps us inside
+ * the conservative limit on every browser. An 8192² RGBA8 atlas is 256 MiB —
+ * if we hit this in practice, oversize images need a per-image fallback path.
+ */
+const MAX_ATLAS_SIZE = 8192;
+
+function nextPow2(n: number): number {
+  let p = 1;
+  while (p < n) p <<= 1;
+  return p;
+}
+
+/**
  * Variable-size shelf-packed atlas for virtual-placement kitty images.
  * Parallel to GlyphAtlasBase but for arbitrary-dimension RGBA8 images.
  *
- * v1 is fixed-size (1024² by default). On overflow, clears the entire
- * cache + packing cursor and retries once. If the image is still too big,
- * returns null and the caller skips that placement for the frame.
+ * Atlas starts at the default size (1024²) and grows on demand — when an
+ * image won't fit even after a clearAndReset, the backing texture is
+ * reallocated at the next power of two that holds it (capped by
+ * MAX_ATLAS_SIZE). Growth invalidates the in-flight cache (slots are
+ * coordinate-tied to the old texture), and the next frame's walk re-uploads.
+ * If the image exceeds MAX_ATLAS_SIZE, addOrUpdate returns null and the
+ * caller skips that placement for the frame.
  *
  * Subclasses provide the backend texture upload primitive.
  */
@@ -817,14 +835,22 @@ export abstract class KittyAtlasBase {
   /** Subclass: upload a freshly-converted RGBA region into the backing texture. */
   protected abstract uploadRegion(slot: AtlasSlot, rgba: Uint8Array, w: number, h: number): void;
 
-  /** Subclass: grow the backing texture (v1 callers pass the existing size; reserved). */
+  /**
+   * Subclass: replace the backing texture with a fresh one of `newSize × newSize`.
+   * Called when an image arrives that doesn't fit (or no longer fits after a
+   * clearAndReset) — see addOrUpdate. The base class has already updated
+   * `this.size` and called clearAndReset() before invoking this, so the
+   * subclass only needs to swap the GPU resource.
+   */
   protected abstract growTexture(newSize: number): void;
 
   /**
    * Add (or refresh) the image for `imageId`. On signature match returns the
    * cached entry. On miss converts to RGBA, shelf-packs into the atlas, and
-   * uploads. Returns null if conversion fails or the image doesn't fit even
-   * after one clearAndReset retry.
+   * uploads. If the image doesn't fit (even after a clearAndReset retry) the
+   * atlas grows to the next power of two large enough to hold it (subject to
+   * MAX_ATLAS_SIZE) and retries once more. Returns null only when the image
+   * is fundamentally too large or RGBA conversion failed.
    */
   addOrUpdate(imageId: number, pixels: KittyImagePixels): KittyAtlasEntry | null {
     const cached = this.cache.get(imageId);
@@ -845,7 +871,19 @@ export abstract class KittyAtlasBase {
     if (!slot) {
       this.clearAndReset();
       slot = this.tryPack(pixels.width, pixels.height);
-      if (!slot) return null; // image larger than the entire atlas
+    }
+    if (!slot) {
+      // Image doesn't fit at current atlas size. Grow to the next power of
+      // two that holds it (capped at MAX_ATLAS_SIZE); if that's still not
+      // enough, give up — caller skips the placement for the frame.
+      const needed = Math.max(pixels.width, pixels.height);
+      const target = nextPow2(needed);
+      if (target > MAX_ATLAS_SIZE || target <= this.size) return null;
+      this.size = target;
+      this.clearAndReset();
+      this.growTexture(target);
+      slot = this.tryPack(pixels.width, pixels.height);
+      if (!slot) return null;
     }
     this.uploadRegion(slot, rgba, pixels.width, pixels.height);
     const entry: KittyAtlasEntry = {

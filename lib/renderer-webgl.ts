@@ -395,8 +395,18 @@ class GLKittyAtlas extends KittyAtlasBase {
     gl.texSubImage2D(gl.TEXTURE_2D, 0, slot.u, slot.v, w, h, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
   }
 
-  protected growTexture(_newSize: number): void {
-    // v1: never grows; clearAndReset reuses the existing texture.
+  protected growTexture(newSize: number): void {
+    const gl = this.gl;
+    gl.deleteTexture(this.texture);
+    const tex = gl.createTexture();
+    if (!tex) throw new Error('GLKittyAtlas: createTexture failed on grow');
+    this.texture = tex;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, newSize, newSize);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
 }
 

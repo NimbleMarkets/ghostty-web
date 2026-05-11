@@ -501,10 +501,23 @@ describe('KittyAtlasBase', () => {
     expect(wrap!.slot).toEqual({ u: 0, v: 0, w: 64, h: 64 });
   });
 
-  test('image larger than atlas returns null after retry', () => {
+  test('image larger than atlas grows the backing texture and packs', () => {
     const atlas = new StubAtlas(128);
     const e = atlas.addOrUpdate(1, pixels(256, 256));
-    expect(e).toBeNull();
+    expect(e).not.toBeNull();
+    // Atlas grew to the next power of two large enough to hold the image.
+    expect(atlas.atlasSize).toBe(256);
+    expect(e!.slot).toEqual({ u: 0, v: 0, w: 256, h: 256 });
+  });
+
+  test('non-square oversize image grows to fit the larger dimension', () => {
+    const atlas = new StubAtlas(1024);
+    // Mirrors the ntcharts heatpicture-perlin shape (1070×384) that
+    // previously fell through to a null entry and rendered as black.
+    const e = atlas.addOrUpdate(143, pixels(1070, 384));
+    expect(e).not.toBeNull();
+    expect(atlas.atlasSize).toBe(2048);
+    expect(e!.slot).toEqual({ u: 0, v: 0, w: 1070, h: 384 });
   });
 
   test('atlasSize getter returns current size', () => {
