@@ -265,3 +265,37 @@ diff --git a/include/ghostty/vt/sys.h b/include/ghostty/vt/sys.h
      GHOSTTY_SYS_OPT_MAX_VALUE = GHOSTTY_ENUM_MAX_VALUE,
  } GhosttySysOption;
  
+diff --git a/src/terminal/Screen.zig b/src/terminal/Screen.zig
+index 39fdd6109..314f2e0c4 100644
+--- a/src/terminal/Screen.zig
++++ b/src/terminal/Screen.zig
+@@ -881,15 +881,24 @@ pub fn cursorDownScroll(self: *Screen) !void {
+         // Our new row is always dirty
+         self.cursorMarkDirty();
+ 
+-        // Clear the new row so it gets our bg color. We only do this
+-        // if we have a bg color at all.
+-        if (self.cursor.style.bg_color != .none) {
++        // Always clear the new row's cells. When pages.grow() extends an
++        // existing page, the new row's cell memory may contain stale data
++        // from previously erased rows. Without clearing, these stale cells
++        // become visible when the row isn't fully overwritten, such as after
++        // bare CRLF output with the default cursor style.
++        {
+             const page: *Page = &self.cursor.page_pin.node.data;
++            const row = self.cursor.page_row;
++            const cells_offset = row.cells;
++            const dirty = row.dirty;
+             self.clearCells(
+                 page,
+-                self.cursor.page_row,
+-                page.getCells(self.cursor.page_row),
++                row,
++                page.getCells(row),
+             );
++            // Reset row-level metadata that clearCells does not touch while
++            // preserving the backing cell offset and dirty state.
++            row.* = .{ .cells = cells_offset, .dirty = dirty };
+         }
+     }
+ 
