@@ -10,6 +10,7 @@
  * - Auto-scroll during drag selection
  */
 
+import type { RowBidiMapper } from './bidi';
 import { EventEmitter } from './event-emitter';
 import type { GhosttyTerminal } from './ghostty';
 import type { IEvent } from './interfaces';
@@ -37,6 +38,7 @@ export class SelectionManager {
   private renderer: Renderer;
   private wasmTerm: GhosttyTerminal;
   private textarea: HTMLTextAreaElement;
+  private bidiMapper: RowBidiMapper;
 
   // Selection state - coordinates are in ABSOLUTE buffer space (viewportY + viewportRow)
   // This ensures selection persists correctly when scrolling
@@ -103,12 +105,14 @@ export class SelectionManager {
     terminal: Terminal,
     renderer: Renderer,
     wasmTerm: GhosttyTerminal,
-    textarea: HTMLTextAreaElement
+    textarea: HTMLTextAreaElement,
+    bidiMapper: RowBidiMapper
   ) {
     this.terminal = terminal;
     this.renderer = renderer;
     this.wasmTerm = wasmTerm;
     this.textarea = textarea;
+    this.bidiMapper = bidiMapper;
 
     // Attach mouse event listeners
     this.attachEventListeners();

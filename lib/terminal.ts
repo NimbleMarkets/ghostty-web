@@ -15,6 +15,7 @@
  * ```
  */
 
+import { RowBidiMapper } from './bidi';
 import { BufferNamespace } from './buffer';
 import { EventEmitter } from './event-emitter';
 import type { Ghostty, GhosttyCell, GhosttyTerminal, GhosttyTerminalConfig } from './ghostty';
@@ -74,6 +75,7 @@ export class Terminal implements ITerminalCore {
   private previousHoveredHyperlinkId = 0;
   private inputHandler?: InputHandler;
   private selectionManager?: SelectionManager;
+  private bidiMapper = new RowBidiMapper();
   private canvas?: HTMLCanvasElement;
   private scrollbarCanvas?: HTMLCanvasElement;
   private scrollbarOverlay?: ScrollbarOverlay;
@@ -544,11 +546,13 @@ export class Terminal implements ITerminalCore {
         this,
         this.renderer!,
         this.wasmTerm!,
-        this.textarea!
+        this.textarea!,
+        this.bidiMapper
       );
 
       // Connect selection manager to renderer
       this.renderer!.setSelectionManager(this.selectionManager);
+      this.renderer!.setBidiMapper?.(this.bidiMapper);
 
       // Forward selection change events
       this.selectionManager.onSelectionChange(() => {
@@ -665,9 +669,11 @@ export class Terminal implements ITerminalCore {
             this,
             this.renderer,
             this.wasmTerm,
-            this.textarea
+            this.textarea,
+            this.bidiMapper
           );
           this.renderer.setSelectionManager(this.selectionManager);
+          this.renderer.setBidiMapper?.(this.bidiMapper);
           this.selectionManager.onSelectionChange(() => {
             this.selectionChangeEmitter.fire();
             this.requestRender();

@@ -7,6 +7,7 @@
  * pipelines, buffer uploads) stay in the per-renderer files.
  */
 
+import type { RowBidiMapper } from './bidi';
 import type { ITheme } from './interfaces';
 import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
 import type { FontMetrics, IRenderable, IScrollbackProvider, LinkRange } from './renderer-types';
@@ -377,6 +378,8 @@ export abstract class GlyphAtlasBase {
 export interface EncodeCellsContext {
   metrics: FontMetrics;
   selectionManager: SelectionManager | undefined;
+  /** BiDi row mapper; when absent, cells paint in logical order. */
+  bidiMapper?: RowBidiMapper | null;
   hoveredHyperlinkId: number;
   hoveredLinkRange: LinkRange | null;
   cursorStyle: 'block' | 'underline' | 'bar';

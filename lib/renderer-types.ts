@@ -15,6 +15,7 @@
  * via setOnRequestRender. The Terminal owns the actual scheduler.
  */
 
+import type { RowBidiMapper } from './bidi';
 import type { ITheme } from './interfaces';
 import type { SelectionManager } from './selection-manager';
 import type { GhosttyCell, KittyImagePixels, KittyPlacementInfo } from './types';
@@ -93,6 +94,13 @@ export interface Renderer {
 
   setOnRequestRender(fn: (() => void) | null): void;
   setSelectionManager(mgr: SelectionManager): void;
+
+  /**
+   * Provide the shared BiDi row mapper. Optional: renderers without it
+   * paint logical order (pre-BiDi behavior).
+   */
+  setBidiMapper?(mapper: RowBidiMapper): void;
+
   setHoveredHyperlinkId(id: number): void;
   setHoveredLinkRange(range: LinkRange | null): void;
 

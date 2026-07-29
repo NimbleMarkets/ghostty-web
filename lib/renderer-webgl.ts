@@ -17,6 +17,7 @@
  * No kitty graphics, no in-shader block-element drawing in v1.
  */
 
+import type { RowBidiMapper } from './bidi';
 import { CursorBlink } from './cursor-blink';
 import type { ITheme } from './interfaces';
 import { DEFAULT_THEME } from './renderer-core';
@@ -425,6 +426,7 @@ export class WebGL2Renderer implements Renderer {
   private rows = 0;
   private cursorBlink_ = new CursorBlink();
   private selectionManager?: SelectionManager;
+  private bidiMapper: RowBidiMapper | null = null;
   private hoveredHyperlinkId = 0;
   private hoveredLinkRange: LinkRange | null = null;
   private onRequestRender: (() => void) | null = null;
@@ -634,6 +636,7 @@ export class WebGL2Renderer implements Renderer {
     const { usedKittyImageIds } = coreEncodeCells(this.cellArray, buffer, viewportY, sb, {
       metrics: this.metrics,
       selectionManager: this.selectionManager,
+      bidiMapper: this.bidiMapper,
       hoveredHyperlinkId: this.hoveredHyperlinkId,
       hoveredLinkRange: this.hoveredLinkRange,
       cursorStyle: this.cursorStyle,
@@ -988,6 +991,11 @@ export class WebGL2Renderer implements Renderer {
   setSelectionManager(mgr: SelectionManager): void {
     this.selectionManager = mgr;
     this.invalidateNext = true;
+  }
+
+  setBidiMapper(mapper: RowBidiMapper): void {
+    this.bidiMapper = mapper;
+    this.invalidateNext = true; // repaint with reordering active
   }
 
   setHoveredHyperlinkId(id: number): void {

@@ -10,6 +10,7 @@
  * - Dirty line optimization for 60 FPS
  */
 
+import type { RowBidiMapper } from './bidi';
 import { CursorBlink } from './cursor-blink';
 import type { ITheme } from './interfaces';
 import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
@@ -212,6 +213,8 @@ export class CanvasRenderer implements Renderer {
 
   // Selection manager (for rendering selection)
   private selectionManager?: SelectionManager;
+  // Shared BiDi row mapper (absent = paint logical order)
+  private bidiMapper: RowBidiMapper | null = null;
   // Cached selection coordinates for current render pass (viewport-relative)
   private currentSelectionCoords: {
     startCol: number;
@@ -1554,6 +1557,11 @@ export class CanvasRenderer implements Renderer {
   public setSelectionManager(manager: SelectionManager): void {
     this.selectionManager = manager;
     this.invalidateNext = true;
+  }
+
+  setBidiMapper(mapper: RowBidiMapper): void {
+    this.bidiMapper = mapper;
+    this.invalidateNext = true; // repaint with reordering active
   }
 
   /**
