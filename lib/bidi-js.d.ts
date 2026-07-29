@@ -25,10 +25,11 @@ declare module 'bidi-js' {
       end?: number
     ): [number, number][];
     getMirroredCharacter(char: string): string | null;
-    /** Map of code-unit index → replacement character (UBA rule L4). */
+    /** Map of code-unit index → replacement character (UBA rule L4).
+     * embeddingLevels is the raw Uint8Array from EmbeddingLevelsResult.levels. */
     getMirroredCharactersMap(
       text: string,
-      embeddingLevels: EmbeddingLevelsResult,
+      embeddingLevels: Uint8Array,
       start?: number,
       end?: number
     ): Map<number, string>;

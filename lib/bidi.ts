@@ -156,15 +156,11 @@ export class RowBidiMapper {
 
     // UBA rule L4: mirror characters at odd embedding levels.
     let mirror: Map<number, number> | null = null;
-    for (let unit = 0; unit < text.length; unit++) {
-      const level = levels.levels[unit]!;
-      if (level % 2 === 1) {  // odd level = RTL scope
-        const ch = text[unit]!;
-        const mirrored = bidi.getMirroredCharacter(ch);
-        if (mirrored && mirrored !== ch) {
-          if (!mirror) mirror = new Map();
-          mirror.set(cellForUnit[unit]!, mirrored.codePointAt(0)!);
-        }
+    const mirrorUnits = bidi.getMirroredCharactersMap(text, levels.levels);
+    if (mirrorUnits.size > 0) {
+      mirror = new Map();
+      for (const [unit, char] of mirrorUnits) {
+        mirror.set(cellForUnit[unit]!, char.codePointAt(0)!);
       }
     }
 
