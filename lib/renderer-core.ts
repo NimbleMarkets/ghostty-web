@@ -508,6 +508,9 @@ export function encodeCells(
       line = viewport.slice(start, start + dims.cols);
     }
 
+    const bidiMap = ctx.bidiMapper && line ? ctx.bidiMapper.getMap(line) : null;
+    const reorder = bidiMap !== null && !bidiMap.isIdentity;
+
     let pendingRightHalf: {
       slotU: number;
       slotV: number;
@@ -518,7 +521,8 @@ export function encodeCells(
     } | null = null;
     for (let x = 0; x < dims.cols; x++) {
       const i = (y * dims.cols + x) * CELL_U32S;
-      const c = line && x < line.length ? line[x] : null;
+      const lx = reorder && x < bidiMap!.visualToLogical.length ? bidiMap!.visualToLogical[x]! : x;
+      const c = line && lx < line.length ? line[lx] : null;
       if (!c || c.width === 0) {
         if (pendingRightHalf) {
           arr[i + 0] = pendingRightHalf.fgPacked;
@@ -551,9 +555,9 @@ export function encodeCells(
       if (ctx.hoveredLinkRange) {
         const r = ctx.hoveredLinkRange;
         const inRange =
-          (y === r.startY && x >= r.startX && (y < r.endY || x <= r.endX)) ||
+          (y === r.startY && lx >= r.startX && (y < r.endY || lx <= r.endX)) ||
           (y > r.startY && y < r.endY) ||
-          (y === r.endY && x <= r.endX && (y > r.startY || x >= r.startX));
+          (y === r.endY && lx <= r.endX && (y > r.startY || lx >= r.startX));
         if (inRange) flags |= FLAG_IS_LINK_RANGE_HOVERED;
       }
       const cp = c.codepoint || 0;
@@ -603,10 +607,12 @@ export function encodeCells(
         // O(row) buffer.getGraphemeString(y, x) crossing for every emoji /
         // ZWJ / Indic-cluster cell.
         const extras = c.grapheme;
+        const mirroredCp = reorder ? bidiMap!.mirror?.get(lx) : undefined;
+        const baseCp = mirroredCp ?? (c.codepoint || 32);
         const grapheme =
           extras && extras.length > 0
-            ? String.fromCodePoint(c.codepoint || 32, ...extras)
-            : String.fromCodePoint(c.codepoint || 32);
+            ? String.fromCodePoint(baseCp, ...extras)
+            : String.fromCodePoint(baseCp);
         // FAINT is intentionally NOT included in the atlas style bits. The atlas
         // always rasterizes glyphs at full alpha; shaders apply the 0.5 alpha
         // multiplier for FAINT cells. Including FAINT here would (a) double the
@@ -639,7 +645,16 @@ export function encodeCells(
   // Cursor cell flag (block-style only — non-block cursors drawn as separate
   // quad in the cursor pipeline).
   if (cursor.visible && ctx.cursorBlinkVisible && ctx.cursorStyle === 'block') {
-    const ci = (cursor.y * dims.cols + cursor.x) * CELL_U32S;
+    let cursorX = cursor.x;
+    if (ctx.bidiMapper) {
+      const start = cursor.y * dims.cols;
+      const cline = viewport.slice(start, start + dims.cols);
+      const m = ctx.bidiMapper.getMap(cline);
+      if (!m.isIdentity && cursor.x < m.logicalToVisual.length) {
+        cursorX = m.logicalToVisual[cursor.x]!;
+      }
+    }
+    const ci = (cursor.y * dims.cols + cursorX) * CELL_U32S;
     arr[ci + 4] = (arr[ci + 4]! | FLAG_IS_CURSOR_CELL) >>> 0;
   }
   return { usedKittyImageIds };

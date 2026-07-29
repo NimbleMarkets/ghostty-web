@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'bun:test';
+import { RowBidiMapper } from './bidi';
 import { KITTY_PLACEHOLDER, ROWCOLUMN_DIACRITICS } from './kitty_diacritics';
 import {
   type AtlasSlot,
   CELL_BYTES,
   CELL_U32S,
+  FLAG_IS_CURSOR_CELL,
   FLAG_IS_KITTY_PLACEHOLDER,
+  FLAG_IS_LINK_RANGE_HOVERED,
   type GlyphAtlasBase,
   KittyAtlasBase,
   KittyTextureCacheBase,
@@ -14,6 +17,92 @@ import {
 import type { IRenderable } from './renderer-types';
 import type { GhosttyCell, KittyPlacementInfo } from './types';
 import { KittyImageFormat } from './types';
+
+// Build a fresh GhosttyCell with safe defaults. Tests override fields they care about.
+function makeCell(overrides: Partial<GhosttyCell> = {}): GhosttyCell {
+  return {
+    codepoint: 0,
+    fg_r: 0,
+    fg_g: 0,
+    fg_b: 0,
+    bg_r: 0,
+    bg_g: 0,
+    bg_b: 0,
+    fgIsDefault: true,
+    bgIsDefault: true,
+    flags: 0,
+    width: 1,
+    hyperlink_id: 0,
+    grapheme_len: 0,
+    grapheme: null,
+    ...overrides,
+  };
+}
+
+type StubRenderableOpts = {
+  cols: number;
+  rows: number;
+  cells: GhosttyCell[];
+  placements: KittyPlacementInfo[];
+  graphicsHandle?: number;
+  cursor?: { x: number; y: number; visible: boolean };
+};
+
+// Stub IRenderable that counts getGrapheme calls. Some tests assert this
+// counter stays at zero — encodeCells must read cell.grapheme directly.
+function makeStubBuffer(opts: StubRenderableOpts): IRenderable & {
+  getGraphemeCalls: number;
+  getGraphemeStringCalls: number;
+} {
+  let getGraphemeCalls = 0;
+  let getGraphemeStringCalls = 0;
+  const buffer: IRenderable & {
+    getGraphemeCalls: number;
+    getGraphemeStringCalls: number;
+  } = {
+    get getGraphemeCalls() {
+      return getGraphemeCalls;
+    },
+    get getGraphemeStringCalls() {
+      return getGraphemeStringCalls;
+    },
+    getLine(y: number): GhosttyCell[] | null {
+      const start = y * opts.cols;
+      return opts.cells.slice(start, start + opts.cols);
+    },
+    getViewport(): GhosttyCell[] {
+      return opts.cells;
+    },
+    getCursor() {
+      return opts.cursor ?? { x: 0, y: 0, visible: false };
+    },
+    getDimensions() {
+      return { cols: opts.cols, rows: opts.rows };
+    },
+    isRowDirty() {
+      return true;
+    },
+    clearDirty() {},
+    getKittyGraphics() {
+      return opts.graphicsHandle ?? 1;
+    },
+    iterPlacements(_g: number, _onlyVisible?: boolean) {
+      return opts.placements[Symbol.iterator]();
+    },
+    getKittyImagePixels() {
+      return null;
+    },
+    getGrapheme(_y: number, _x: number) {
+      getGraphemeCalls++;
+      return null;
+    },
+    getGraphemeString(_y: number, _x: number) {
+      getGraphemeStringCalls++;
+      return ' ';
+    },
+  };
+  return buffer;
+}
 
 describe('kittyImageToRGBA', () => {
   test('RGBA passes through unchanged', () => {
@@ -71,90 +160,6 @@ describe('kittyImageToRGBA', () => {
 });
 
 describe('encodeCells: kitty placeholder grapheme cache', () => {
-  // Build a fresh GhosttyCell with safe defaults. Tests override fields they care about.
-  function makeCell(overrides: Partial<GhosttyCell> = {}): GhosttyCell {
-    return {
-      codepoint: 0,
-      fg_r: 0,
-      fg_g: 0,
-      fg_b: 0,
-      bg_r: 0,
-      bg_g: 0,
-      bg_b: 0,
-      fgIsDefault: true,
-      bgIsDefault: true,
-      flags: 0,
-      width: 1,
-      hyperlink_id: 0,
-      grapheme_len: 0,
-      grapheme: null,
-      ...overrides,
-    };
-  }
-
-  // Stub IRenderable that counts getGrapheme calls. The test asserts this
-  // counter stays at zero — encodeCells must read cell.grapheme directly.
-  type StubRenderableOpts = {
-    cols: number;
-    rows: number;
-    cells: GhosttyCell[];
-    placements: KittyPlacementInfo[];
-    graphicsHandle?: number;
-  };
-  function makeStubBuffer(opts: StubRenderableOpts): IRenderable & {
-    getGraphemeCalls: number;
-    getGraphemeStringCalls: number;
-  } {
-    let getGraphemeCalls = 0;
-    let getGraphemeStringCalls = 0;
-    const buffer: IRenderable & {
-      getGraphemeCalls: number;
-      getGraphemeStringCalls: number;
-    } = {
-      get getGraphemeCalls() {
-        return getGraphemeCalls;
-      },
-      get getGraphemeStringCalls() {
-        return getGraphemeStringCalls;
-      },
-      getLine(y: number): GhosttyCell[] | null {
-        const start = y * opts.cols;
-        return opts.cells.slice(start, start + opts.cols);
-      },
-      getViewport(): GhosttyCell[] {
-        return opts.cells;
-      },
-      getCursor() {
-        return { x: 0, y: 0, visible: false };
-      },
-      getDimensions() {
-        return { cols: opts.cols, rows: opts.rows };
-      },
-      isRowDirty() {
-        return true;
-      },
-      clearDirty() {},
-      getKittyGraphics() {
-        return opts.graphicsHandle ?? 1;
-      },
-      iterPlacements(_g: number, _onlyVisible?: boolean) {
-        return opts.placements[Symbol.iterator]();
-      },
-      getKittyImagePixels() {
-        return null;
-      },
-      getGrapheme(_y: number, _x: number) {
-        getGraphemeCalls++;
-        return null;
-      },
-      getGraphemeString(_y: number, _x: number) {
-        getGraphemeStringCalls++;
-        return ' ';
-      },
-    };
-    return buffer;
-  }
-
   test('reads grapheme from cell.grapheme without calling buffer.getGrapheme', () => {
     const cols = 4;
     const rows = 3;
@@ -322,6 +327,98 @@ describe('encodeCells: kitty placeholder grapheme cache', () => {
   // Confirm the test imports are wired — exercises CELL_BYTES so its import is used.
   test('CELL_BYTES matches CELL_U32S * 4', () => {
     expect(CELL_BYTES).toBe(CELL_U32S * 4);
+  });
+});
+
+describe('encodeCells: bidi reordering', () => {
+  const baseCtx = {
+    metrics: { width: 8, height: 16, baseline: 12 },
+    selectionManager: undefined,
+    hoveredHyperlinkId: 0,
+    hoveredLinkRange: null,
+    cursorStyle: 'block' as const,
+    cursorBlinkVisible: false,
+    atlas: undefined,
+    kittyEnabled: false,
+    blockElementShaderEnabled: false,
+    bidiMapper: new RowBidiMapper(),
+  };
+
+  // Row: a ש ל ו b + empty  → visualToLogical [0,3,2,1,4,5].
+  // Tag each cell with a distinct fg_r so the test can see which logical
+  // cell landed at which visual slot.
+  function hebrewRow(cols: number): GhosttyCell[] {
+    const cps = [0x61, 0x5e9, 0x5dc, 0x5d5, 0x62]; // a ש ל ו b
+    const cells = cps.map((cp, i) => makeCell({ codepoint: cp, fg_r: i + 1, fgIsDefault: false }));
+    while (cells.length < cols) cells.push(makeCell());
+    return cells;
+  }
+
+  test('cells land at visual positions', () => {
+    const cols = 6,
+      rows = 1;
+    const buffer = makeStubBuffer({ cols, rows, cells: hebrewRow(cols), placements: [] });
+    const cellArray = new Uint32Array(cols * rows * CELL_U32S);
+    encodeCells(cellArray, buffer, 0, undefined, baseCtx);
+    // visual x=1 must hold logical cell 3 (ו, fg_r=4); x=3 holds logical 1 (ש, fg_r=2)
+    expect(cellArray[(0 * cols + 1) * CELL_U32S + 0]! & 0xff).toBe(4);
+    expect(cellArray[(0 * cols + 3) * CELL_U32S + 0]! & 0xff).toBe(2);
+    // LTR cells stay put
+    expect(cellArray[(0 * cols + 0) * CELL_U32S + 0]! & 0xff).toBe(1);
+    expect(cellArray[(0 * cols + 4) * CELL_U32S + 0]! & 0xff).toBe(5);
+  });
+
+  test('hovered link range flags follow LOGICAL columns', () => {
+    const cols = 6,
+      rows = 1;
+    const buffer = makeStubBuffer({ cols, rows, cells: hebrewRow(cols), placements: [] });
+    const cellArray = new Uint32Array(cols * rows * CELL_U32S);
+    const ctx = {
+      ...baseCtx,
+      // Logical col 1 only (ש) — its glyph paints at visual x=3.
+      hoveredLinkRange: { startX: 1, startY: 0, endX: 1, endY: 0 },
+    };
+    encodeCells(cellArray, buffer, 0, undefined, ctx);
+    expect(cellArray[(0 * cols + 3) * CELL_U32S + 4]! & FLAG_IS_LINK_RANGE_HOVERED).toBeTruthy();
+    expect(cellArray[(0 * cols + 1) * CELL_U32S + 4]! & FLAG_IS_LINK_RANGE_HOVERED).toBeFalsy();
+  });
+
+  test('block cursor flag lands at the visual cursor cell', () => {
+    const cols = 6,
+      rows = 1;
+    const buffer = makeStubBuffer({
+      cols,
+      rows,
+      cells: hebrewRow(cols),
+      placements: [],
+      // stub cursor: logical x=1 (ש) → visual x=3
+      cursor: { x: 1, y: 0, visible: true },
+    });
+    const cellArray = new Uint32Array(cols * rows * CELL_U32S);
+    encodeCells(cellArray, buffer, 0, undefined, { ...baseCtx, cursorBlinkVisible: true });
+    expect(cellArray[(0 * cols + 3) * CELL_U32S + 4]! & FLAG_IS_CURSOR_CELL).toBeTruthy();
+    expect(cellArray[(0 * cols + 1) * CELL_U32S + 4]! & FLAG_IS_CURSOR_CELL).toBeFalsy();
+  });
+
+  test('mirrored characters reach the atlas mirrored', () => {
+    const cols = 5,
+      rows = 1;
+    const rastered: string[] = [];
+    const atlas = {
+      getOrRaster(grapheme: string) {
+        rastered.push(grapheme);
+        return { u: 0, v: 0, w: 8, h: 16 };
+      },
+    };
+    // א ( ב ) ג — parens on odd level mirror at paint time
+    const cells = [...'א(ב)ג'].map((ch) => makeCell({ codepoint: ch.codePointAt(0)! }));
+    const buffer = makeStubBuffer({ cols, rows, cells, placements: [] });
+    const cellArray = new Uint32Array(cols * rows * CELL_U32S);
+    encodeCells(cellArray, buffer, 0, undefined, { ...baseCtx, atlas: atlas as any });
+    expect(rastered).toContain(')'); // both get rastered…
+    expect(rastered).toContain('(');
+    // …and the '(' logical cell produced a ')' raster call count-wise:
+    expect(rastered.filter((g) => g === ')').length).toBe(1);
   });
 });
 
