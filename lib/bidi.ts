@@ -58,6 +58,10 @@ function isRtlTrigger(cp: number): boolean {
 export class RowBidiMapper {
   private bidi: BidiApi | null;
   private identityByLen = new Map<number, RowBidiMap>();
+  /** FNV-1a-hashed, content-verified LRU. ~512 entries ≈ several screens of
+   *  distinct RTL rows; maps are cheap to recompute on miss. */
+  private static readonly CACHE_MAX = 512;
+  private cache = new Map<number, { key: Uint32Array; map: RowBidiMap }>();
 
   constructor() {
     // Degrade to identity (today's behavior) rather than crash the
@@ -79,7 +83,28 @@ export class RowBidiMapper {
       }
     }
     if (!hasRtl || this.bidi === null) return this.identity(line.length);
-    return this.compute(line);
+    // Content key: codepoint + width per cell (width matters — it drives
+    // wide-pair fusing). Verified on hit: a hash collision must recompute,
+    // never silently permute with the wrong map.
+    const key = new Uint32Array(line.length);
+    let h = 0x811c9dc5;
+    for (let i = 0; i < line.length; i++) {
+      const k = ((line[i]!.codepoint << 2) | (line[i]!.width & 3)) >>> 0;
+      key[i] = k;
+      h = Math.imul(h ^ k, 0x01000193) >>> 0;
+    }
+    const hit = this.cache.get(h);
+    if (hit && hit.key.length === key.length && hit.key.every((v, i) => v === key[i])) {
+      this.cache.delete(h); // LRU touch: re-insert as newest
+      this.cache.set(h, hit);
+      return hit.map;
+    }
+    const map = this.compute(line);
+    this.cache.set(h, { key, map });
+    if (this.cache.size > RowBidiMapper.CACHE_MAX) {
+      this.cache.delete(this.cache.keys().next().value!);
+    }
+    return map;
   }
 
   private identity(len: number): RowBidiMap {

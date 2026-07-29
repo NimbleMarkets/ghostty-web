@@ -149,3 +149,40 @@ describe('RowBidiMapper full path', () => {
     expect([...map.visualToLogical]).toEqual([3, 2, 1, 0, 4, 5]);
   });
 });
+
+describe('RowBidiMapper cache', () => {
+  test('same content returns the same map object', () => {
+    const mapper = new RowBidiMapper();
+    const a = mapper.getMap(cellsFrom('שלום'));
+    const b = mapper.getMap(cellsFrom('שלום'));
+    expect(a).toBe(b);
+  });
+
+  test('different content with same length gets a different map', () => {
+    const mapper = new RowBidiMapper();
+    const a = mapper.getMap(cellsFrom('שלום'));
+    const b = mapper.getMap(cellsFrom('םולש'));
+    expect(a).not.toBe(b);
+  });
+
+  test('width participates in the cache key', () => {
+    const mapper = new RowBidiMapper();
+    // Same codepoints, different width layout must not collide.
+    const narrow = [...cellsFrom('ש'), makeCell({ codepoint: 0x6f22, width: 1 })];
+    const wide = [...cellsFrom('ש'), makeCell({ codepoint: 0x6f22, width: 2 })];
+    expect(mapper.getMap(narrow)).not.toBe(mapper.getMap(wide));
+  });
+
+  test('cache evicts oldest beyond capacity without breaking correctness', () => {
+    const mapper = new RowBidiMapper();
+    const first = cellsFrom('שלום');
+    const firstMap = mapper.getMap(first);
+    for (let i = 0; i < 600; i++) {
+      // 600 DISTINCT rows (0x0591+i stays within the 0x0590–0x08FF RTL
+      // trigger range for i < 600) — must exceed CACHE_MAX=512 to evict.
+      mapper.getMap([...cellsFrom('א'), makeCell({ codepoint: 0x0591 + i })]);
+    }
+    // Recompute after eviction: equal content, correct values (object identity not required).
+    expect([...mapper.getMap(first).visualToLogical]).toEqual([...firstMap.visualToLogical]);
+  });
+});
