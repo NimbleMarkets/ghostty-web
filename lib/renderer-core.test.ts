@@ -410,15 +410,17 @@ describe('encodeCells: bidi reordering', () => {
         return { u: 0, v: 0, w: 8, h: 16 };
       },
     };
-    // א ( ב ) ג — parens on odd level mirror at paint time
+    // א ( ב ) ג — parens on odd level mirror at paint time. The whole row
+    // reverses (visualToLogical = [4,3,2,1,0]), so getOrRaster is called in
+    // visual order: logical ')' (col 3) paints at visual 1 as '(', and
+    // logical '(' (col 1) paints at visual 3 as ')'. Asserting the exact
+    // sequence (not just membership) is what actually gates mirroring —
+    // the unmirrored multiset would be indistinguishable from this one.
     const cells = [...'א(ב)ג'].map((ch) => makeCell({ codepoint: ch.codePointAt(0)! }));
     const buffer = makeStubBuffer({ cols, rows, cells, placements: [] });
     const cellArray = new Uint32Array(cols * rows * CELL_U32S);
     encodeCells(cellArray, buffer, 0, undefined, { ...baseCtx, atlas: atlas as any });
-    expect(rastered).toContain(')'); // both get rastered…
-    expect(rastered).toContain('(');
-    // …and the '(' logical cell produced a ')' raster call count-wise:
-    expect(rastered.filter((g) => g === ')').length).toBe(1);
+    expect(rastered).toEqual(['ג', '(', 'ב', ')', 'א']);
   });
 });
 
