@@ -49,7 +49,7 @@ interface RowBidiMap {
   isIdentity: boolean;            // fast-path flag; shared singleton for LTR rows
   visualToLogical: Uint16Array;   // visual column → logical column
   logicalToVisual: Uint16Array;   // inverse
-  levels: Uint8Array | null;      // resolved embedding levels (odd = RTL), for mirroring
+  mirror: Map<number, number> | null; // logical col → mirrored codepoint (UBA L4), paint-time only
 }
 ```
 
@@ -65,9 +65,9 @@ interface RowBidiMap {
   unit, spacer always immediately after its base in visual order. This
   preserves the renderers' existing wide-cell handling (`pendingRightHalf`
   in `encodeCells`, spacer skips in `renderLine`).
-- **Mirroring (UBA L4):** the map retains resolved levels; renderers
-  substitute `getMirroredCharacter` for cells on odd levels so `(` renders as
-  `)` inside RTL runs. Copy is unaffected — it reads logical cells.
+- **Mirroring (UBA L4):** the map carries a precomputed `mirror` lookup
+  (logical col → mirrored codepoint, from `getMirroredCharactersMap`) so `(`
+  renders as `)` inside RTL runs. Copy is unaffected — it reads logical cells.
 - **Caching:** internal LRU (~256 entries) keyed by a hash of the codepoint
   sequence, with full-sequence equality verification on hit (a hash collision
   must not silently permute wrong). Maps are pure functions of row content —
