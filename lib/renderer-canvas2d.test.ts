@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
+import { RowBidiMapper } from './bidi';
 import { CanvasRenderer } from './renderer-canvas2d';
 import { DEFAULT_THEME } from './renderer-core';
 import type { IRenderable } from './renderer-types';
@@ -363,5 +364,74 @@ describe('CanvasRenderer', () => {
 
       renderer.destroy();
     });
+  });
+});
+
+describe('bidi reordering (canvas2d)', () => {
+  function makeCellC(overrides: Partial<GhosttyCell> = {}): GhosttyCell {
+    return {
+      codepoint: 0,
+      fg_r: 0,
+      fg_g: 0,
+      fg_b: 0,
+      bg_r: 0,
+      bg_g: 0,
+      bg_b: 0,
+      fgIsDefault: true,
+      bgIsDefault: true,
+      flags: 0,
+      width: 1,
+      hyperlink_id: 0,
+      grapheme_len: 0,
+      grapheme: null,
+      ...overrides,
+    };
+  }
+
+  test('renderLine draws glyphs at visual x positions', () => {
+    const canvas = document.createElement('canvas');
+    const renderer = new CanvasRenderer(canvas);
+    renderer.setBidiMapper(new RowBidiMapper());
+
+    // Deterministic metrics + a recording ctx stub (happy-dom's 2d context
+    // is not a real rasterizer; we only need the call log).
+    (renderer as any).metrics = { width: 10, height: 20, baseline: 15 };
+    const fillTexts: { char: string; x: number }[] = [];
+    (renderer as any).ctx = {
+      clearRect() {},
+      fillRect() {},
+      beginPath() {},
+      rect() {},
+      clip() {},
+      save() {},
+      restore() {},
+      stroke() {},
+      strokeRect() {},
+      moveTo() {},
+      lineTo() {},
+      setLineDash() {},
+      drawImage() {},
+      measureText() {
+        return { width: 10 };
+      },
+      fillText(char: string, x: number) {
+        fillTexts.push({ char, x });
+      },
+      set font(_v: string) {},
+      set fillStyle(_v: string) {},
+      set strokeStyle(_v: string) {},
+      set lineWidth(_v: number) {},
+      set globalAlpha(_v: number) {},
+    };
+
+    // logical: a ש ל b  → visual: a ל ש b  (v2l = [0,2,1,3])
+    const line = ['a', 'ש', 'ל', 'b'].map((ch) => makeCellC({ codepoint: ch.codePointAt(0)! }));
+    (renderer as any).renderLine(line, 0, 4);
+
+    const at = (x: number) => fillTexts.find((f) => f.x === x)?.char;
+    expect(at(0)).toBe('a');
+    expect(at(10)).toBe('ל');
+    expect(at(20)).toBe('ש');
+    expect(at(30)).toBe('b');
   });
 });

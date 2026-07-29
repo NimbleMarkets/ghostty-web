@@ -700,11 +700,14 @@ export class CanvasRenderer implements Renderer {
     this.ctx.fillStyle = this.theme.background;
     this.ctx.fillRect(0, lineY, lineWidth, this.metrics.height);
 
+    const map = this.bidiMapper?.getMap(line) ?? null;
+    const reorder = map !== null && !map.isIdentity;
+
     // PASS 1: Draw all cell backgrounds first
     // This ensures all backgrounds are painted before any text, allowing text
     // to "bleed" across cell boundaries without being covered by adjacent backgrounds
     for (let x = 0; x < line.length; x++) {
-      const cell = line[x];
+      const cell = line[reorder ? map!.visualToLogical[x]! : x]!;
       if (cell.width === 0) continue; // Skip spacer cells for wide characters
       this.renderCellBackground(cell, x, y);
     }
@@ -712,9 +715,10 @@ export class CanvasRenderer implements Renderer {
     // PASS 2: Draw all cell text and decorations
     // Now text can safely extend beyond cell boundaries (for complex scripts)
     for (let x = 0; x < line.length; x++) {
-      const cell = line[x];
+      const lx = reorder ? map!.visualToLogical[x]! : x;
+      const cell = line[lx]!;
       if (cell.width === 0) continue; // Skip spacer cells for wide characters
-      this.renderCellText(cell, x, y);
+      this.renderCellText(cell, x, y, undefined, reorder ? map!.mirror?.get(lx) : undefined);
     }
   }
 
@@ -768,7 +772,13 @@ export class CanvasRenderer implements Renderer {
    * Render a cell's text and decorations (Pass 2 of two-pass rendering)
    * Selection foreground color is applied here to match the selection background.
    */
-  private renderCellText(cell: GhosttyCell, x: number, y: number, colorOverride?: string): void {
+  private renderCellText(
+    cell: GhosttyCell,
+    x: number,
+    y: number,
+    colorOverride?: string,
+    mirrorCodepoint?: number
+  ): void {
     const cellX = x * this.metrics.width;
     const cellY = y * this.metrics.height;
     const cellWidth = this.metrics.width * cell.width;
@@ -840,10 +850,11 @@ export class CanvasRenderer implements Renderer {
     // build the cluster locally — going through getGraphemeString would
     // cost an O(row) WASM crossing per multi-codepoint cell.
     const extras = cell.grapheme;
+    const baseCp = mirrorCodepoint ?? (cell.codepoint || 32);
     const char =
       extras && extras.length > 0
-        ? String.fromCodePoint(cell.codepoint || 32, ...extras)
-        : String.fromCodePoint(cell.codepoint || 32);
+        ? String.fromCodePoint(baseCp, ...extras)
+        : String.fromCodePoint(baseCp);
 
     // Block elements (U+2580..U+259F) draw as fillRect using the same
     // fillStyle. The browser's font rasterization of these glyphs leaves
@@ -1412,7 +1423,11 @@ export class CanvasRenderer implements Renderer {
    * Render cursor
    */
   private renderCursor(x: number, y: number): void {
-    const cursorX = x * this.metrics.width;
+    const line = this.currentBuffer?.getLine(y) ?? null;
+    const map = line ? (this.bidiMapper?.getMap(line) ?? null) : null;
+    const vx =
+      map && !map.isIdentity && x < map.logicalToVisual.length ? map.logicalToVisual[x]! : x;
+    const cursorX = vx * this.metrics.width;
     const cursorY = y * this.metrics.height;
 
     this.ctx.fillStyle = this.theme.cursor;
@@ -1423,13 +1438,12 @@ export class CanvasRenderer implements Renderer {
         this.ctx.fillRect(cursorX, cursorY, this.metrics.width, this.metrics.height);
         // Re-draw character under cursor with cursorAccent color
         {
-          const line = this.currentBuffer?.getLine(y);
           if (line?.[x]) {
             this.ctx.save();
             this.ctx.beginPath();
             this.ctx.rect(cursorX, cursorY, this.metrics.width, this.metrics.height);
             this.ctx.clip();
-            this.renderCellText(line[x], x, y, this.theme.cursorAccent);
+            this.renderCellText(line[x], vx, y, this.theme.cursorAccent, map?.mirror?.get(x));
             this.ctx.restore();
           }
         }
