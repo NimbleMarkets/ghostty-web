@@ -1192,4 +1192,48 @@ describe('InputHandler', () => {
       expect(dataReceived.length).toBe(0);
     });
   });
+
+  describe('Mouse reporting BiDi conversion', () => {
+    test('pixelToCell reports the logical column through visualToLogicalCol', () => {
+      const handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {}
+      );
+      // Row 0 is `aשלוb` → visual col 3 holds logical col 1.
+      (handler as any).mouseConfig = {
+        hasMouseTracking: () => true,
+        hasSgrMouseMode: () => true,
+        getCellDimensions: () => ({ width: 10, height: 20 }),
+        getCanvasOffset: () => ({ left: 0, top: 0 }),
+        visualToLogicalCol: (col: number, _row: number) => [0, 3, 2, 1, 4][col] ?? col,
+      };
+      const cell = (handler as any).pixelToCell(
+        new MouseEvent('mousedown', { clientX: 35, clientY: 5 }) // visual col 3, row 0
+      );
+      expect(cell).toEqual({ col: 2, row: 1 }); // logical col 1 → 1-based 2
+      handler.dispose();
+    });
+
+    test('pixelToCell is unchanged without the callback', () => {
+      const handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {}
+      );
+      (handler as any).mouseConfig = {
+        hasMouseTracking: () => true,
+        hasSgrMouseMode: () => true,
+        getCellDimensions: () => ({ width: 10, height: 20 }),
+        getCanvasOffset: () => ({ left: 0, top: 0 }),
+      };
+      const cell = (handler as any).pixelToCell(
+        new MouseEvent('mousedown', { clientX: 35, clientY: 5 })
+      );
+      expect(cell).toEqual({ col: 4, row: 1 });
+      handler.dispose();
+    });
+  });
 });

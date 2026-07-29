@@ -170,6 +170,14 @@ export interface MouseTrackingConfig {
   getCellDimensions: () => { width: number; height: number };
   /** Get canvas/container offset for accurate position calculation */
   getCanvasOffset: () => { left: number; top: number };
+  /**
+   * Map a visual (screen) column to the logical column on BiDi-reordered
+   * rows. Both 0-based. Identity when absent. Mouse reports must carry the
+   * LOGICAL column — the app knows nothing about visual reordering, and a
+   * raw visual column makes clicks land on the wrong widget with nothing
+   * looking wrong on screen.
+   */
+  visualToLogicalCol?: (col: number, row: number) => number;
 }
 
 export class InputHandler {
@@ -734,14 +742,16 @@ export class InputHandler {
     const x = event.clientX - offset.left;
     const y = event.clientY - offset.top;
 
-    // Convert to 1-based cell coordinates (terminal uses 1-based)
-    const col = Math.floor(x / dims.width) + 1;
-    const row = Math.floor(y / dims.height) + 1;
+    let col = Math.floor(x / dims.width);
+    const row = Math.floor(y / dims.height);
+    if (this.mouseConfig.visualToLogicalCol && col >= 0 && row >= 0) {
+      col = this.mouseConfig.visualToLogicalCol(col, row);
+    }
 
-    // Clamp to valid range (at least 1)
+    // Convert to 1-based cell coordinates (terminal uses 1-based)
     return {
-      col: Math.max(1, col),
-      row: Math.max(1, row),
+      col: Math.max(1, col + 1),
+      row: Math.max(1, row + 1),
     };
   }
 

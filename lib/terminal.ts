@@ -504,6 +504,16 @@ export class Terminal implements ITerminalCore {
           const rect = this.canvas.getBoundingClientRect();
           return { left: rect.left, top: rect.top };
         },
+        visualToLogicalCol: (col: number, row: number) => {
+          if (!this.wasmTerm) return col;
+          const dims = this.wasmTerm.getDimensions();
+          if (row >= dims.rows || col >= dims.cols) return col;
+          const line = this.wasmTerm.getLine(row);
+          if (!line) return col;
+          const m = this.bidiMapper.getMap(line);
+          if (m.isIdentity || col >= m.visualToLogical.length) return col;
+          return m.visualToLogical[col]!;
+        },
       };
 
       // Create input handler
