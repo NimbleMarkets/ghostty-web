@@ -6,11 +6,19 @@ import type { GhosttyCell } from './types';
 function makeCell(overrides: Partial<GhosttyCell> = {}): GhosttyCell {
   return {
     codepoint: 0,
-    fg_r: 0, fg_g: 0, fg_b: 0,
-    bg_r: 0, bg_g: 0, bg_b: 0,
-    fgIsDefault: true, bgIsDefault: true,
-    flags: 0, width: 1, hyperlink_id: 0,
-    grapheme_len: 0, grapheme: null,
+    fg_r: 0,
+    fg_g: 0,
+    fg_b: 0,
+    bg_r: 0,
+    bg_g: 0,
+    bg_b: 0,
+    fgIsDefault: true,
+    bgIsDefault: true,
+    flags: 0,
+    width: 1,
+    hyperlink_id: 0,
+    grapheme_len: 0,
+    grapheme: null,
     ...overrides,
   };
 }

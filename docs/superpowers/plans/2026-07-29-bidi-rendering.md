@@ -24,11 +24,13 @@
 ### Task 1: Add bidi-js dependency + module declaration
 
 **Files:**
+
 - Modify: `package.json` (via `bun add bidi-js`)
 - Create: `lib/bidi-js.d.ts`
 - Create: `lib/bidi.test.ts` (smoke test only; grows in later tasks)
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces: importable typed `bidi-js` module for Task 2+. `bidiFactory(): BidiApi` with `getEmbeddingLevels`, `getReorderedIndices`, `getMirroredCharactersMap`, `getMirroredCharacter`.
 
@@ -122,10 +124,12 @@ git commit -m "feat(bidi): add bidi-js dependency with local type declarations"
 ### Task 2: `lib/bidi.ts` — RowBidiMap, RTL detection, identity fast path
 
 **Files:**
+
 - Create: `lib/bidi.ts`
 - Modify: `lib/bidi.test.ts`
 
 **Interfaces:**
+
 - Consumes: `GhosttyCell` from `./types`, `KITTY_PLACEHOLDER` from `./kitty_diacritics`.
 - Produces (used by every later task):
   - `interface RowBidiMap { isIdentity: boolean; visualToLogical: Uint16Array; logicalToVisual: Uint16Array; mirror: Map<number, number> | null }`
@@ -141,11 +145,19 @@ import type { GhosttyCell } from './types';
 function makeCell(overrides: Partial<GhosttyCell> = {}): GhosttyCell {
   return {
     codepoint: 0,
-    fg_r: 0, fg_g: 0, fg_b: 0,
-    bg_r: 0, bg_g: 0, bg_b: 0,
-    fgIsDefault: true, bgIsDefault: true,
-    flags: 0, width: 1, hyperlink_id: 0,
-    grapheme_len: 0, grapheme: null,
+    fg_r: 0,
+    fg_g: 0,
+    fg_b: 0,
+    bg_r: 0,
+    bg_g: 0,
+    bg_b: 0,
+    fgIsDefault: true,
+    bgIsDefault: true,
+    flags: 0,
+    width: 1,
+    hyperlink_id: 0,
+    grapheme_len: 0,
+    grapheme: null,
     ...overrides,
   };
 }
@@ -319,10 +331,12 @@ git commit -m "feat(bidi): RowBidiMapper skeleton with RTL detection and identit
 ### Task 3: `lib/bidi.ts` — full UBA path (permutation, wide-cell fusing, mirroring)
 
 **Files:**
+
 - Modify: `lib/bidi.ts` (replace `compute`)
 - Modify: `lib/bidi.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 2's skeleton.
 - Produces: fully working `getMap` (uncached; caching is Task 4).
 
@@ -521,10 +535,12 @@ git commit -m "feat(bidi): full UBA permutation with wide-cell fusing and L4 mir
 ### Task 4: `lib/bidi.ts` — content-keyed LRU cache
 
 **Files:**
+
 - Modify: `lib/bidi.ts`
 - Modify: `lib/bidi.test.ts`
 
 **Interfaces:**
+
 - Consumes: Tasks 2–3.
 - Produces: same public API; repeated `getMap` calls with identical content return the same object.
 
@@ -588,28 +604,28 @@ In `RowBidiMapper`, add fields and rewrite the full-path tail of `getMap`:
 In `getMap`, replace `return this.compute(line);` with:
 
 ```ts
-    // Content key: codepoint + width per cell (width matters — it drives
-    // wide-pair fusing). Verified on hit: a hash collision must recompute,
-    // never silently permute with the wrong map.
-    const key = new Uint32Array(line.length);
-    let h = 0x811c9dc5;
-    for (let i = 0; i < line.length; i++) {
-      const k = ((line[i]!.codepoint << 2) | (line[i]!.width & 3)) >>> 0;
-      key[i] = k;
-      h = Math.imul(h ^ k, 0x01000193) >>> 0;
-    }
-    const hit = this.cache.get(h);
-    if (hit && hit.key.length === key.length && hit.key.every((v, i) => v === key[i])) {
-      this.cache.delete(h); // LRU touch: re-insert as newest
-      this.cache.set(h, hit);
-      return hit.map;
-    }
-    const map = this.compute(line);
-    this.cache.set(h, { key, map });
-    if (this.cache.size > RowBidiMapper.CACHE_MAX) {
-      this.cache.delete(this.cache.keys().next().value!);
-    }
-    return map;
+// Content key: codepoint + width per cell (width matters — it drives
+// wide-pair fusing). Verified on hit: a hash collision must recompute,
+// never silently permute with the wrong map.
+const key = new Uint32Array(line.length);
+let h = 0x811c9dc5;
+for (let i = 0; i < line.length; i++) {
+  const k = ((line[i]!.codepoint << 2) | (line[i]!.width & 3)) >>> 0;
+  key[i] = k;
+  h = Math.imul(h ^ k, 0x01000193) >>> 0;
+}
+const hit = this.cache.get(h);
+if (hit && hit.key.length === key.length && hit.key.every((v, i) => v === key[i])) {
+  this.cache.delete(h); // LRU touch: re-insert as newest
+  this.cache.set(h, hit);
+  return hit.map;
+}
+const map = this.compute(line);
+this.cache.set(h, { key, map });
+if (this.cache.size > RowBidiMapper.CACHE_MAX) {
+  this.cache.delete(this.cache.keys().next().value!);
+}
+return map;
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -631,6 +647,7 @@ git commit -m "feat(bidi): content-keyed LRU cache with collision verification"
 No behavior change yet: the mapper flows to every consumer but nothing reads it. This task is pure wiring so Tasks 6–10 each stay small.
 
 **Files:**
+
 - Modify: `lib/renderer-types.ts` (Renderer interface, ~line 95, next to `setSelectionManager`)
 - Modify: `lib/renderer-core.ts` (`EncodeCellsContext`, ~line 377)
 - Modify: `lib/renderer-canvas2d.ts`, `lib/renderer-webgl.ts`, `lib/renderer-webgpu.ts` (field + setter; GPU wrappers pass ctx field)
@@ -638,6 +655,7 @@ No behavior change yet: the mapper flows to every consumer but nothing reads it.
 - Modify: `lib/terminal.ts` (mapper field; `setBidiMapper` after `setSelectionManager` at ~line 551; SelectionManager construction at ~line 543 AND the renderer-swap site at ~line 664)
 
 **Interfaces:**
+
 - Consumes: `RowBidiMapper` from Task 2.
 - Produces:
   - `Renderer.setBidiMapper?(mapper: RowBidiMapper): void` (optional in the interface so existing test mocks stay valid; all three real renderers implement it and store `private bidiMapper: RowBidiMapper | null = null`).
@@ -723,10 +741,12 @@ git commit -m "feat(bidi): plumb RowBidiMapper to renderers, selection manager, 
 ### Task 6: `encodeCells` — visual reordering, logical link ranges, mirroring, block-cursor flag
 
 **Files:**
+
 - Modify: `lib/renderer-core.ts:491-641` (`encodeCells` row/col loops + cursor-flag tail)
 - Modify: `lib/renderer-core.test.ts`
 
 **Interfaces:**
+
 - Consumes: `ctx.bidiMapper` (Task 5), `RowBidiMap` (Task 2).
 - Produces: GPU instance data in visual order for both GPU backends. No shader changes.
 
@@ -754,15 +774,14 @@ describe('encodeCells: bidi reordering', () => {
   // cell landed at which visual slot.
   function hebrewRow(cols: number): GhosttyCell[] {
     const cps = [0x61, 0x5e9, 0x5dc, 0x5d5, 0x62]; // a ש ל ו b
-    const cells = cps.map((cp, i) =>
-      makeCell({ codepoint: cp, fg_r: i + 1, fgIsDefault: false })
-    );
+    const cells = cps.map((cp, i) => makeCell({ codepoint: cp, fg_r: i + 1, fgIsDefault: false }));
     while (cells.length < cols) cells.push(makeCell());
     return cells;
   }
 
   test('cells land at visual positions', () => {
-    const cols = 6, rows = 1;
+    const cols = 6,
+      rows = 1;
     const buffer = makeStubBuffer({ cols, rows, cells: hebrewRow(cols), placements: [] });
     const cellArray = new Uint32Array(cols * rows * CELL_U32S);
     encodeCells(cellArray, buffer, 0, undefined, baseCtx);
@@ -775,7 +794,8 @@ describe('encodeCells: bidi reordering', () => {
   });
 
   test('hovered link range flags follow LOGICAL columns', () => {
-    const cols = 6, rows = 1;
+    const cols = 6,
+      rows = 1;
     const buffer = makeStubBuffer({ cols, rows, cells: hebrewRow(cols), placements: [] });
     const cellArray = new Uint32Array(cols * rows * CELL_U32S);
     const ctx = {
@@ -789,7 +809,8 @@ describe('encodeCells: bidi reordering', () => {
   });
 
   test('block cursor flag lands at the visual cursor cell', () => {
-    const cols = 6, rows = 1;
+    const cols = 6,
+      rows = 1;
     const buffer = makeStubBuffer({ cols, rows, cells: hebrewRow(cols), placements: [] });
     // stub cursor: logical x=1 (ש) → visual x=3
     buffer.getCursor = () => ({ x: 1, y: 0, visible: true });
@@ -800,7 +821,8 @@ describe('encodeCells: bidi reordering', () => {
   });
 
   test('mirrored characters reach the atlas mirrored', () => {
-    const cols = 5, rows = 1;
+    const cols = 5,
+      rows = 1;
     const rastered: string[] = [];
     const atlas = {
       getOrRaster(grapheme: string) {
@@ -835,19 +857,20 @@ In `encodeCells` (`lib/renderer-core.ts`):
 (a) After the `line` fetch (line ~506), resolve the row map:
 
 ```ts
-    const bidiMap = ctx.bidiMapper && line ? ctx.bidiMapper.getMap(line) : null;
-    const reorder = bidiMap !== null && !bidiMap.isIdentity;
+const bidiMap = ctx.bidiMapper && line ? ctx.bidiMapper.getMap(line) : null;
+const reorder = bidiMap !== null && !bidiMap.isIdentity;
 ```
 
 (b) In the `for (let x = 0; x < dims.cols; x++)` loop (line ~516), fetch through the map — the visual write index `i` is untouched:
 
 ```ts
-      const i = (y * dims.cols + x) * CELL_U32S;
-      const lx = reorder && x < bidiMap!.visualToLogical.length ? bidiMap!.visualToLogical[x]! : x;
-      const c = line && lx < line.length ? line[lx] : null;
+const i = (y * dims.cols + x) * CELL_U32S;
+const lx = reorder && x < bidiMap!.visualToLogical.length ? bidiMap!.visualToLogical[x]! : x;
+const c = line && lx < line.length ? line[lx] : null;
 ```
 
 (c) The two range checks compare **logical** columns — replace `x` with `lx` ONLY in these:
+
 - hyperlink hover: unchanged (`c.hyperlink_id` is per-cell).
 - `hoveredLinkRange` block (~line 548): every `x` inside the `inRange` expression becomes `lx`.
 - selection (`if (x >= selStartCol && x <= selEndCol)`) stays `x` — selection is visual.
@@ -855,30 +878,30 @@ In `encodeCells` (`lib/renderer-core.ts`):
 (d) Mirroring — where the grapheme string is built for the atlas (~line 603):
 
 ```ts
-        const mirroredCp = reorder ? bidiMap!.mirror?.get(lx) : undefined;
-        const baseCp = mirroredCp ?? (c.codepoint || 32);
-        const grapheme =
-          extras && extras.length > 0
-            ? String.fromCodePoint(baseCp, ...extras)
-            : String.fromCodePoint(baseCp);
+const mirroredCp = reorder ? bidiMap!.mirror?.get(lx) : undefined;
+const baseCp = mirroredCp ?? (c.codepoint || 32);
+const grapheme =
+  extras && extras.length > 0
+    ? String.fromCodePoint(baseCp, ...extras)
+    : String.fromCodePoint(baseCp);
 ```
 
 (e) Block-cursor flag (~line 638) — map the cursor column through the cursor row's map:
 
 ```ts
-  if (cursor.visible && ctx.cursorBlinkVisible && ctx.cursorStyle === 'block') {
-    let cursorX = cursor.x;
-    if (ctx.bidiMapper) {
-      const start = cursor.y * dims.cols;
-      const cline = viewport.slice(start, start + dims.cols);
-      const m = ctx.bidiMapper.getMap(cline);
-      if (!m.isIdentity && cursor.x < m.logicalToVisual.length) {
-        cursorX = m.logicalToVisual[cursor.x]!;
-      }
+if (cursor.visible && ctx.cursorBlinkVisible && ctx.cursorStyle === 'block') {
+  let cursorX = cursor.x;
+  if (ctx.bidiMapper) {
+    const start = cursor.y * dims.cols;
+    const cline = viewport.slice(start, start + dims.cols);
+    const m = ctx.bidiMapper.getMap(cline);
+    if (!m.isIdentity && cursor.x < m.logicalToVisual.length) {
+      cursorX = m.logicalToVisual[cursor.x]!;
     }
-    const ci = (cursor.y * dims.cols + cursorX) * CELL_U32S;
-    arr[ci + 4] = (arr[ci + 4]! | FLAG_IS_CURSOR_CELL) >>> 0;
   }
+  const ci = (cursor.y * dims.cols + cursorX) * CELL_U32S;
+  arr[ci + 4] = (arr[ci + 4]! | FLAG_IS_CURSOR_CELL) >>> 0;
+}
 ```
 
 Do NOT touch the `pendingRightHalf` logic — wide-pair fusing (Task 3) guarantees the spacer arrives at the visual position right after its base, which is exactly the invariant that code depends on.
@@ -900,10 +923,12 @@ git commit -m "feat(bidi): encodeCells paints visual order (WebGL+WebGPU) with l
 ### Task 7: canvas2d — `renderLine` + `renderCursor`
 
 **Files:**
+
 - Modify: `lib/renderer-canvas2d.ts:687-716` (`renderLine`), `:768` (`renderCellText` signature), `:1411-1452` (`renderCursor`)
 - Modify: `lib/renderer-canvas2d.test.ts`
 
 **Interfaces:**
+
 - Consumes: `this.bidiMapper` (Task 5), `RowBidiMap` (Task 2).
 - Produces: `renderCellText(cell, x, y, colorOverride?, mirrorCodepoint?)` — new optional 5th param.
 
@@ -916,11 +941,19 @@ describe('bidi reordering (canvas2d)', () => {
   function makeCellC(overrides: Partial<GhosttyCell> = {}): GhosttyCell {
     return {
       codepoint: 0,
-      fg_r: 0, fg_g: 0, fg_b: 0,
-      bg_r: 0, bg_g: 0, bg_b: 0,
-      fgIsDefault: true, bgIsDefault: true,
-      flags: 0, width: 1, hyperlink_id: 0,
-      grapheme_len: 0, grapheme: null,
+      fg_r: 0,
+      fg_g: 0,
+      fg_b: 0,
+      bg_r: 0,
+      bg_g: 0,
+      bg_b: 0,
+      fgIsDefault: true,
+      bgIsDefault: true,
+      flags: 0,
+      width: 1,
+      hyperlink_id: 0,
+      grapheme_len: 0,
+      grapheme: null,
       ...overrides,
     };
   }
@@ -935,20 +968,34 @@ describe('bidi reordering (canvas2d)', () => {
     (renderer as any).metrics = { width: 10, height: 20, baseline: 15 };
     const fillTexts: { char: string; x: number }[] = [];
     (renderer as any).ctx = {
-      clearRect() {}, fillRect() {}, beginPath() {}, rect() {}, clip() {},
-      save() {}, restore() {}, stroke() {}, strokeRect() {},
-      moveTo() {}, lineTo() {}, setLineDash() {}, drawImage() {},
-      measureText() { return { width: 10 }; },
-      fillText(char: string, x: number) { fillTexts.push({ char, x }); },
-      set font(_v: string) {}, set fillStyle(_v: string) {},
-      set strokeStyle(_v: string) {}, set lineWidth(_v: number) {},
+      clearRect() {},
+      fillRect() {},
+      beginPath() {},
+      rect() {},
+      clip() {},
+      save() {},
+      restore() {},
+      stroke() {},
+      strokeRect() {},
+      moveTo() {},
+      lineTo() {},
+      setLineDash() {},
+      drawImage() {},
+      measureText() {
+        return { width: 10 };
+      },
+      fillText(char: string, x: number) {
+        fillTexts.push({ char, x });
+      },
+      set font(_v: string) {},
+      set fillStyle(_v: string) {},
+      set strokeStyle(_v: string) {},
+      set lineWidth(_v: number) {},
       set globalAlpha(_v: number) {},
     };
 
     // logical: a ש ל b  → visual: a ל ש b  (v2l = [0,2,1,3])
-    const line = ['a', 'ש', 'ל', 'b'].map((ch) =>
-      makeCellC({ codepoint: ch.codePointAt(0)! })
-    );
+    const line = ['a', 'ש', 'ל', 'b'].map((ch) => makeCellC({ codepoint: ch.codePointAt(0)! }));
     (renderer as any).renderLine(line, 0, 4);
 
     const at = (x: number) => fillTexts.find((f) => f.x === x)?.char;
@@ -1009,12 +1056,12 @@ Expected: new test FAILS — `ש` painted at x=10 (logical order).
 and at the char-building site (~line 839):
 
 ```ts
-    const extras = cell.grapheme;
-    const baseCp = mirrorCodepoint ?? (cell.codepoint || 32);
-    const char =
-      extras && extras.length > 0
-        ? String.fromCodePoint(baseCp, ...extras)
-        : String.fromCodePoint(baseCp);
+const extras = cell.grapheme;
+const baseCp = mirrorCodepoint ?? (cell.codepoint || 32);
+const char =
+  extras && extras.length > 0
+    ? String.fromCodePoint(baseCp, ...extras)
+    : String.fromCodePoint(baseCp);
 ```
 
 (The block-element fast path at ~line 851 keys on `cell.codepoint` — leave it; block elements are class ON and never mirror or join RTL runs.)
@@ -1068,12 +1115,14 @@ git commit -m "feat(bidi): canvas2d paints visual order with mirrored glyphs and
 The block-style cursor was handled inside `encodeCells` (Task 6). Underline/bar cursors on GPU backends are drawn as a separate quad positioned by the `cursorX` uniform — that still carries the logical column.
 
 **Files:**
+
 - Modify: `lib/renderer-core.ts` (new exported helper, near `encodeCells`)
 - Modify: `lib/renderer-webgl.ts` (~line 799, the `uploadGridUBO(viewportY, cursor)` call in `render()`)
 - Modify: `lib/renderer-webgpu.ts` (same pattern, `render()` at ~line 1063+)
 - Modify: `lib/renderer-core.test.ts`
 
 **Interfaces:**
+
 - Consumes: `RowBidiMapper` (Task 2), `IRenderable.getLine`/`getCursor`.
 - Produces: `export function visualCursorX(buffer: IRenderable, cursor: { x: number; y: number }, mapper: RowBidiMapper | null): number`
 
@@ -1082,7 +1131,8 @@ The block-style cursor was handled inside `encodeCells` (Task 6). Underline/bar 
 ```ts
 describe('visualCursorX', () => {
   test('maps logical cursor column to visual on an RTL row', () => {
-    const cols = 6, rows = 1;
+    const cols = 6,
+      rows = 1;
     const buffer = makeStubBuffer({ cols, rows, cells: hebrewRow(cols), placements: [] });
     const mapper = new RowBidiMapper();
     // hebrewRow: a ש ל ו b _  → logical 1 (ש) paints at visual 3
@@ -1127,10 +1177,10 @@ export function visualCursorX(
 In `lib/renderer-webgl.ts` `render()` (~line 799) and `lib/renderer-webgpu.ts` `render()` — replace the `uploadGridUBO(viewportY, cursor)` call in each:
 
 ```ts
-    this.uploadGridUBO(viewportY, {
-      ...cursor,
-      x: visualCursorX(buffer, cursor, this.bidiMapper),
-    });
+this.uploadGridUBO(viewportY, {
+  ...cursor,
+  x: visualCursorX(buffer, cursor, this.bidiMapper),
+});
 ```
 
 (add `visualCursorX` to each file's existing `from './renderer-core'` import list). The frame-skip trackers (`lastCursorX` etc.) keep comparing the **logical** `cursor.x` — do not change those lines; logical movement is exactly what should invalidate the gate.
@@ -1152,10 +1202,12 @@ git commit -m "feat(bidi): GPU cursor quad positions at the visual cursor column
 ### Task 9: Selection — logical-order copy, word/line select
 
 **Files:**
+
 - Modify: `lib/selection-manager.ts:124-200` (`getSelection`), `:597-617` (dblclick handler — no change needed, verify only), `:909-946` (`getWordAtCell`)
 - Modify: `lib/selection-manager.test.ts`
 
 **Interfaces:**
+
 - Consumes: `this.bidiMapper` (Task 5).
 - Produces: `getSelection()` returns logical-order text for visual spans; `getWordAtCell(col, row)` takes a VISUAL col and returns a VISUAL span (its scan is logical internally).
 
@@ -1254,39 +1306,37 @@ Keep the existing `lastNonEmpty` trailing-space trimming exactly as is (it opera
 (b) `getWordAtCell` (line ~909): convert the incoming visual col to logical, scan logically, return the visual span:
 
 ```ts
-    if (!line) return null;
+if (!line) return null;
 
-    const map = this.bidiMapper.getMap(line);
-    const lcol = map.isIdentity || col >= map.visualToLogical.length
-      ? col
-      : map.visualToLogical[col]!;
+const map = this.bidiMapper.getMap(line);
+const lcol = map.isIdentity || col >= map.visualToLogical.length ? col : map.visualToLogical[col]!;
 
-    // Word characters: Unicode letters/digits plus common path/URL chars.
-    // \p{L}\p{N} (not \w) so RTL scripts are word chars too.
-    const isWordChar = (cell: GhosttyCell) => {
-      if (!cell || cell.codepoint === 0) return false;
-      const char = String.fromCodePoint(cell.codepoint);
-      return /[\p{L}\p{N}_\-./~@+]/u.test(char);
-    };
+// Word characters: Unicode letters/digits plus common path/URL chars.
+// \p{L}\p{N} (not \w) so RTL scripts are word chars too.
+const isWordChar = (cell: GhosttyCell) => {
+  if (!cell || cell.codepoint === 0) return false;
+  const char = String.fromCodePoint(cell.codepoint);
+  return /[\p{L}\p{N}_\-./~@+]/u.test(char);
+};
 
-    if (!isWordChar(line[lcol])) return null;
+if (!isWordChar(line[lcol])) return null;
 
-    let startCol = lcol;
-    while (startCol > 0 && isWordChar(line[startCol - 1])) startCol--;
-    let endCol = lcol;
-    while (endCol < line.length - 1 && isWordChar(line[endCol + 1])) endCol++;
+let startCol = lcol;
+while (startCol > 0 && isWordChar(line[startCol - 1])) startCol--;
+let endCol = lcol;
+while (endCol < line.length - 1 && isWordChar(line[endCol + 1])) endCol++;
 
-    if (map.isIdentity) return { startCol, endCol };
-    // A word is a uniform-direction run, so its visual image is contiguous;
-    // min/max over the logical range is exact, and the anchors are visual.
-    let vMin = Number.MAX_SAFE_INTEGER;
-    let vMax = -1;
-    for (let c = startCol; c <= endCol; c++) {
-      const v = map.logicalToVisual[c]!;
-      if (v < vMin) vMin = v;
-      if (v > vMax) vMax = v;
-    }
-    return { startCol: vMin, endCol: vMax };
+if (map.isIdentity) return { startCol, endCol };
+// A word is a uniform-direction run, so its visual image is contiguous;
+// min/max over the logical range is exact, and the anchors are visual.
+let vMin = Number.MAX_SAFE_INTEGER;
+let vMax = -1;
+for (let c = startCol; c <= endCol; c++) {
+  const v = map.logicalToVisual[c]!;
+  if (v < vMin) vMin = v;
+  if (v > vMax) vMax = v;
+}
+return { startCol: vMin, endCol: vMax };
 ```
 
 (c) The dblclick handler (line ~597) and triple-click line selection need **no code change**: dblclick already feeds `pixelToCell` (visual) into `getWordAtCell` and stores the returned span as anchors — both sides are now consistently visual. Triple-click selects logical prefix `0..endCol`; with LTR base direction everything after the last non-space stays in place, so the permutation maps `{0..endCol}` onto itself and the visual anchors coincide. Verify both by reading the code; the tests in Step 1 cover the underlying conversions.
@@ -1308,11 +1358,13 @@ git commit -m "feat(bidi): visual selection copies logical-order text; word sele
 ### Task 10: Mouse reporting — logical columns to the application
 
 **Files:**
+
 - Modify: `lib/input-handler.ts:163-172` (`MouseTrackingConfig`), `:726-746` (`pixelToCell`)
 - Modify: `lib/terminal.ts` (~line 493, the `mouseConfig` literal)
 - Modify: `lib/input-handler.test.ts`
 
 **Interfaces:**
+
 - Consumes: `Terminal.bidiMapper` + `wasmTerm.getLine` (wired in terminal.ts).
 - Produces: `MouseTrackingConfig.visualToLogicalCol?: (col: number, row: number) => number` — 0-based visual col + 0-based viewport row in, 0-based logical col out.
 
@@ -1387,20 +1439,20 @@ Expected: first test FAILS with `col: 4` (raw visual), second passes.
 (b) `pixelToCell` (line ~726):
 
 ```ts
-    const x = event.clientX - offset.left;
-    const y = event.clientY - offset.top;
+const x = event.clientX - offset.left;
+const y = event.clientY - offset.top;
 
-    let col = Math.floor(x / dims.width);
-    const row = Math.floor(y / dims.height);
-    if (this.mouseConfig.visualToLogicalCol && col >= 0 && row >= 0) {
-      col = this.mouseConfig.visualToLogicalCol(col, row);
-    }
+let col = Math.floor(x / dims.width);
+const row = Math.floor(y / dims.height);
+if (this.mouseConfig.visualToLogicalCol && col >= 0 && row >= 0) {
+  col = this.mouseConfig.visualToLogicalCol(col, row);
+}
 
-    // Convert to 1-based cell coordinates (terminal uses 1-based)
-    return {
-      col: Math.max(1, col + 1),
-      row: Math.max(1, row + 1),
-    };
+// Convert to 1-based cell coordinates (terminal uses 1-based)
+return {
+  col: Math.max(1, col + 1),
+  row: Math.max(1, row + 1),
+};
 ```
 
 (c) Terminal's `mouseConfig` literal (line ~493) gains:
@@ -1437,6 +1489,7 @@ git commit -m "feat(bidi): mouse reports carry logical columns on reordered rows
 ### Task 11: Full verification — suite, lint, build, manual harness
 
 **Files:**
+
 - No new code expected; fix anything the gates surface.
 
 - [ ] **Step 1: Full automated gates**
@@ -1454,11 +1507,12 @@ Expected: clean build including WASM. (Homebrew zig / ziglang.org tarball do NOT
 From the booba repo (`NimbleMarkets/go-booba` @ `rtl-text`): `go run ./tests/rtl-text --listen :8099`, open it against this build. The HUD bottom-right names the active backend; `renderer-factory.ts` picks it.
 
 Checklist (from the upstream brief):
+
 - Rows 5 and 10: the **red** word renders to the **right** of the blue word. Red-on-left = failure.
 - Ground truth: render the same strings in two `<div>`s over `http://` — one plain (correct UBA), one `unicode-bidi: bidi-override; direction: ltr` (the old defect) — and compare the canvas against both. Do NOT compare against native Ghostty (it has no BiDi; both would agree and both would be wrong).
 - Inspect the canvas by CSS-upscaling **every** canvas layer (there are two — text and overlay):
   ```js
-  document.querySelectorAll('canvas').forEach(c => {
+  document.querySelectorAll('canvas').forEach((c) => {
     c.style.transformOrigin = '0 0';
     c.style.transform = 'scale(6) translate(-186px, -102px)';
     c.style.imageRendering = 'pixelated';

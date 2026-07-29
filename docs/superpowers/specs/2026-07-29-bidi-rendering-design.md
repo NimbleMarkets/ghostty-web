@@ -46,9 +46,9 @@ A `RowBidiMapper` class wrapping `bidi-js`, producing per row of
 
 ```ts
 interface RowBidiMap {
-  isIdentity: boolean;            // fast-path flag; shared singleton for LTR rows
-  visualToLogical: Uint16Array;   // visual column → logical column
-  logicalToVisual: Uint16Array;   // inverse
+  isIdentity: boolean; // fast-path flag; shared singleton for LTR rows
+  visualToLogical: Uint16Array; // visual column → logical column
+  logicalToVisual: Uint16Array; // inverse
   mirror: Map<number, number> | null; // logical col → mirrored codepoint (UBA L4), paint-time only
 }
 ```

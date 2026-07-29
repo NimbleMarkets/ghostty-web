@@ -628,7 +628,8 @@ describe('KittyAtlasBase', () => {
 
 describe('visualCursorX', () => {
   test('maps logical cursor column to visual on an RTL row', () => {
-    const cols = 6, rows = 1;
+    const cols = 6,
+      rows = 1;
     const buffer = makeStubBuffer({ cols, rows, cells: hebrewRow(cols), placements: [] });
     const mapper = new RowBidiMapper();
     // hebrewRow: a ש ל ו b _  → logical 1 (ש) paints at visual 3

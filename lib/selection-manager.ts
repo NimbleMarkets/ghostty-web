@@ -935,7 +935,8 @@ export class SelectionManager {
     if (!line) return null;
 
     const map = this.bidiMapper.getMap(line);
-    const lcol = map.isIdentity || col >= map.visualToLogical.length ? col : map.visualToLogical[col]!;
+    const lcol =
+      map.isIdentity || col >= map.visualToLogical.length ? col : map.visualToLogical[col]!;
 
     // Word characters: Unicode letters/digits plus common path/URL chars.
     // \p{L}\p{N} (not \w) so RTL scripts are word chars too.
