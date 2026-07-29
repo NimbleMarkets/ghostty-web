@@ -634,4 +634,61 @@ describe('SelectionManager', () => {
       term.dispose();
     });
   });
+
+  describe('BiDi selection', () => {
+    test('full-row selection over Hebrew copies logical order', async () => {
+      if (!container) return;
+      const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
+      await term.open(container);
+      term.write('אבג');
+      setSelectionAbsolute(term, 0, 0, 2, 0);
+      const selMgr = (term as any).selectionManager;
+      expect(selMgr.getSelection()).toBe('אבג');
+      term.dispose();
+    });
+
+    test('partial visual selection maps to the correct logical cells', async () => {
+      if (!container) return;
+      const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
+      await term.open(container);
+      term.write('אבג'); // visual: ג ב א — visual cols 0..1 are ג ב = logical 1..2
+      setSelectionAbsolute(term, 0, 0, 1, 0);
+      const selMgr = (term as any).selectionManager;
+      expect(selMgr.getSelection()).toBe('בג');
+      term.dispose();
+    });
+
+    test('visual selection across an LTR/RTL boundary yields disjoint logical ranges in logical order', async () => {
+      if (!container) return;
+      const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
+      await term.open(container);
+      term.write('ab אבג cd');
+      // logical: a b ␠ א ב ג ␠ c d ; visual: a b ␠ ג ב א ␠ c d
+      // visual cols 2..4 hold logical {2, 5, 4}; sorted ascending = [2, 4, 5]
+      // = '␠', 'ב', 'ג' → clipboard carries ' בג'
+      setSelectionAbsolute(term, 2, 0, 4, 0);
+      const selMgr = (term as any).selectionManager;
+      expect(selMgr.getSelection()).toBe(' בג');
+      term.dispose();
+    });
+
+    test('double-click word selection works on a Hebrew word', async () => {
+      if (!container) return;
+      const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
+      await term.open(container);
+      term.write('שלום עולם');
+      const selMgr = (term as any).selectionManager;
+      // The row is a single homogeneous RTL run (base direction is fixed
+      // LTR, but two Hebrew words separated by a neutral space still form
+      // one level-1 run), so the UBA reverses the whole row as a block:
+      // visual cols 0..3 hold the SECOND logical word (עולם, logical cols
+      // 5..8); visual cols 5..8 hold the first word (שלום, logical cols
+      // 0..3). Click at visual col 1, which lands inside עולם.
+      const word = (selMgr as any).getWordAtCell(1, 0);
+      expect(word).toEqual({ startCol: 0, endCol: 3 });
+      setSelectionAbsolute(term, word.startCol, 0, word.endCol, 0);
+      expect(selMgr.getSelection()).toBe('עולם');
+      term.dispose();
+    });
+  });
 });

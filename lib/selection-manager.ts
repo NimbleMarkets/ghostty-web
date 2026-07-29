@@ -161,13 +161,25 @@ export class SelectionManager {
       // Track the last non-empty column for trimming trailing spaces
       let lastNonEmpty = -1;
 
-      // Determine column range for this row
+      // Determine the VISUAL column range for this row (anchors are visual)
       const colStart = absRow === startAbsRow ? startCol : 0;
       const colEnd = absRow === endAbsRow ? endCol : line.length - 1;
 
+      // Map the visual span to logical columns, ascending. A visually
+      // contiguous span over mixed LTR/RTL text is several disjoint logical
+      // ranges; sorting yields the PTY's logical order, which is what the
+      // clipboard must carry.
+      const map = this.bidiMapper.getMap(line);
+      const logicalCols: number[] = [];
+      for (let v = colStart; v <= colEnd && v < line.length; v++) {
+        if (v < 0) continue;
+        logicalCols.push(map.isIdentity ? v : map.visualToLogical[v]!);
+      }
+      logicalCols.sort((a, b) => a - b);
+
       // Build the line text
       let lineText = '';
-      for (let col = colStart; col <= colEnd; col++) {
+      for (const col of logicalCols) {
         const cell = line[col];
         if (cell && cell.codepoint !== 0) {
           // Use grapheme lookup for cells with multi-codepoint characters
@@ -922,31 +934,35 @@ export class SelectionManager {
     }
     if (!line) return null;
 
-    // Word characters: letters, numbers, and common path/URL characters
-    // Matches native Ghostty behavior where double-click selects entire paths
-    // Includes: / (path sep), . (extensions), ~ (home), @ (emails), + (encodings)
+    const map = this.bidiMapper.getMap(line);
+    const lcol = map.isIdentity || col >= map.visualToLogical.length ? col : map.visualToLogical[col]!;
+
+    // Word characters: Unicode letters/digits plus common path/URL chars.
+    // \p{L}\p{N} (not \w) so RTL scripts are word chars too.
     const isWordChar = (cell: GhosttyCell) => {
       if (!cell || cell.codepoint === 0) return false;
       const char = String.fromCodePoint(cell.codepoint);
-      return /[\w\-./~@+]/.test(char);
+      return /[\p{L}\p{N}_\-./~@+]/u.test(char);
     };
 
-    // Only return if we're actually on a word character
-    if (!isWordChar(line[col])) return null;
+    if (!isWordChar(line[lcol])) return null;
 
-    // Find start of word
-    let startCol = col;
-    while (startCol > 0 && isWordChar(line[startCol - 1])) {
-      startCol--;
+    let startCol = lcol;
+    while (startCol > 0 && isWordChar(line[startCol - 1])) startCol--;
+    let endCol = lcol;
+    while (endCol < line.length - 1 && isWordChar(line[endCol + 1])) endCol++;
+
+    if (map.isIdentity) return { startCol, endCol };
+    // A word is a uniform-direction run, so its visual image is contiguous;
+    // min/max over the logical range is exact, and the anchors are visual.
+    let vMin = Number.MAX_SAFE_INTEGER;
+    let vMax = -1;
+    for (let c = startCol; c <= endCol; c++) {
+      const v = map.logicalToVisual[c]!;
+      if (v < vMin) vMin = v;
+      if (v > vMax) vMax = v;
     }
-
-    // Find end of word
-    let endCol = col;
-    while (endCol < line.length - 1 && isWordChar(line[endCol + 1])) {
-      endCol++;
-    }
-
-    return { startCol, endCol };
+    return { startCol: vMin, endCol: vMax };
   }
 
   /**
