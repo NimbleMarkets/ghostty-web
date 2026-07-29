@@ -95,6 +95,84 @@ export class RowBidiMapper {
   }
 
   private compute(line: GhosttyCell[]): RowBidiMap {
-    throw new Error('implemented in the next commit');
+    const n = line.length;
+    const bidi = this.bidi!; // caller guarantees non-null
+
+    // Build the row string with one codepoint per non-spacer cell,
+    // recording which cell owns each UTF-16 code unit (astral codepoints
+    // occupy two units). Spacer cells (width 0) contribute nothing and are
+    // re-attached after their wide base below. Grapheme extras are omitted:
+    // they are combining marks (class NSM), which UBA rule W1 resolves to
+    // the base character's class anyway — invisible at cell granularity.
+    let text = '';
+    const cellForUnit: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const cell = line[i]!;
+      if (cell.width === 0) continue;
+      // Empty cells → space (neutral). Kitty placeholders → 'A' (strong
+      // LTR): they are image slices whose row/col diacritics must never
+      // reorder, so pin them, don't let them resolve like neutrals.
+      const cp = cell.codepoint === KITTY_PLACEHOLDER ? 0x41 : cell.codepoint || 0x20;
+      const s = String.fromCodePoint(cp);
+      text += s;
+      for (let u = 0; u < s.length; u++) cellForUnit.push(i);
+    }
+
+    const levels = bidi.getEmbeddingLevels(text, 'ltr');
+    const indices = bidi.getReorderedIndices(text, levels);
+
+    // Project the code-unit permutation to cell level: walk visual order,
+    // appending each owning cell the first time one of its units appears.
+    // (Both units of a surrogate pair own the same cell, so pair-order
+    // inside the reordered output is irrelevant here.)
+    const visualOrder: number[] = [];
+    const seen = new Uint8Array(n);
+    for (let v = 0; v < indices.length; v++) {
+      const cellIdx = cellForUnit[indices[v]!]!;
+      if (seen[cellIdx]) continue;
+      seen[cellIdx] = 1;
+      visualOrder.push(cellIdx);
+      // Fuse wide pairs: the width-0 spacer that follows a wide base in
+      // logical order rides immediately after it in visual order, keeping
+      // the two-column glyph span intact for the renderers.
+      if (line[cellIdx]!.width === 2 && cellIdx + 1 < n && line[cellIdx + 1]!.width === 0) {
+        seen[cellIdx + 1] = 1;
+        visualOrder.push(cellIdx + 1);
+      }
+    }
+    // Defensive: any cell not seen (e.g. an orphaned spacer with no wide
+    // base before it) keeps its relative order at the end.
+    for (let i = 0; i < n; i++) if (!seen[i]) visualOrder.push(i);
+
+    const visualToLogical = new Uint16Array(n);
+    const logicalToVisual = new Uint16Array(n);
+    let identityPerm = true;
+    for (let v = 0; v < n; v++) {
+      const l = visualOrder[v]!;
+      visualToLogical[v] = l;
+      logicalToVisual[l] = v;
+      if (l !== v) identityPerm = false;
+    }
+
+    // UBA rule L4: mirror characters at odd embedding levels.
+    let mirror: Map<number, number> | null = null;
+    for (let unit = 0; unit < text.length; unit++) {
+      const level = levels.levels[unit]!;
+      if (level % 2 === 1) {  // odd level = RTL scope
+        const ch = text[unit]!;
+        const mirrored = bidi.getMirroredCharacter(ch);
+        if (mirrored && mirrored !== ch) {
+          if (!mirror) mirror = new Map();
+          mirror.set(cellForUnit[unit]!, mirrored.codePointAt(0)!);
+        }
+      }
+    }
+
+    return {
+      isIdentity: identityPerm && mirror === null,
+      visualToLogical,
+      logicalToVisual,
+      mirror,
+    };
   }
 }

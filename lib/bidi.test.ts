@@ -63,3 +63,89 @@ describe('RowBidiMapper fast path', () => {
     expect(mapper.getMap([]).isIdentity).toBe(true);
   });
 });
+
+describe('RowBidiMapper full path', () => {
+  const mapper = new RowBidiMapper();
+
+  test('pure Hebrew row reverses', () => {
+    const map = mapper.getMap(cellsFrom('שלום')); // 4 cells, class R
+    expect(map.isIdentity).toBe(false);
+    expect([...map.visualToLogical]).toEqual([3, 2, 1, 0]);
+    expect([...map.logicalToVisual]).toEqual([3, 2, 1, 0]);
+  });
+
+  test('mixed LTR/RTL reorders only the RTL run', () => {
+    // logical: a b ␠ ש ל ו ם ␠ c d   (indices 0..9)
+    const map = mapper.getMap(cellsFrom('ab שלום cd'));
+    expect([...map.visualToLogical]).toEqual([0, 1, 2, 6, 5, 4, 3, 7, 8, 9]);
+  });
+
+  test('logicalToVisual is the exact inverse of visualToLogical', () => {
+    const map = mapper.getMap(cellsFrom('ab שלום cd'));
+    for (let v = 0; v < map.visualToLogical.length; v++) {
+      expect(map.logicalToVisual[map.visualToLogical[v]!]).toBe(v);
+    }
+  });
+
+  test('Arabic (class AL) reverses like Hebrew (class R)', () => {
+    const map = mapper.getMap(cellsFrom('عربي'));
+    expect([...map.visualToLogical]).toEqual([3, 2, 1, 0]);
+  });
+
+  test('European digits (EN) inside Hebrew stay in LTR order', () => {
+    // אב 12 גד — digits must read left-to-right within the RTL context
+    const map = mapper.getMap(cellsFrom('אב 12 גד'));
+    const d1 = map.logicalToVisual[3]!; // '1'
+    const d2 = map.logicalToVisual[4]!; // '2'
+    expect(d2).toBe(d1 + 1); // adjacent, '1' left of '2'
+    // Hebrew still reversed: א paints right of ב
+    expect(map.logicalToVisual[0]!).toBeGreaterThan(map.logicalToVisual[1]!);
+  });
+
+  test('Arabic-Indic digits (AN) inside Arabic stay in LTR order', () => {
+    // ﻋﺮﺑﻲ + ٤٥٦ (U+0664..0666, class AN)
+    const map = mapper.getMap(cellsFrom('عربي ٤٥٦'));
+    const d4 = map.logicalToVisual[5]!; // ٤
+    const d5 = map.logicalToVisual[6]!; // ٥
+    const d6 = map.logicalToVisual[7]!; // ٦
+    expect(d5).toBe(d4 + 1);
+    expect(d6).toBe(d5 + 1);
+  });
+
+  test('Persian Extended digits (EN class) inside Persian stay in LTR order', () => {
+    // ۴۵۶ are U+06F4..06F6, class EN — different class from ٤٥٦, same visual expectation
+    const map = mapper.getMap(cellsFrom('فارسی ۴۵۶'));
+    const d4 = map.logicalToVisual[6]!;
+    const d5 = map.logicalToVisual[7]!;
+    expect(d5).toBe(d4 + 1);
+  });
+
+  test('parentheses in an RTL run are mirrored (UBA L4)', () => {
+    // א(ב)ג — the parens sit between strong R chars → odd level → mirrored
+    const line = cellsFrom('א(ב)ג');
+    const map = mapper.getMap(line);
+    expect(map.mirror).not.toBeNull();
+    expect(map.mirror!.get(1)).toBe(')'.codePointAt(0)!); // logical '(' paints as ')'
+    expect(map.mirror!.get(3)).toBe('('.codePointAt(0)!); // logical ')' paints as '('
+  });
+
+  test('wide cell and its spacer move as a fused unit', () => {
+    // logical: a b 漢 [spacer] ש ל ו ם   (漢 is width 2, spacer width 0)
+    const line = [
+      ...cellsFrom('ab'),
+      makeCell({ codepoint: '漢'.codePointAt(0)!, width: 2 }),
+      makeCell({ codepoint: 0, width: 0 }),
+      ...cellsFrom('שלום'),
+    ];
+    const map = mapper.getMap(line);
+    expect([...map.visualToLogical]).toEqual([0, 1, 2, 3, 7, 6, 5, 4]);
+    // spacer (logical 3) immediately follows its base (logical 2) visually
+    expect(map.logicalToVisual[3]).toBe(map.logicalToVisual[2]! + 1);
+  });
+
+  test('trailing empty cells stay in place (LTR base direction)', () => {
+    const line = [...cellsFrom('שלום'), makeCell(), makeCell()];
+    const map = mapper.getMap(line);
+    expect([...map.visualToLogical]).toEqual([3, 2, 1, 0, 4, 5]);
+  });
+});
