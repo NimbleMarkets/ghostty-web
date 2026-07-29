@@ -13,6 +13,7 @@ import {
   KittyTextureCacheBase,
   encodeCells,
   kittyImageToRGBA,
+  visualCursorX,
 } from './renderer-core';
 import type { IRenderable } from './renderer-types';
 import type { GhosttyCell, KittyPlacementInfo } from './types';
@@ -102,6 +103,16 @@ function makeStubBuffer(opts: StubRenderableOpts): IRenderable & {
     },
   };
   return buffer;
+}
+
+// Row: a ש ל ו b + empty  → visualToLogical [0,3,2,1,4,5].
+// Tag each cell with a distinct fg_r so the test can see which logical
+// cell landed at which visual slot.
+function hebrewRow(cols: number): GhosttyCell[] {
+  const cps = [0x61, 0x5e9, 0x5dc, 0x5d5, 0x62]; // a ש ל ו b
+  const cells = cps.map((cp, i) => makeCell({ codepoint: cp, fg_r: i + 1, fgIsDefault: false }));
+  while (cells.length < cols) cells.push(makeCell());
+  return cells;
 }
 
 describe('kittyImageToRGBA', () => {
@@ -343,16 +354,6 @@ describe('encodeCells: bidi reordering', () => {
     blockElementShaderEnabled: false,
     bidiMapper: new RowBidiMapper(),
   };
-
-  // Row: a ש ל ו b + empty  → visualToLogical [0,3,2,1,4,5].
-  // Tag each cell with a distinct fg_r so the test can see which logical
-  // cell landed at which visual slot.
-  function hebrewRow(cols: number): GhosttyCell[] {
-    const cps = [0x61, 0x5e9, 0x5dc, 0x5d5, 0x62]; // a ש ל ו b
-    const cells = cps.map((cp, i) => makeCell({ codepoint: cp, fg_r: i + 1, fgIsDefault: false }));
-    while (cells.length < cols) cells.push(makeCell());
-    return cells;
-  }
 
   test('cells land at visual positions', () => {
     const cols = 6,
@@ -622,5 +623,17 @@ describe('KittyAtlasBase', () => {
   test('atlasSize getter returns current size', () => {
     const atlas = new StubAtlas(2048);
     expect(atlas.atlasSize).toBe(2048);
+  });
+});
+
+describe('visualCursorX', () => {
+  test('maps logical cursor column to visual on an RTL row', () => {
+    const cols = 6, rows = 1;
+    const buffer = makeStubBuffer({ cols, rows, cells: hebrewRow(cols), placements: [] });
+    const mapper = new RowBidiMapper();
+    // hebrewRow: a ש ל ו b _  → logical 1 (ש) paints at visual 3
+    expect(visualCursorX(buffer, { x: 1, y: 0 }, mapper)).toBe(3);
+    expect(visualCursorX(buffer, { x: 0, y: 0 }, mapper)).toBe(0);
+    expect(visualCursorX(buffer, { x: 1, y: 0 }, null)).toBe(1);
   });
 });

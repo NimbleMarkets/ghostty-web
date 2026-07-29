@@ -31,6 +31,7 @@ import {
   encodeCells as coreEncodeCells,
   measureFont as coreMeasureFont,
   parseHexColor as coreParseHexColor,
+  visualCursorX,
 } from './renderer-core';
 import type { GridUBOState } from './renderer-core';
 import type {
@@ -1064,7 +1065,10 @@ export class WebGPURenderer implements Renderer {
     this.lastKittyPlacementSig = kittySig ?? this.computeKittyPlacementSig(buffer);
 
     const { usedKittyImageIds } = this.encodeCells(buffer, viewportY, sb);
-    this.uploadGridUBO(viewportY, cursor);
+    this.uploadGridUBO(viewportY, {
+      ...cursor,
+      x: visualCursorX(buffer, cursor, this.bidiMapper),
+    });
 
     // Update kitty atlas for any virtual-placement images used this frame, and
     // build the rect lookup table for the text shader (mirrors Phase A WebGL).

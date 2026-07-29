@@ -660,6 +660,24 @@ export function encodeCells(
   return { usedKittyImageIds };
 }
 
+/**
+ * Map the VT cursor's logical column to its visual column on the cursor's
+ * row. Used for the GPU backends' cursor-quad uniform; canvas2d does the
+ * equivalent inline in renderCursor().
+ */
+export function visualCursorX(
+  buffer: IRenderable,
+  cursor: { x: number; y: number },
+  mapper: RowBidiMapper | null
+): number {
+  if (!mapper) return cursor.x;
+  const line = buffer.getLine(cursor.y);
+  if (!line) return cursor.x;
+  const m = mapper.getMap(line);
+  if (m.isIdentity || cursor.x >= m.logicalToVisual.length) return cursor.x;
+  return m.logicalToVisual[cursor.x]!;
+}
+
 // ---------------------------------------------------------------------------
 // Kitty graphics
 // ---------------------------------------------------------------------------
