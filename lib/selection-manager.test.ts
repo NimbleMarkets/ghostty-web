@@ -24,10 +24,12 @@ function setSelectionAbsolute(
   startCol: number,
   startAbsRow: number,
   endCol: number,
-  endAbsRow: number
+  endAbsRow: number,
+  columnSpace: 'visual' | 'logical' = 'visual'
 ): void {
   const selMgr = (term as any).selectionManager;
   if (selMgr) {
+    (selMgr as any).selectionColumnSpace = columnSpace;
     (selMgr as any).selectionStart = { col: startCol, absoluteRow: startAbsRow };
     (selMgr as any).selectionEnd = { col: endCol, absoluteRow: endAbsRow };
   }
@@ -706,9 +708,40 @@ describe('SelectionManager', () => {
       // 5..8); visual cols 5..8 hold the first word (שלום, logical cols
       // 0..3). Click at visual col 1, which lands inside עולם.
       const word = (selMgr as any).getWordAtCell(1, 0);
-      expect(word).toEqual({ startCol: 0, endCol: 3 });
-      setSelectionAbsolute(term, word.startCol, 0, word.endCol, 0);
+      expect(word).toEqual({ startCol: 5, endCol: 8 });
+      setSelectionAbsolute(term, word.startCol, 0, word.endCol, 0, 'logical');
       expect(selMgr.getSelection()).toBe('עולם');
+      term.dispose();
+    });
+
+    test('double-click keeps a mixed-direction word as an exact logical range', async () => {
+      if (!container) return;
+      const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
+      await term.open(container);
+      term.write('א:אa');
+      const selMgr = (term as any).selectionManager;
+
+      // The logical word אa occupies visual columns 3 and 0. Collapsing
+      // those positions to visual min..max would also select the unrelated א:.
+      const word = (selMgr as any).getWordAtCell(0, 0);
+      expect(word).toEqual({ startCol: 2, endCol: 3 });
+
+      // Exercise the actual double-click handler, not just the word finder.
+      (selMgr as any).copyToClipboard = () => {};
+      const canvas = (term as any).renderer.canvas as HTMLCanvasElement;
+      const doubleClick = new MouseEvent('click', {
+        bubbles: true,
+        detail: 2,
+        clientX: 1,
+        clientY: 1,
+      });
+      Object.defineProperty(doubleClick, 'offsetX', { value: 1 });
+      Object.defineProperty(doubleClick, 'offsetY', { value: 1 });
+      canvas.dispatchEvent(doubleClick);
+
+      expect(selMgr.getSelection()).toBe('אa');
+      expect(selMgr.getSelection()).not.toContain(':');
+      expect(selMgr.getSelectionColumnSpace()).toBe('logical');
       term.dispose();
     });
   });

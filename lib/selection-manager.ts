@@ -647,7 +647,7 @@ export class SelectionManager {
 
         if (word) {
           const absoluteRow = this.viewportRowToAbsolute(cell.row);
-          this.selectionColumnSpace = 'visual';
+          this.selectionColumnSpace = 'logical';
           this.selectionStart = { col: word.startCol, absoluteRow };
           this.selectionEnd = { col: word.endCol, absoluteRow };
           this.requestRender();
@@ -948,7 +948,7 @@ export class SelectionManager {
   }
 
   /**
-   * Get word boundaries at a cell position
+   * Get logical word boundaries at a visual cell position.
    */
   private getWordAtCell(col: number, row: number): { startCol: number; endCol: number } | null {
     const absoluteRow = this.viewportRowToAbsolute(row);
@@ -981,17 +981,9 @@ export class SelectionManager {
     let endCol = lcol;
     while (endCol < line.length - 1 && isWordChar(line[endCol + 1])) endCol++;
 
-    if (map.isIdentity) return { startCol, endCol };
-    // A word is a uniform-direction run, so its visual image is contiguous;
-    // min/max over the logical range is exact, and the anchors are visual.
-    let vMin = Number.MAX_SAFE_INTEGER;
-    let vMax = -1;
-    for (let c = startCol; c <= endCol; c++) {
-      const v = map.logicalToVisual[c]!;
-      if (v < vMin) vMin = v;
-      if (v > vMax) vMax = v;
-    }
-    return { startCol: vMin, endCol: vMax };
+    // Keep the exact logical range. A word can contain both LTR and RTL
+    // characters, so its visual cells are not necessarily contiguous.
+    return { startCol, endCol };
   }
 
   /**
