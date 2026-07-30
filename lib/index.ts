@@ -96,7 +96,7 @@ export type {
 export { InputHandler } from './input-handler';
 export { EventEmitter } from './event-emitter';
 export { SelectionManager } from './selection-manager';
-export type { SelectionCoordinates } from './selection-manager';
+export type { SelectionColumnSpace, SelectionCoordinates } from './selection-manager';
 
 // Addons
 export { FitAddon } from './addons/fit';

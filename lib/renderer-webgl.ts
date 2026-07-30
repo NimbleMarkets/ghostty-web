@@ -754,7 +754,7 @@ export class WebGL2Renderer implements Renderer {
   private computeSelectionSig(): string | null {
     const sel = this.selectionManager?.getSelectionCoords() ?? null;
     if (!sel) return null;
-    return `${sel.startRow},${sel.startCol}-${sel.endRow},${sel.endCol}`;
+    return `${this.selectionManager!.getSelectionColumnSpace()}:${sel.startRow},${sel.startCol}-${sel.endRow},${sel.endCol}`;
   }
 
   /** See WebGPURenderer.computeKittyPlacementSig. */

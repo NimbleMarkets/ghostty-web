@@ -427,6 +427,7 @@ export function encodeCells(
   const sbLen = sb?.getScrollbackLength() ?? 0;
   const cursor = buffer.getCursor();
   const sel = ctx.selectionManager?.getSelectionCoords() ?? null;
+  const selectionUsesLogicalColumns = ctx.selectionManager?.getSelectionColumnSpace() === 'logical';
 
   // Pre-calculate selection range for the rows we'll be visiting.
   let selStartCol = -1;
@@ -548,7 +549,10 @@ export function encodeCells(
       if (c.flags & CellFlags.INVISIBLE) flags |= FLAG_INVISIBLE;
       if (c.fgIsDefault) flags |= FLAG_USE_THEME_FG;
       if (c.bgIsDefault) flags |= FLAG_USE_THEME_BG;
-      if (x >= selStartCol && x <= selEndCol) flags |= FLAG_IS_SELECTED;
+      const selectionCol = selectionUsesLogicalColumns ? lx : x;
+      if (selectionCol >= selStartCol && selectionCol <= selEndCol) {
+        flags |= FLAG_IS_SELECTED;
+      }
       if (c.hyperlink_id !== 0 && c.hyperlink_id === ctx.hoveredHyperlinkId) {
         flags |= FLAG_IS_HYPERLINK_HOVERED;
       }

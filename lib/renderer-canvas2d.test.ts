@@ -435,6 +435,59 @@ describe('bidi reordering (canvas2d)', () => {
     expect(at(30)).toBe('b');
   });
 
+  test('programmatic selection paints the VISUAL position of a logical cell', () => {
+    const canvas = document.createElement('canvas');
+    const renderer = new CanvasRenderer(canvas);
+    renderer.setBidiMapper(new RowBidiMapper());
+
+    (renderer as any).metrics = { width: 10, height: 20, baseline: 15 };
+    (renderer as any).currentSelectionCoords = {
+      startCol: 1,
+      startRow: 0,
+      endCol: 1,
+      endRow: 0,
+    };
+    (renderer as any).currentSelectionColumnSpace = 'logical';
+
+    let fillStyle = '';
+    const selectionFills: number[] = [];
+    (renderer as any).ctx = {
+      clearRect() {},
+      fillRect(x: number) {
+        if (fillStyle === DEFAULT_THEME.selectionBackground) selectionFills.push(x);
+      },
+      beginPath() {},
+      rect() {},
+      clip() {},
+      save() {},
+      restore() {},
+      stroke() {},
+      strokeRect() {},
+      moveTo() {},
+      lineTo() {},
+      setLineDash() {},
+      drawImage() {},
+      measureText() {
+        return { width: 10 };
+      },
+      fillText() {},
+      set font(_v: string) {},
+      set fillStyle(value: string) {
+        fillStyle = value;
+      },
+      set strokeStyle(_v: string) {},
+      set lineWidth(_v: number) {},
+      set globalAlpha(_v: number) {},
+    };
+
+    // logical: a ש ל b → visual: a ל ש b. Logical col 1 (ש) paints at x=20.
+    const line = ['a', 'ש', 'ל', 'b'].map((ch) => makeCellC({ codepoint: ch.codePointAt(0)! }));
+    (renderer as any).renderLine(line, 0, 4);
+
+    expect(selectionFills).toContain(20);
+    expect(selectionFills).not.toContain(10);
+  });
+
   test('hoveredLinkRange (logical columns) underlines the VISUAL position of a reordered cell', () => {
     const canvas = document.createElement('canvas');
     const renderer = new CanvasRenderer(canvas);

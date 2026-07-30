@@ -29,6 +29,8 @@ export interface SelectionCoordinates {
   endRow: number;
 }
 
+export type SelectionColumnSpace = 'visual' | 'logical';
+
 // ============================================================================
 // SelectionManager Class
 // ============================================================================
@@ -44,6 +46,9 @@ export class SelectionManager {
   // This ensures selection persists correctly when scrolling
   private selectionStart: { col: number; absoluteRow: number } | null = null;
   private selectionEnd: { col: number; absoluteRow: number } | null = null;
+  // Mouse anchors are visual (pixel-derived), while xterm-compatible
+  // programmatic selection APIs address logical buffer columns.
+  private selectionColumnSpace: SelectionColumnSpace = 'visual';
   private isSelecting: boolean = false;
   private mouseDownX: number = 0;
   private mouseDownY: number = 0;
@@ -161,21 +166,28 @@ export class SelectionManager {
       // Track the last non-empty column for trimming trailing spaces
       let lastNonEmpty = -1;
 
-      // Determine the VISUAL column range for this row (anchors are visual)
+      // Determine this row's range in the selection's declared column space.
       const colStart = absRow === startAbsRow ? startCol : 0;
       const colEnd = absRow === endAbsRow ? endCol : line.length - 1;
 
-      // Map the visual span to logical columns, ascending. A visually
-      // contiguous span over mixed LTR/RTL text is several disjoint logical
-      // ranges; sorting yields the PTY's logical order, which is what the
-      // clipboard must carry.
-      const map = this.bidiMapper.getMap(line);
       const logicalCols: number[] = [];
-      for (let v = colStart; v <= colEnd && v < line.length; v++) {
-        if (v < 0) continue;
-        logicalCols.push(map.isIdentity ? v : map.visualToLogical[v]!);
+      if (this.selectionColumnSpace === 'logical') {
+        // Programmatic APIs already address the PTY's logical buffer.
+        for (let col = colStart; col <= colEnd && col < line.length; col++) {
+          if (col >= 0) logicalCols.push(col);
+        }
+      } else {
+        // Map the visual span to logical columns, ascending. A visually
+        // contiguous span over mixed LTR/RTL text is several disjoint logical
+        // ranges; sorting yields the PTY's logical order, which is what the
+        // clipboard must carry.
+        const map = this.bidiMapper.getMap(line);
+        for (let v = colStart; v <= colEnd && v < line.length; v++) {
+          if (v < 0) continue;
+          logicalCols.push(map.isIdentity ? v : map.visualToLogical[v]!);
+        }
+        logicalCols.sort((a, b) => a - b);
       }
-      logicalCols.sort((a, b) => a - b);
 
       // Build the line text
       let lineText = '';
@@ -265,6 +277,7 @@ export class SelectionManager {
 
     this.selectionStart = null;
     this.selectionEnd = null;
+    this.selectionColumnSpace = 'visual';
     this.isSelecting = false;
 
     // Force redraw of previously selected lines to clear the overlay
@@ -277,6 +290,7 @@ export class SelectionManager {
   selectAll(): void {
     const dims = this.wasmTerm.getDimensions();
     const viewportY = this.getViewportY();
+    this.selectionColumnSpace = 'logical';
     this.selectionStart = { col: 0, absoluteRow: viewportY };
     this.selectionEnd = { col: dims.cols - 1, absoluteRow: viewportY + dims.rows - 1 };
     this.requestRender();
@@ -308,6 +322,7 @@ export class SelectionManager {
 
     // Convert viewport rows to absolute rows
     const viewportY = this.getViewportY();
+    this.selectionColumnSpace = 'logical';
     this.selectionStart = { col: column, absoluteRow: viewportY + row };
     this.selectionEnd = { col: endCol, absoluteRow: viewportY + endRow };
     this.requestRender();
@@ -331,6 +346,7 @@ export class SelectionManager {
     }
 
     // Convert viewport rows to absolute rows
+    this.selectionColumnSpace = 'logical';
     this.selectionStart = { col: 0, absoluteRow: this.viewportRowToAbsolute(start) };
     this.selectionEnd = { col: dims.cols - 1, absoluteRow: this.viewportRowToAbsolute(end) };
     this.requestRender();
@@ -377,6 +393,15 @@ export class SelectionManager {
    */
   getSelectionCoords(): SelectionCoordinates | null {
     return this.normalizeSelection();
+  }
+
+  /**
+   * Return the coordinate space used by the current selection's columns.
+   * Renderers use this to test visual cells against logical programmatic
+   * selections after BiDi reordering.
+   */
+  getSelectionColumnSpace(): SelectionColumnSpace {
+    return this.selectionColumnSpace;
   }
 
   /**
@@ -468,6 +493,7 @@ export class SelectionManager {
 
         // Start new selection (convert to absolute coordinates)
         const absoluteRow = this.viewportRowToAbsolute(cell.row);
+        this.selectionColumnSpace = 'visual';
         this.selectionStart = { col: cell.col, absoluteRow };
         this.selectionEnd = { col: cell.col, absoluteRow };
         this.isSelecting = true;
@@ -621,6 +647,7 @@ export class SelectionManager {
 
         if (word) {
           const absoluteRow = this.viewportRowToAbsolute(cell.row);
+          this.selectionColumnSpace = 'visual';
           this.selectionStart = { col: word.startCol, absoluteRow };
           this.selectionEnd = { col: word.endCol, absoluteRow };
           this.requestRender();
@@ -662,6 +689,7 @@ export class SelectionManager {
         // Only select if line has content (endCol >= 0)
         if (endCol >= 0) {
           // Select line content only (not trailing whitespace)
+          this.selectionColumnSpace = 'logical';
           this.selectionStart = { col: 0, absoluteRow };
           this.selectionEnd = { col: endCol, absoluteRow };
           this.requestRender();

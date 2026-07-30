@@ -507,6 +507,27 @@ describe('SelectionManager', () => {
 
       term.dispose();
     });
+
+    test('select() treats columns as logical buffer coordinates on a BiDi row', async () => {
+      if (!container) return;
+
+      const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
+      await term.open(container);
+
+      term.write('אבג'); // visual: ג ב א
+
+      const selMgr = (term as any).selectionManager;
+      selMgr.select(0, 0, 1);
+
+      expect(selMgr.getSelection()).toBe('א');
+      expect(selMgr.getSelectionPosition()).toEqual({
+        start: { x: 0, y: 0 },
+        end: { x: 0, y: 0 },
+      });
+      expect(selMgr.getSelectionColumnSpace()).toBe('logical');
+
+      term.dispose();
+    });
   });
 
   describe('selectLines() API', () => {

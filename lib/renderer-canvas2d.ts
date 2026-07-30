@@ -222,6 +222,7 @@ export class CanvasRenderer implements Renderer {
     endCol: number;
     endRow: number;
   } | null = null;
+  private currentSelectionColumnSpace: 'visual' | 'logical' = 'visual';
 
   // Link rendering state
   private hoveredHyperlinkId: number = 0;
@@ -369,7 +370,7 @@ export class CanvasRenderer implements Renderer {
   private computeSelectionSig(): string | null {
     const sel = this.selectionManager?.getSelectionCoords() ?? null;
     if (!sel) return null;
-    return `${sel.startRow},${sel.startCol}-${sel.endRow},${sel.endCol}`;
+    return `${this.selectionManager!.getSelectionColumnSpace()}:${sel.startRow},${sel.startCol}-${sel.endRow},${sel.endCol}`;
   }
 
   /** See WebGPURenderer.computeKittyPlacementSig. */
@@ -490,6 +491,9 @@ export class CanvasRenderer implements Renderer {
     // Cache selection coordinates for use during cell rendering
     // This is used by isInSelection() to determine if a cell needs selection colors
     this.currentSelectionCoords = hasSelection ? this.selectionManager!.getSelectionCoords() : null;
+    this.currentSelectionColumnSpace = hasSelection
+      ? this.selectionManager!.getSelectionColumnSpace()
+      : 'visual';
 
     // Mark current selection rows for redraw (includes programmatic selections)
     if (this.currentSelectionCoords) {
@@ -707,9 +711,10 @@ export class CanvasRenderer implements Renderer {
     // This ensures all backgrounds are painted before any text, allowing text
     // to "bleed" across cell boundaries without being covered by adjacent backgrounds
     for (let x = 0; x < line.length; x++) {
-      const cell = line[reorder ? map!.visualToLogical[x]! : x]!;
+      const lx = reorder ? map!.visualToLogical[x]! : x;
+      const cell = line[lx]!;
       if (cell.width === 0) continue; // Skip spacer cells for wide characters
-      this.renderCellBackground(cell, x, y);
+      this.renderCellBackground(cell, x, y, lx);
     }
 
     // PASS 2: Draw all cell text and decorations
@@ -727,13 +732,13 @@ export class CanvasRenderer implements Renderer {
    * Selection highlighting is integrated here to avoid z-order issues with
    * complex glyphs (like Devanagari) that extend outside their cell bounds.
    */
-  private renderCellBackground(cell: GhosttyCell, x: number, y: number): void {
+  private renderCellBackground(cell: GhosttyCell, x: number, y: number, logicalX: number): void {
     const cellX = x * this.metrics.width;
     const cellY = y * this.metrics.height;
     const cellWidth = this.metrics.width * cell.width;
 
     // Check if this cell is selected
-    const isSelected = this.isInSelection(x, y);
+    const isSelected = this.isInSelection(x, logicalX, y);
 
     if (isSelected) {
       // Draw selection background (solid color, not overlay)
@@ -804,7 +809,7 @@ export class CanvasRenderer implements Renderer {
     }
 
     // Check if this cell is selected
-    const isSelected = this.isInSelection(x, y);
+    const isSelected = this.isInSelection(x, linkX, y);
 
     // Set text style
     let fontStyle = '';
@@ -1589,24 +1594,25 @@ export class CanvasRenderer implements Renderer {
    * Check if a cell at (x, y) is within the current selection.
    * Uses cached selection coordinates for performance.
    */
-  private isInSelection(x: number, y: number): boolean {
+  private isInSelection(x: number, logicalX: number, y: number): boolean {
     const sel = this.currentSelectionCoords;
     if (!sel) return false;
 
     const { startCol, startRow, endCol, endRow } = sel;
+    const selectionX = this.currentSelectionColumnSpace === 'logical' ? logicalX : x;
 
     // Single line selection
     if (startRow === endRow) {
-      return y === startRow && x >= startCol && x <= endCol;
+      return y === startRow && selectionX >= startCol && selectionX <= endCol;
     }
 
     // Multi-line selection
     if (y === startRow) {
       // First line: from startCol to end of line
-      return x >= startCol;
+      return selectionX >= startCol;
     } else if (y === endRow) {
       // Last line: from start of line to endCol
-      return x <= endCol;
+      return selectionX <= endCol;
     } else if (y > startRow && y < endRow) {
       // Middle lines: entire line is selected
       return true;

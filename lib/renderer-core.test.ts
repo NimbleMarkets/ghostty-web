@@ -8,6 +8,7 @@ import {
   FLAG_IS_CURSOR_CELL,
   FLAG_IS_KITTY_PLACEHOLDER,
   FLAG_IS_LINK_RANGE_HOVERED,
+  FLAG_IS_SELECTED,
   type GlyphAtlasBase,
   KittyAtlasBase,
   KittyTextureCacheBase,
@@ -382,6 +383,26 @@ describe('encodeCells: bidi reordering', () => {
     encodeCells(cellArray, buffer, 0, undefined, ctx);
     expect(cellArray[(0 * cols + 3) * CELL_U32S + 4]! & FLAG_IS_LINK_RANGE_HOVERED).toBeTruthy();
     expect(cellArray[(0 * cols + 1) * CELL_U32S + 4]! & FLAG_IS_LINK_RANGE_HOVERED).toBeFalsy();
+  });
+
+  test('programmatic selection flags follow LOGICAL columns', () => {
+    const cols = 6,
+      rows = 1;
+    const buffer = makeStubBuffer({ cols, rows, cells: hebrewRow(cols), placements: [] });
+    const cellArray = new Uint32Array(cols * rows * CELL_U32S);
+    const selectionManager = {
+      getSelectionCoords: () => ({ startCol: 1, startRow: 0, endCol: 1, endRow: 0 }),
+      getSelectionColumnSpace: () => 'logical',
+    };
+
+    encodeCells(cellArray, buffer, 0, undefined, {
+      ...baseCtx,
+      selectionManager: selectionManager as any,
+    });
+
+    // Logical col 1 (ש) paints at visual x=3.
+    expect(cellArray[(0 * cols + 3) * CELL_U32S + 4]! & FLAG_IS_SELECTED).toBeTruthy();
+    expect(cellArray[(0 * cols + 1) * CELL_U32S + 4]! & FLAG_IS_SELECTED).toBeFalsy();
   });
 
   test('block cursor flag lands at the visual cursor cell', () => {
