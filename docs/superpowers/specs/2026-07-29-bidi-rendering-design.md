@@ -30,7 +30,7 @@ as `GhosttyCell[]`.
   No ECMA-48 SCP/SDS/SRS/BDSM escape parsing (that would be explicit BiDi and
   would pull in libghostty-vt).
 - **UBA source:** new runtime dependency on `bidi-js` (lojjic/bidi-js, MIT,
-  zero deps, ~7KB gzip). Full UBA with maintained Unicode tables; avoids
+  zero deps, ~12KB gzip). Full UBA with maintained Unicode tables; avoids
   hand-rolled subsets that collapse R/AL and AN/EN distinctions.
 - **Paragraph direction: fixed LTR base, per row.** An all-RTL row reorders in
   place while staying anchored to its left-hand columns, which is what
