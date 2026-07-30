@@ -434,4 +434,51 @@ describe('bidi reordering (canvas2d)', () => {
     expect(at(20)).toBe('ש');
     expect(at(30)).toBe('b');
   });
+
+  test('hoveredLinkRange (logical columns) underlines the VISUAL position of a reordered cell', () => {
+    const canvas = document.createElement('canvas');
+    const renderer = new CanvasRenderer(canvas);
+    renderer.setBidiMapper(new RowBidiMapper());
+
+    (renderer as any).metrics = { width: 10, height: 20, baseline: 15 };
+    const moveTos: number[] = [];
+    (renderer as any).ctx = {
+      clearRect() {},
+      fillRect() {},
+      beginPath() {},
+      rect() {},
+      clip() {},
+      save() {},
+      restore() {},
+      stroke() {},
+      strokeRect() {},
+      moveTo(x: number) {
+        moveTos.push(x);
+      },
+      lineTo() {},
+      setLineDash() {},
+      drawImage() {},
+      measureText() {
+        return { width: 10 };
+      },
+      fillText() {},
+      set font(_v: string) {},
+      set fillStyle(_v: string) {},
+      set strokeStyle(_v: string) {},
+      set lineWidth(_v: number) {},
+      set globalAlpha(_v: number) {},
+    };
+
+    // logical: a ש ל b  → visual: a ל ש b  (v2l = [0,2,1,3]).
+    // Hover range covers LOGICAL column 1 only (ש), which paints at visual
+    // x=2 (pixel 20). If the underline check compared the loop's visual x
+    // instead of the logical column, it would wrongly underline visual x=1
+    // (pixel 10, ל) instead.
+    const line = ['a', 'ש', 'ל', 'b'].map((ch) => makeCellC({ codepoint: ch.codePointAt(0)! }));
+    (renderer as any).hoveredLinkRange = { startX: 1, startY: 0, endX: 1, endY: 0 };
+    (renderer as any).renderLine(line, 0, 4);
+
+    expect(moveTos).toContain(20); // underline at visual x=2 (ש's visual slot)
+    expect(moveTos).not.toContain(10); // NOT at visual x=1 (ל, not in range)
+  });
 });

@@ -1399,6 +1399,85 @@ describe('Buffer Access API', () => {
   });
 });
 
+describe('BiDi link hit-testing (visualColToLogical)', () => {
+  let term: Terminal;
+  let container: HTMLElement;
+
+  beforeEach(async () => {
+    term = await createIsolatedTerminal();
+    if (typeof document !== 'undefined') {
+      container = document.createElement('div');
+      document.body.appendChild(container);
+    }
+  });
+
+  afterEach(() => {
+    term.dispose();
+    if (container && container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
+  });
+
+  test('maps a hovered visual column to the correct logical (OSC8-linked) cell in an RTL run', async () => {
+    if (!container) throw new Error('DOM environment not available - check happydom setup');
+
+    await term.open(container!);
+
+    // Logical order: a, ש, ל, ו, b. The three Hebrew letters form one RTL
+    // run that UBA reorders as a unit; per the known fixture in
+    // renderer-core.test.ts ('a ש ל ו b' → visualToLogical [0,3,2,1,4,...]),
+    // visual col 1 displays logical ו (col 3) and visual col 3 displays
+    // logical ש (col 1). Only ש (logical col 1) carries the OSC8 link, so a
+    // naive visual-index read and the correct logical-index read disagree
+    // at both these positions — proving the conversion actually matters.
+    term.write(`a\x1b]8;;http://example.com\x07ש\x1b]8;;\x07לוb`);
+    term.wasmTerm?.clearDirty();
+
+    const line = term.wasmTerm?.getLine(0);
+    expect(line).toBeTruthy();
+    if (!line) return;
+
+    // Sanity: only logical column 1 (ש) is linked.
+    expect(line[0]!.hyperlink_id).toBe(0); // a
+    expect(line[1]!.hyperlink_id).toBeGreaterThan(0); // ש (linked)
+    expect(line[2]!.hyperlink_id).toBe(0); // ל
+    expect(line[3]!.hyperlink_id).toBe(0); // ו
+    expect(line[4]!.hyperlink_id).toBe(0); // b
+
+    // Visual column 3 displays the linked ש glyph.
+    const logicalAtVisual3 = (term as any).visualColToLogical(line, 3);
+    expect(logicalAtVisual3).toBe(1);
+    expect(line[logicalAtVisual3]!.hyperlink_id).toBeGreaterThan(0);
+
+    // Visual column 1 displays the unlinked ו glyph.
+    const logicalAtVisual1 = (term as any).visualColToLogical(line, 1);
+    expect(logicalAtVisual1).toBe(3);
+    expect(line[logicalAtVisual1]!.hyperlink_id).toBe(0);
+
+    // Regression guard: reading hyperlink_id at the RAW (unconverted) visual
+    // index gives the opposite, wrong answer at both positions — this is
+    // exactly the bug the conversion fixes.
+    expect(line[3]!.hyperlink_id).toBe(0); // raw index 3 (ו) looks unlinked...
+    expect(line[1]!.hyperlink_id).toBeGreaterThan(0); // ...raw index 1 (ש) looks linked
+  });
+
+  test('is identity for LTR rows (no bidi run present)', async () => {
+    if (!container) throw new Error('DOM environment not available - check happydom setup');
+
+    await term.open(container!);
+    term.write('hello');
+    term.wasmTerm?.clearDirty();
+
+    const line = term.wasmTerm?.getLine(0);
+    expect(line).toBeTruthy();
+    if (!line) return;
+
+    for (let x = 0; x < 5; x++) {
+      expect((term as any).visualColToLogical(line, x)).toBe(x);
+    }
+  });
+});
+
 describe('Terminal Config', () => {
   test('should pass scrollback option to WASM terminal', async () => {
     if (typeof document === 'undefined') return;

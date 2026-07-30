@@ -510,9 +510,7 @@ export class Terminal implements ITerminalCore {
           if (row >= dims.rows || col >= dims.cols) return col;
           const line = this.wasmTerm.getLine(row);
           if (!line) return col;
-          const m = this.bidiMapper.getMap(line);
-          if (m.isIdentity || col >= m.visualToLogical.length) return col;
-          return m.visualToLogical[col]!;
+          return this.visualColToLogical(line, col);
         },
       };
 
@@ -1609,6 +1607,20 @@ export class Terminal implements ITerminalCore {
   }
 
   /**
+   * Convert a visual (screen-position) column to the logical column within
+   * `line`, per BiDi reordering (see lib/bidi.ts). Callers must pass the
+   * EXACT line object they already read for this row — never refetch by
+   * row index, since scrollback vs. screen indexing differs and a mismatched
+   * refetch could compute the map against the wrong row's content.
+   */
+  private visualColToLogical(line: GhosttyCell[], col: number): number {
+    if (col < 0 || col >= line.length) return col;
+    const m = this.bidiMapper.getMap(line);
+    if (m.isIdentity) return col;
+    return m.visualToLogical[col]!;
+  }
+
+  /**
    * Handle mouse move for link hover detection and scrollbar dragging
    * Throttled to avoid blocking scroll events (except when dragging scrollbar)
    */
@@ -1682,8 +1694,12 @@ export class Terminal implements ITerminalCore {
       line = this.wasmTerm.getLine(viewportRow);
     }
 
-    if (line && x >= 0 && x < line.length) {
-      hyperlinkId = line[x].hyperlink_id;
+    // Hit-test against the LOGICAL column: `line` holds cells in logical
+    // (buffer) order, but `x` is a visual (screen-position) column.
+    const lx = line ? this.visualColToLogical(line, x) : x;
+
+    if (line && lx >= 0 && lx < line.length) {
+      hyperlinkId = line[lx].hyperlink_id;
     }
 
     // Update renderer for underline rendering
@@ -1721,9 +1737,10 @@ export class Terminal implements ITerminalCore {
       bufferRow = scrollbackLength + viewportRow;
     }
 
-    // Make async call non-blocking - don't await
+    // Make async call non-blocking - don't await. Use the logical column
+    // (lx) computed above from this same `line` — link ranges are logical.
     this.linkDetector
-      .getLinkAt(x, bufferRow)
+      .getLinkAt(lx, bufferRow)
       .then((link) => {
         // Update hover state for cursor changes and click handling
         if (link !== this.currentHoveredLink) {
@@ -1828,10 +1845,13 @@ export class Terminal implements ITerminalCore {
     const x = Math.floor((e.clientX - rect.left) / cellW);
     const y = Math.floor((e.clientY - rect.top) / cellH);
 
-    // Calculate buffer row (same logic as processMouseMove)
+    // Calculate buffer row (same logic as processMouseMove). Also fetch the
+    // same line object so the visual→logical column conversion below maps
+    // against the exact row being clicked (scrollback vs. screen).
     const viewportRow = y;
     const scrollbackLength = this.wasmTerm.getScrollbackLength();
     let bufferRow: number;
+    let line: GhosttyCell[] | null;
 
     // Use floored viewportY for buffer mapping (must match renderer & selection)
     const rawViewportYForClick = this.getViewportY();
@@ -1840,16 +1860,21 @@ export class Terminal implements ITerminalCore {
     if (viewportYForClick > 0) {
       if (viewportRow < viewportYForClick) {
         bufferRow = scrollbackLength - viewportYForClick + viewportRow;
+        line = this.wasmTerm.getScrollbackLine(bufferRow);
       } else {
         const screenRow = viewportRow - viewportYForClick;
         bufferRow = scrollbackLength + screenRow;
+        line = this.wasmTerm.getLine(screenRow);
       }
     } else {
       bufferRow = scrollbackLength + viewportRow;
+      line = this.wasmTerm.getLine(viewportRow);
     }
 
-    // Get the link at this position
-    const link = await this.linkDetector.getLinkAt(x, bufferRow);
+    // Get the link at this position. Link ranges are logical; convert the
+    // visual (pixel-derived) column before hit-testing.
+    const linkCol = line ? this.visualColToLogical(line, x) : x;
+    const link = await this.linkDetector.getLinkAt(linkCol, bufferRow);
 
     if (link) {
       // Activate link

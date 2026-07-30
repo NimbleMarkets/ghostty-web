@@ -718,7 +718,7 @@ export class CanvasRenderer implements Renderer {
       const lx = reorder ? map!.visualToLogical[x]! : x;
       const cell = line[lx]!;
       if (cell.width === 0) continue; // Skip spacer cells for wide characters
-      this.renderCellText(cell, x, y, undefined, reorder ? map!.mirror?.get(lx) : undefined);
+      this.renderCellText(cell, x, y, undefined, reorder ? map!.mirror?.get(lx) : undefined, lx);
     }
   }
 
@@ -777,8 +777,13 @@ export class CanvasRenderer implements Renderer {
     x: number,
     y: number,
     colorOverride?: string,
-    mirrorCodepoint?: number
+    mirrorCodepoint?: number,
+    lx?: number
   ): void {
+    // Link ranges are logical; `x` is the visual (pixel-positioning) column,
+    // which under BiDi reordering differs from the cell's logical column.
+    // Fall back to `x` when the caller has nothing to reorder (LTR rows).
+    const linkX = lx ?? x;
     const cellX = x * this.metrics.width;
     const cellY = y * this.metrics.height;
     const cellWidth = this.metrics.width * cell.width;
@@ -914,14 +919,16 @@ export class CanvasRenderer implements Renderer {
       }
     }
 
-    // Draw regex link underline (for plain text URLs)
+    // Draw regex link underline (for plain text URLs). Range bounds are
+    // logical columns (see renderer-core.ts encodeCells), so compare against
+    // linkX, not the visual x used for pixel positioning.
     if (this.hoveredLinkRange) {
       const range = this.hoveredLinkRange;
       // Check if this cell is within the hovered link range
       const isInRange =
-        (y === range.startY && x >= range.startX && (y < range.endY || x <= range.endX)) ||
+        (y === range.startY && linkX >= range.startX && (y < range.endY || linkX <= range.endX)) ||
         (y > range.startY && y < range.endY) ||
-        (y === range.endY && x <= range.endX && (y > range.startY || x >= range.startX));
+        (y === range.endY && linkX <= range.endX && (y > range.startY || linkX >= range.startX));
 
       if (isInRange) {
         const underlineY = cellY + this.metrics.baseline + 2;
@@ -1443,7 +1450,7 @@ export class CanvasRenderer implements Renderer {
             this.ctx.beginPath();
             this.ctx.rect(cursorX, cursorY, this.metrics.width, this.metrics.height);
             this.ctx.clip();
-            this.renderCellText(line[x], vx, y, this.theme.cursorAccent, map?.mirror?.get(x));
+            this.renderCellText(line[x], vx, y, this.theme.cursorAccent, map?.mirror?.get(x), x);
             this.ctx.restore();
           }
         }
