@@ -508,7 +508,7 @@ export class Terminal implements ITerminalCore {
           if (!this.wasmTerm) return col;
           const dims = this.wasmTerm.getDimensions();
           if (row >= dims.rows || col >= dims.cols) return col;
-          const line = this.wasmTerm.getLine(row);
+          const line = this.getViewportLine(row);
           if (!line) return col;
           return this.visualColToLogical(line, col);
         },
@@ -1618,6 +1618,30 @@ export class Terminal implements ITerminalCore {
     const m = this.bidiMapper.getMap(line);
     if (m.isIdentity) return col;
     return m.visualToLogical[col]!;
+  }
+
+  /**
+   * Resolve a viewport row to the exact scrollback or screen line currently
+   * displayed there. Mouse reporting must use this rather than getLine(row):
+   * when scrolled, viewport rows and screen-buffer rows are different.
+   */
+  private getViewportLine(viewportRow: number): GhosttyCell[] | null {
+    if (!this.wasmTerm) return null;
+
+    const dims = this.wasmTerm.getDimensions();
+    if (viewportRow < 0 || viewportRow >= dims.rows) return null;
+
+    const viewportY = Math.max(0, Math.floor(this.getViewportY()));
+    if (viewportY > 0) {
+      if (viewportRow < viewportY) {
+        const scrollbackLength = this.wasmTerm.getScrollbackLength();
+        const scrollbackOffset = scrollbackLength - viewportY + viewportRow;
+        return this.wasmTerm.getScrollbackLine(scrollbackOffset);
+      }
+      return this.wasmTerm.getLine(viewportRow - viewportY);
+    }
+
+    return this.wasmTerm.getLine(viewportRow);
   }
 
   /**

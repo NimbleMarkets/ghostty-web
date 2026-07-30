@@ -1478,6 +1478,47 @@ describe('BiDi link hit-testing (visualColToLogical)', () => {
   });
 });
 
+describe('BiDi mouse reporting in scrollback', () => {
+  let term: Terminal;
+  let container: HTMLElement;
+
+  beforeEach(async () => {
+    term = await createIsolatedTerminal({ cols: 8, rows: 2 });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    await term.open(container);
+  });
+
+  afterEach(() => {
+    term.dispose();
+    container.remove();
+  });
+
+  test('maps against the displayed scrollback row instead of the screen row', () => {
+    // After the second newline, the Hebrew row moves into scrollback while
+    // screen row 0 contains ASCII. Scrolling up one line displays Hebrew at
+    // viewport row 0, where visual column 0 is logical column 2.
+    term.write('אבג\r\nASCII\r\nNEXT');
+    expect(term.wasmTerm?.getScrollbackLength()).toBe(1);
+    expect(
+      term.wasmTerm
+        ?.getLine(0)
+        ?.slice(0, 5)
+        .map((cell) => String.fromCodePoint(cell.codepoint))
+        .join('')
+    ).toBe('ASCII');
+
+    (term as any).viewportY = 1;
+    const visualToLogical = (term as any).inputHandler.mouseConfig.visualToLogicalCol as (
+      col: number,
+      row: number
+    ) => number;
+
+    expect(visualToLogical(0, 0)).toBe(2);
+    expect(visualToLogical(2, 0)).toBe(0);
+  });
+});
+
 describe('Terminal Config', () => {
   test('should pass scrollback option to WASM terminal', async () => {
     if (typeof document === 'undefined') return;
