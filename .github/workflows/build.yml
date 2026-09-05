@@ -1,0 +1,70 @@
+name: build-nm-kitty-built
+
+# Builds wasm + lib from `nm-kitty-meow` and force-pushes the result
+# (source + dist/ + wasm + this workflow file) to `nm-kitty-built`,
+# which booba consumes via git+ssh://...#nm-kitty-built. `nm-kitty-meow`
+# stays clean for upstreaming; only this branch holds packaging
+# changes (loosened .gitignore + committed artifacts + this workflow).
+
+on:
+  workflow_dispatch:
+    inputs:
+      source-ref:
+        description: 'Branch / tag / SHA to build from'
+        default: 'nm-kitty-meow'
+  schedule:
+    # Daily safety net so the built branch never goes silently stale.
+    - cron: '0 7 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nm-kitty-built
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source-ref || 'nm-kitty-meow' }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Pull this workflow's YAML from nm-kitty-built
+        run: |
+          git fetch origin nm-kitty-built
+          git show origin/nm-kitty-built:.github/workflows/build.yml \
+            > /tmp/build.yml
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build
+        run: bun install && bun run build
+
+      - name: Stage artifact tree
+        run: |
+          printf '\n# nm-kitty-built only\n!dist/\n!ghostty-vt.wasm\n' >> .gitignore
+          mkdir -p .github/workflows
+          cp /tmp/build.yml .github/workflows/build.yml
+
+      - name: Commit + force-push to nm-kitty-built
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          SOURCE_SHA=$(git rev-parse HEAD)
+          git add -fA dist ghostty-vt.wasm .github/workflows/build.yml .gitignore
+          git commit \
+            -m "build: artifacts from ${SOURCE_SHA:0:7}" \
+            -m "Source: ${{ github.repository }}@${SOURCE_SHA}" \
+            -m "CI: ${RUN_URL}"
+          git push --force origin HEAD:nm-kitty-built

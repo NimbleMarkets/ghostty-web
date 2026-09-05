@@ -6,3 +6,7 @@ dist/
 
 # WASM build output (built locally and in CI)
 ghostty-vt.wasm
+
+# nm-kitty-built only
+!dist/
+!ghostty-vt.wasm
