@@ -696,6 +696,7 @@ export enum TerminalOption {
   COLOR_CURSOR = 13,
   COLOR_PALETTE = 14,
   KITTY_IMAGE_STORAGE_LIMIT = 15,
+  KITTY_IMAGE_MEDIUM_SHARED_MEM = 18,
 }
 
 /**
@@ -706,6 +707,7 @@ export enum SysOption {
   USERDATA = 0,
   DECODE_PNG = 1,
   LOG = 2,
+  READ_SHARED_MEMORY = 3,
 }
 
 /**

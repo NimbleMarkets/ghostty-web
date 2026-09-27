@@ -9,7 +9,7 @@
  * Uses createIsolatedTerminal() to ensure each test gets its own WASM instance.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { Terminal } from './terminal';
 import { createIsolatedTerminal } from './test-helpers';
 
@@ -205,6 +205,224 @@ describe('Terminal', () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(bellFired).toBe(true);
+
+      term.dispose();
+    });
+  });
+
+  describe('Kitty shared memory', () => {
+    const sharedMemoryAPC = (name: string, id: number, options = 'S=4') =>
+      `\x1b_Ga=T,t=s,f=32,s=1,v=1,i=${id},c=1,r=1,U=1,q=2,${options};${btoa(name)}\x1b\\`;
+
+    test('construction installs the shared-memory registry and preserves existing entries', async () => {
+      const first = await createIsolatedTerminal();
+      await first.open(container!);
+      const registry = globalThis.ghosttyKittySharedMemory;
+      expect(registry).toBeInstanceOf(Map);
+      registry!.set('/ntc-preserved', new Uint8Array([1, 2, 3, 255]));
+      const second = await createIsolatedTerminal();
+      try {
+        await second.open(container!);
+        expect(globalThis.ghosttyKittySharedMemory).toBe(registry);
+        expect(registry!.has('/ntc-preserved')).toBe(true);
+      } finally {
+        registry!.delete('/ntc-preserved');
+        first.dispose();
+        second.dispose();
+      }
+    });
+
+    test('shared-memory pixels are copied, placed, consumed, and replaced under the same image id', async () => {
+      const term = await createIsolatedTerminal();
+      await term.open(container!);
+      const registry = globalThis.ghosttyKittySharedMemory!;
+      try {
+        for (const [index, rgba] of [
+          [25, 50, 75, 128],
+          [80, 90, 100, 255],
+        ].entries()) {
+          const name = `/ntc-frame-${index}`;
+          const bytes = new Uint8Array(rgba);
+          registry.set(name, bytes);
+          // First frame also checks the format-derived size when S is absent.
+          const apc = sharedMemoryAPC(name, 71, index === 0 ? 'O=0' : 'S=4');
+          // The reference can be split across terminal writes just like any APC.
+          term.write(apc.slice(0, -2));
+          expect(registry.has(name)).toBe(true);
+          term.write(apc.slice(-2));
+          expect(registry.has(name)).toBe(false);
+          bytes.fill(0); // terminal owns a copy, not the producer's buffer
+          const wasm = term.wasmTerm!;
+          const graphics = wasm.getKittyGraphics()!;
+          expect(
+            Array.from(wasm.iterPlacements(graphics, false)).some((p) => p.imageId === 71)
+          ).toBe(true);
+          const pixels = wasm.getKittyImagePixels(graphics, 71)!;
+          expect(pixels.width).toBe(1);
+          expect(pixels.height).toBe(1);
+          expect(Array.from(pixels.data)).toEqual(rgba);
+          expect(wasm.readResponse()).toBeNull();
+        }
+      } finally {
+        registry.delete('/ntc-frame-0');
+        registry.delete('/ntc-frame-1');
+        term.dispose();
+      }
+    });
+
+    test('unknown shared-memory name fails quietly without a placement', async () => {
+      const term = await createIsolatedTerminal();
+      await term.open(container!);
+      try {
+        term.write(sharedMemoryAPC('/ntc-missing', 72));
+        const wasm = term.wasmTerm!;
+        const graphics = wasm.getKittyGraphics()!;
+        expect(wasm.getKittyImagePixels(graphics, 72)).toBeNull();
+        expect(Array.from(wasm.iterPlacements(graphics, false))).toHaveLength(0);
+        expect(wasm.readResponse()).toBeNull();
+        term.write('still alive');
+        expect(term.buffer.active.getLine(0)?.translateToString()).toContain('still alive');
+      } finally {
+        term.dispose();
+      }
+    });
+
+    test('shared-memory callbacks survive another terminal on the same WASM instance being freed', async () => {
+      const { Ghostty } = await import('./ghostty');
+      const g = await Ghostty.load();
+      const first = g.createTerminal();
+      const second = g.createTerminal();
+      first.free();
+      const name = '/ntc-second-terminal';
+      const bytes = new Uint8Array([1, 2, 3, 255]);
+      const registry = globalThis.ghosttyKittySharedMemory!;
+      try {
+        registry.set(name, bytes);
+        second.write(sharedMemoryAPC(name, 74));
+        expect(registry.has(name)).toBe(false);
+        expect(
+          Array.from(second.getKittyImagePixels(second.getKittyGraphics()!, 74)!.data)
+        ).toEqual(Array.from(bytes));
+      } finally {
+        registry.delete(name);
+        second.free();
+      }
+    });
+
+    test.each(['hook', 'medium'])(
+      'disabling the shared-memory %s rejects the command without reading the registry',
+      async (disabled) => {
+        const { Ghostty } = await import('./ghostty');
+        const { SysOption, TerminalOption } = await import('./types');
+        const g = await Ghostty.load();
+        const term = g.createTerminal();
+        // Exercise the public C ABI directly; the TS wrapper keeps these handles private.
+        const { exports, handle } = term as any;
+        if (disabled === 'hook') {
+          expect(exports.ghostty_sys_set(SysOption.READ_SHARED_MEMORY, 0)).toBe(0);
+        } else {
+          const ptr = exports.ghostty_wasm_alloc_u8_array(1);
+          try {
+            new Uint8Array(exports.memory.buffer)[ptr] = 0;
+            expect(
+              exports.ghostty_terminal_set(
+                handle,
+                TerminalOption.KITTY_IMAGE_MEDIUM_SHARED_MEM,
+                ptr
+              )
+            ).toBe(0);
+          } finally {
+            exports.ghostty_wasm_free_u8_array(ptr, 1);
+          }
+        }
+        const name = `/ntc-disabled-${disabled}`;
+        const registry = globalThis.ghosttyKittySharedMemory!;
+        try {
+          registry.set(name, new Uint8Array([1, 2, 3, 255]));
+          term.write(sharedMemoryAPC(name, 75));
+          expect(registry.has(name)).toBe(true);
+          expect(term.getKittyImagePixels(term.getKittyGraphics()!, 75)).toBeNull();
+          expect(term.readResponse()).toBeNull();
+        } finally {
+          registry.delete(name);
+          term.free();
+        }
+      }
+    );
+
+    test.each([
+      ['short', new Uint8Array(3), 'S=4'],
+      ['long', new Uint8Array(5), 'S=4'],
+      ['wrong-declared-size', new Uint8Array(4), 'S=3'],
+      ['wrong-pixel-size', new Uint8Array(3), 'S=3'],
+      ['inferred-size', new Uint8Array(5), 'O=0'],
+      ['offset', new Uint8Array(4), 'S=4,O=1'],
+      ['empty', new Uint8Array(), 'S=4'],
+      ['wrong-type', 'not pixels', 'S=4'],
+      ['overflow-dimensions', new Uint8Array(4), 's=4294967295,v=4294967295'],
+    ])(
+      'invalid shared-memory object (%s) is consumed and rejected',
+      async (label, bytes, options) => {
+        const term = await createIsolatedTerminal();
+        await term.open(container!);
+        const registry = globalThis.ghosttyKittySharedMemory!;
+        const name = `/ntc-invalid-${label}`;
+        try {
+          registry.set(name, bytes as Uint8Array);
+          term.write(sharedMemoryAPC(name, 73, options as string));
+          expect(registry.has(name)).toBe(false);
+          const wasm = term.wasmTerm!;
+          const graphics = wasm.getKittyGraphics()!;
+          expect(wasm.getKittyImagePixels(graphics, 73)).toBeNull();
+          expect(Array.from(wasm.iterPlacements(graphics, false))).toHaveLength(0);
+          expect(wasm.readResponse()).toBeNull();
+        } finally {
+          registry.delete(name);
+          term.dispose();
+        }
+      }
+    );
+  });
+
+  describe('Kitty graphics redraw', () => {
+    // A kitty image re-transmitted under the same id and size is decoded
+    // into the same wasm address as the one it replaces, so the renderer's
+    // placement signature cannot tell the frames apart and its frame-skip
+    // gate drops the redraw. The terminal must invalidate the renderer
+    // whenever a written chunk carries a kitty graphics APC (ESC _ G).
+    test('write() with a kitty graphics APC invalidates the renderer', async () => {
+      const term = await createIsolatedTerminal();
+      await term.open(container!);
+      // @ts-ignore - accessing private for test
+      const invalidate = spyOn(term.renderer, 'invalidate');
+
+      // 1x1 RGBA direct transmission, image id 7, as a string ...
+      const apc = '\x1b_Ga=T,f=32,s=1,v=1,i=7;AAAAAA==\x1b\\';
+      term.write(apc);
+      expect(invalidate).toHaveBeenCalled();
+
+      // ... and as bytes.
+      invalidate.mockClear();
+      term.write(new TextEncoder().encode(apc));
+      expect(invalidate).toHaveBeenCalled();
+
+      // The APC header and terminator can each straddle write boundaries.
+      invalidate.mockClear();
+      term.write('\x1b_');
+      expect(invalidate).not.toHaveBeenCalled();
+      term.write('Ga=T,f=32,s=1,v=1,i=7;AAAAAA==');
+      expect(invalidate).toHaveBeenCalled();
+      invalidate.mockClear();
+      term.write(new Uint8Array([0x1b]));
+      expect(invalidate).toHaveBeenCalled();
+      invalidate.mockClear();
+      term.write(new Uint8Array([0x5c]));
+      expect(invalidate).toHaveBeenCalled();
+
+      // Ordinary output, including another APC kind and an OSC, must not.
+      invalidate.mockClear();
+      term.write('hello \x1b]0;title\x07 \x1b_Xnot-kitty\x1b\\');
+      expect(invalidate).not.toHaveBeenCalled();
 
       term.dispose();
     });

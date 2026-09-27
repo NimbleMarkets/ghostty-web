@@ -46,6 +46,7 @@ import {
 } from './types';
 import {
   type DecodePngCallback,
+  type ReadSharedMemoryCallback,
   type SizeCallback,
   type WritePtyCallback,
   makeCallbackTrampolines,
@@ -330,8 +331,8 @@ export class GhosttyTerminal {
    * terminal handles are only unique within a single WASM instance, and
    * indices into one module's table are meaningless in another.
    *
-   * One trampoline pair (write_pty + size) is installed per table; their
-   * slot indices live here alongside the routing map. The dispatchers
+   * One set of trampolines (write_pty, size, decode_png, read_shm) is installed
+   * per table; their slot indices live here alongside the routing map. The dispatchers
    * close over the same instancesByHandle so any GhosttyTerminal coming
    * from this WASM module routes correctly.
    */
@@ -341,6 +342,7 @@ export class GhosttyTerminal {
       writePtyIndex: number;
       sizeIndex: number;
       decodePngIndex: number;
+      readShmIndex: number;
       instancesByHandle: Map<number, GhosttyTerminal>;
     }
   >();
@@ -353,6 +355,7 @@ export class GhosttyTerminal {
     writePtyIndex: number;
     sizeIndex: number;
     decodePngIndex: number;
+    readShmIndex: number;
     instancesByHandle: Map<number, GhosttyTerminal>;
   };
 
@@ -427,6 +430,19 @@ export class GhosttyTerminal {
       // parse time until this limit is set. 64MB is enough for typical
       // TUI use and matches what coder's old WASM defaulted to.
       this.setKittyImageStorageLimit(64 * 1024 * 1024);
+      const sharedMemPtr = this.exports.ghostty_wasm_alloc_u8_array(1);
+      if (sharedMemPtr === 0) throw new Error('Failed to allocate Kitty medium option');
+      try {
+        new Uint8Array(this.memory.buffer)[sharedMemPtr] = 1;
+        const result = this.exports.ghostty_terminal_set(
+          this.handle,
+          TerminalOption.KITTY_IMAGE_MEDIUM_SHARED_MEM,
+          sharedMemPtr
+        );
+        if (result !== 0) throw new Error(`Enabling Kitty shared memory failed: ${result}`);
+      } finally {
+        this.exports.ghostty_wasm_free_u8_array(sharedMemPtr, 1);
+      }
     } catch (e) {
       this.cleanupOnConstructorFailure();
       throw e;
@@ -1803,7 +1819,7 @@ export class GhosttyTerminal {
   }
 
   /**
-   * Install the WRITE_PTY and SIZE trampoline callbacks.
+   * Install the terminal and image-loading trampoline callbacks.
    *
    * Trampolines are shared across all terminals that come from the
    * same WASM instance, but NOT across instances — terminal handles are
@@ -1814,7 +1830,7 @@ export class GhosttyTerminal {
    * table.
    *
    * On first use for a given table we instantiate the trampolines,
-   * `table.grow(2)`, and write both into the new slots. Subsequent
+   * grow the table, and write the four callbacks into new slots. Subsequent
    * terminals from the same module reuse the registry and just
    * register their handle in instancesByHandle.
    */
@@ -1892,10 +1908,52 @@ export class GhosttyTerminal {
         }
       };
 
-      const { writePtyFwd, sizeFwd, decodePngFwd } = makeCallbackTrampolines(
+      const readSharedMemoryDispatch: ReadSharedMemoryCallback = (
+        _userdata,
+        allocator,
+        namePtr,
+        nameLen,
+        outImagePtr
+      ) => {
+        const sharedMemory = globalThis.ghosttyKittySharedMemory;
+        if (!(sharedMemory instanceof Map)) return 0;
+        const name = new TextDecoder().decode(new Uint8Array(memory.buffer, namePtr, nameLen));
+        if (!sharedMemory.has(name)) return 0;
+        const bytes = sharedMemory.get(name);
+        let outBuf = 0;
+        let byteLength = 0;
+        try {
+          if (
+            !(bytes instanceof Uint8Array) ||
+            bytes.length === 0 ||
+            bytes.length > 400 * 1024 * 1024
+          )
+            return 0;
+          byteLength = bytes.length;
+          outBuf = exports.ghostty_alloc(allocator, byteLength);
+          if (outBuf === 0) return 0;
+          // Allocation may grow the WASM memory: acquire fresh views afterwards.
+          new Uint8Array(memory.buffer, outBuf, byteLength).set(bytes);
+          const view = new DataView(memory.buffer);
+          view.setUint32(outImagePtr + 0, 0, true);
+          view.setUint32(outImagePtr + 4, 0, true);
+          view.setUint32(outImagePtr + 8, outBuf, true);
+          view.setUint32(outImagePtr + 12, byteLength, true);
+          return 1;
+        } catch {
+          if (outBuf !== 0) exports.ghostty_free(allocator, outBuf, byteLength);
+          return 0;
+        } finally {
+          // Like shm_unlink, consume even when validation/allocation fails.
+          sharedMemory.delete(name);
+        }
+      };
+
+      const { writePtyFwd, sizeFwd, decodePngFwd, readShmFwd } = makeCallbackTrampolines(
         writePtyDispatch,
         sizeDispatch,
-        decodePngDispatch
+        decodePngDispatch,
+        readSharedMemoryDispatch
       );
       // Grow once per slot, write each.
       const writePtyIndex = table.grow(1);
@@ -1904,14 +1962,20 @@ export class GhosttyTerminal {
       table.set(sizeIndex, sizeFwd);
       const decodePngIndex = table.grow(1);
       table.set(decodePngIndex, decodePngFwd);
-      registry = { writePtyIndex, sizeIndex, decodePngIndex, instancesByHandle };
-      GhosttyTerminal.callbackRegistries.set(table, registry);
+      const readShmIndex = table.grow(1);
+      table.set(readShmIndex, readShmFwd);
+      registry = { writePtyIndex, sizeIndex, decodePngIndex, readShmIndex, instancesByHandle };
 
       // Install PNG decoder system-wide for this WASM instance. sys_set
       // is process/instance-global (not per-terminal) so we do it
       // exactly once per __indirect_function_table — same lifetime as
       // the trampoline registry itself.
       this.exports.ghostty_sys_set(SysOption.DECODE_PNG, decodePngIndex);
+      const result = this.exports.ghostty_sys_set(SysOption.READ_SHARED_MEMORY, readShmIndex);
+      if (result !== 0) throw new Error(`Installing Kitty shared memory failed: ${result}`);
+      // Publish the capability only after the hook is installed successfully.
+      globalThis.ghosttyKittySharedMemory ??= new Map<string, Uint8Array>();
+      GhosttyTerminal.callbackRegistries.set(table, registry);
     }
 
     // Register `this` so the dispatchers (both close over

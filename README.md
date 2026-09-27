@@ -119,6 +119,33 @@ server has injected one, then `'auto'`.
 The toggle navigates `window.location.href` with the new `?renderer=` value,
 so the page reloads with the chosen backend.
 
+## Browser Kitty shared memory
+
+After a terminal is constructed, `globalThis.ghosttyKittySharedMemory` is a
+`Map<string, Uint8Array>`. Its presence signals support for browser `t=s`
+transmissions. Put tightly packed, straight-alpha RGBA bytes in the map under a
+unique name, then send a Kitty command containing the base64-encoded name:
+
+```js
+const name = '/ntc-example-frame'; // use a unique name for every pending frame
+const pixels = new Uint8Array([255, 0, 0, 255]); // one red pixel
+const registry = globalThis.ghosttyKittySharedMemory;
+if (registry) {
+  registry.set(name, pixels);
+  term.write(`\x1b_Ga=T,t=s,f=32,s=1,v=1,S=4,i=7,c=1,r=1,q=2;${btoa(name)}\x1b\\`);
+}
+```
+
+The terminal copies and deletes the entry while processing the command. Missing
+names and invalid sizes fail without a response when `q=2`. Buffers must match
+`S` exactly, or the format-derived size when `S` is absent; this browser hook
+reads whole objects and rejects non-zero `O` offsets. Normal Kitty pixel-format
+and dimension validation still applies. Producers must remove entries for frames
+they discard before writing the command.
+
+Ship the matching JavaScript bundle and `ghostty-vt.wasm` together. This registry
+is a browser convention; it does not create operating-system shared memory.
+
 ## Development
 
 ghostty-web builds from Ghostty's source with a [patch](./patches/ghostty-wasm-api.patch) to expose additional

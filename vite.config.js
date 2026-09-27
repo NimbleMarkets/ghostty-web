@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
 
@@ -12,6 +13,18 @@ export default defineConfig({
       exclude: ['lib/**/*.test.ts'],
       rollupTypes: true, // Bundle all .d.ts into single file
       copyDtsFiles: false, // Don't copy individual .d.ts files
+      // API Extractor drops global augmentations during declaration rollup.
+      // Keep the registry's source declaration in the published entry point.
+      beforeWriteFile(filePath, content) {
+        if (filePath.endsWith('/index.d.ts')) {
+          return {
+            content:
+              content +
+              '\n' +
+              readFileSync(new URL('./lib/kitty-shared-memory.d.ts', import.meta.url), 'utf8'),
+          };
+        }
+      },
     }),
   ],
   build: {

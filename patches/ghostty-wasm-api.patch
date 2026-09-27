@@ -1,16 +1,15 @@
 diff --git a/src/terminal/build_options.zig b/src/terminal/build_options.zig
-index 136e0f101..a1d9215cf 100644
 --- a/src/terminal/build_options.zig
 +++ b/src/terminal/build_options.zig
-@@ -64,11 +64,14 @@ pub const Options = struct {
+@@ -64,11 +64,14 @@
          // We disable it on wasm32-freestanding because we at the least
          // require the ability to get timestamps and there is no way to
          // do that with freestanding targets.
 -        const target = m.resolved_target.?.result;
 +        // ghostty-web: enabled with a monotonic-counter shim in
 +        // src/terminal/kitty/graphics_image.zig (see Timestamp /
-+        // transmitTimeNow) and a comptime guard against non-direct
-+        // mediums.
++        // transmitTimeNow) and a comptime guard against filesystem
++        // mediums (shared memory uses an embedder hook).
          opts.addOption(
              bool,
              "kitty_graphics",
@@ -20,13 +19,13 @@ index 136e0f101..a1d9215cf 100644
  
          // These are synthesized based on other options.
 diff --git a/src/terminal/kitty/graphics_image.zig b/src/terminal/kitty/graphics_image.zig
-index 8243a6323..0365263ef 100644
 --- a/src/terminal/kitty/graphics_image.zig
 +++ b/src/terminal/kitty/graphics_image.zig
-@@ -18,6 +18,31 @@ const temp_dir = struct {
+@@ -17,6 +17,31 @@
+ };
  
  const log = std.log.scoped(.kitty_gfx);
- 
++
 +/// ghostty-web: WASM-safe substitute for std.time.Instant.
 +/// On freestanding targets there's no clock; we use a monotonic counter
 +/// which is sufficient for the LRU-eviction ordering this is used for.
@@ -51,26 +50,59 @@ index 8243a6323..0365263ef 100644
 +        return std.time.Instant.now();
 +    }
 +}
-+
+ 
  /// Maximum width or height of an image. Taken directly from Kitty.
  const max_dimension = 10000;
- 
-@@ -100,6 +125,14 @@ pub const LoadingImage = struct {
+@@ -100,6 +125,15 @@
              return result;
          }
  
-+        // ghostty-web: on freestanding/WASM we have no filesystem or shared
-+        // memory, so any non-direct medium is unsupported. Bail here before
-+        // the code below, which references std.fs.max_path_bytes and
-+        // posix.realpath — both fail to compile on freestanding.
++        // ghostty-web: WASM shared memory is supplied by the embedder.
++        // Keep filesystem paths out of the freestanding compilation.
 +        if (comptime builtin.target.cpu.arch.isWasm()) {
-+            return error.UnsupportedMedium;
++            if (t.medium != .shared_memory or !limits.shared_memory)
++                return error.UnsupportedMedium;
++            try result.readSharedMemoryHook(alloc, t, cmd.data);
++            return result;
 +        }
 +
          // Verify our capabilities and limits allow this.
          {
              // Special case if we don't support decoding PNGs and the format
-@@ -402,7 +435,7 @@ pub const LoadingImage = struct {
+@@ -150,6 +184,32 @@
+         }
+ 
+         return result;
++    }
++
++    /// Browser registry objects are tightly packed, with no POSIX page padding.
++    /// This hook consumes whole objects; non-zero offsets are unsupported.
++    fn readSharedMemoryHook(
++        self: *LoadingImage,
++        alloc: Allocator,
++        t: command.Transmission,
++        name: []const u8,
++    ) !void {
++        const read = sys.read_shared_memory orelse return error.UnsupportedMedium;
++        const bytes = try read(alloc, name);
++        defer alloc.free(bytes);
++        if (t.offset != 0) return error.InvalidData;
++        const expected_size: usize = if (t.size > 0) @intCast(t.size) else switch (self.image.format) {
++            .png => bytes.len,
++            .gray, .gray_alpha, .rgb, .rgba => size: {
++                const pixels = std.math.mul(usize, self.image.width, self.image.height) catch
++                    return error.InvalidData;
++                break :size std.math.mul(usize, pixels, command.Transmission.formatBpp(self.image.format)) catch
++                    return error.InvalidData;
++            },
++        };
++        if (expected_size == 0 or expected_size > max_size or bytes.len != expected_size)
++            return error.InvalidData;
++        try self.data.appendSlice(alloc, bytes);
+     }
+ 
+     /// Reads the data from a shared memory segment.
+@@ -402,7 +462,7 @@
          }
  
          // Set our time
@@ -79,7 +111,7 @@ index 8243a6323..0365263ef 100644
              log.warn("failed to get time: {}", .{err});
              return error.InternalError;
          };
-@@ -512,7 +545,7 @@ pub const Image = struct {
+@@ -512,7 +572,7 @@
      format: command.Transmission.Format = .rgb,
      compression: command.Transmission.Compression = .none,
      data: []const u8 = "",
@@ -89,10 +121,9 @@ index 8243a6323..0365263ef 100644
      /// Set this to true if this image was loaded by a command that
      /// doesn't specify an ID or number, since such commands should
 diff --git a/src/terminal/kitty/graphics_storage.zig b/src/terminal/kitty/graphics_storage.zig
-index e017d5f79..c68db764c 100644
 --- a/src/terminal/kitty/graphics_storage.zig
 +++ b/src/terminal/kitty/graphics_storage.zig
-@@ -9,8 +9,10 @@ const size = @import("../size.zig");
+@@ -9,8 +9,10 @@
  const command = @import("graphics_command.zig");
  const PageList = @import("../PageList.zig");
  const Screen = @import("../Screen.zig");
@@ -105,7 +136,7 @@ index e017d5f79..c68db764c 100644
  const Rect = @import("graphics_image.zig").Rect;
  const Command = command.Command;
  
-@@ -526,7 +528,7 @@ pub const ImageStorage = struct {
+@@ -526,7 +528,7 @@
          // bit is fine compared to the megabytes we're looking to save.
          const Candidate = struct {
              id: u32,
@@ -113,4 +144,124 @@ index e017d5f79..c68db764c 100644
 +            time: Timestamp,
              used: bool,
          };
+ 
+diff --git a/src/terminal/sys.zig b/src/terminal/sys.zig
+--- a/src/terminal/sys.zig
++++ b/src/terminal/sys.zig
+@@ -19,6 +19,11 @@
+     if (build_options.artifact == .lib) break :png null;
+     break :png &decodePngWuffs;
+ };
++
++/// Read and consume a named shared-memory object. The caller owns the returned
++/// bytes and must free them with the supplied allocator. Null disables the hook.
++pub var read_shared_memory: ?ReadSharedMemoryFn = null;
++pub const ReadSharedMemoryFn = *const fn (Allocator, []const u8) DecodeError![]u8;
+ 
+ pub const DecodeError = Allocator.Error || error{InvalidData};
+ pub const DecodePngFn = *const fn (Allocator, []const u8) DecodeError!Image;
+diff --git a/src/terminal/c/sys.zig b/src/terminal/c/sys.zig
+--- a/src/terminal/c/sys.zig
++++ b/src/terminal/c/sys.zig
+@@ -15,6 +15,15 @@
+ 
+ /// C: GhosttySysDecodePngFn
+ pub const DecodePngFn = *const fn (
++    ?*anyopaque,
++    *const CAllocator,
++    [*]const u8,
++    usize,
++    *Image,
++) callconv(lib.calling_conv) bool;
++
++/// C: GhosttySysReadSharedMemoryFn. Only Image.data and data_len are used.
++pub const ReadSharedMemoryFn = *const fn (
+     ?*anyopaque,
+     *const CAllocator,
+     [*]const u8,
+@@ -54,12 +63,14 @@
+     userdata = 0,
+     decode_png = 1,
+     log = 2,
++    read_shared_memory = 3,
+ 
+     pub fn InType(comptime self: Option) type {
+         return switch (self) {
+             .userdata => ?*const anyopaque,
+             .decode_png => ?DecodePngFn,
+             .log => ?LogFn,
++            .read_shared_memory => ?ReadSharedMemoryFn,
+         };
+     }
+ };
+@@ -70,6 +81,7 @@
+     userdata: ?*anyopaque = null,
+     decode_png: ?DecodePngFn = null,
+     log: ?LogFn = null,
++    read_shared_memory: ?ReadSharedMemoryFn = null,
+ };
+ 
+ /// Global state for the C sys interface.
+@@ -95,6 +107,18 @@
+         .height = out.height,
+         .data = result_data[0..out.data_len],
+     };
++}
++
++fn readSharedMemoryWrapper(
++    alloc: std.mem.Allocator,
++    name: []const u8,
++) terminal_sys.DecodeError![]u8 {
++    const func = global.read_shared_memory orelse return error.InvalidData;
++    const c_alloc = CAllocator.fromZig(&alloc);
++    var out: Image = .{ .width = 0, .height = 0, .data = null, .data_len = 0 };
++    if (!func(global.userdata, &c_alloc, name.ptr, name.len, &out)) return error.InvalidData;
++    const data = out.data orelse return error.InvalidData;
++    return data[0..out.data_len];
+ }
+ 
+ pub fn set(
+@@ -126,6 +150,10 @@
+             terminal_sys.decode_png = if (value != null) &decodePngWrapper else null;
+         },
+         .log => global.log = value,
++        .read_shared_memory => {
++            global.read_shared_memory = value;
++            terminal_sys.read_shared_memory = if (value != null) &readSharedMemoryWrapper else null;
++        },
+     }
+     return .success;
+ }
+diff --git a/include/ghostty/vt/sys.h b/include/ghostty/vt/sys.h
+--- a/include/ghostty/vt/sys.h
++++ b/include/ghostty/vt/sys.h
+@@ -125,6 +125,20 @@
+     GhosttySysImage* out);
+ 
+ /**
++ * Read and consume a named shared-memory object (browser/WASM hook).
++ * The name is a byte string of name_len bytes, without a trailing NUL.
++ * On success, out->data must be allocated with the supplied allocator;
++ * the library owns and frees it. Only data and data_len are used.
++ * On failure, the callback must free any allocation it made.
++ */
++typedef bool (*GhosttySysReadSharedMemoryFn)(
++    void* userdata,
++    const GhosttyAllocator* allocator,
++    const uint8_t* name,
++    size_t name_len,
++    GhosttySysImage* out);
++
++/**
+  * System option identifiers for ghostty_sys_set().
+  */
+ typedef enum GHOSTTY_ENUM_TYPED {
+@@ -165,6 +179,8 @@
+      * Input type: GhosttySysLogFn (function pointer, or NULL)
+      */
+     GHOSTTY_SYS_OPT_LOG = 2,
++    /** Input type: GhosttySysReadSharedMemoryFn (function pointer, or NULL). */
++    GHOSTTY_SYS_OPT_READ_SHARED_MEMORY = 3,
+     GHOSTTY_SYS_OPT_MAX_VALUE = GHOSTTY_ENUM_MAX_VALUE,
+ } GhosttySysOption;
  

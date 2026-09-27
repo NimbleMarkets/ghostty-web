@@ -19,6 +19,9 @@
 ;;     ghostty_alloc(allocator, len) and fills out_image (16-byte struct
 ;;     of u32 width, u32 height, u32 data_ptr, u32 data_len).
 ;;
+;;   READ_SHM: same signature as DECODE_PNG, but input is an object name;
+;;     only data_ptr and data_len are used in the output struct.
+;;
 ;; Rebuild after edits:
 ;;   wat2wasm lib/write_pty_trampoline.wat -o /tmp/trampoline.wasm
 ;; Then update the byte literal in lib/write_pty_trampoline.ts.
@@ -31,6 +34,8 @@
   (import "env" "size_cb" (func $size_cb (type $size_sig)))
   (import "env" "decode_png_cb" (func $decode_png_cb (type $decode_png_sig)))
 
+  (import "env" "read_shm_cb" (func $read_shm_cb (type $decode_png_sig)))
+
   (func $write_pty_fwd (export "write_pty_fwd") (type $write_pty_sig)
     local.get 0  local.get 1  local.get 2  local.get 3
     call $write_pty_cb)
@@ -41,4 +46,8 @@
 
   (func $decode_png_fwd (export "decode_png_fwd") (type $decode_png_sig)
     local.get 0  local.get 1  local.get 2  local.get 3  local.get 4
-    call $decode_png_cb))
+    call $decode_png_cb)
+
+  (func $read_shm_fwd (export "read_shm_fwd") (type $decode_png_sig)
+    local.get 0  local.get 1  local.get 2  local.get 3  local.get 4
+    call $read_shm_cb))
