@@ -10,6 +10,11 @@
  * Paragraph direction is fixed LTR (per spec: cursor-addressed TUIs expect
  * rows anchored at their left-hand columns; an all-RTL row reorders in
  * place). See docs/superpowers/specs/2026-07-29-bidi-rendering-design.md.
+ *
+ * Compatibility: bidi-js 1.0.3 uses Unicode Bidirectional Algorithm 13.0
+ * tables. Ghostty's terminal, grapheme, and width behavior remains Unicode
+ * 15.1; matching that version for BiDi classification requires updated tables
+ * upstream in bidi-js.
  */
 import bidiFactory from 'bidi-js';
 import type { BidiApi } from 'bidi-js';

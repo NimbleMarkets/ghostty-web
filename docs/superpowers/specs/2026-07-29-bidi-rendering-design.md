@@ -29,9 +29,11 @@ as `GhosttyCell[]`.
   **out of scope**; it remains a known limitation, tracked as follow-up work.
   No ECMA-48 SCP/SDS/SRS/BDSM escape parsing (that would be explicit BiDi and
   would pull in libghostty-vt).
-- **UBA source:** new runtime dependency on `bidi-js` (lojjic/bidi-js, MIT,
-  zero deps, ~12KB gzip). Full UBA with maintained Unicode tables; avoids
-  hand-rolled subsets that collapse R/AL and AN/EN distinctions.
+- **UBA source:** runtime dependency on `bidi-js` 1.0.3 (lojjic/bidi-js, MIT,
+  zero deps, ~12KB gzip). It implements the full UBA using Unicode 13.0 tables,
+  avoiding hand-rolled subsets that collapse R/AL and AN/EN distinctions.
+  Matching Ghostty's advertised Unicode 15.1 for BiDi classification requires
+  a table update upstream in `bidi-js`.
 - **Paragraph direction: fixed LTR base, per row.** An all-RTL row reorders in
   place while staying anchored to its left-hand columns, which is what
   cursor-addressed TUIs expect. No config option now; a mode can be added

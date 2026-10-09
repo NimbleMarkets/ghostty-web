@@ -6,7 +6,8 @@
 
 **Architecture:** A new `lib/bidi.ts` module (`RowBidiMapper`) wraps `bidi-js` and produces a per-row visual↔logical permutation (`RowBidiMap`), cached by row content. The two paint paths (`renderLine`, `encodeCells`) iterate visual positions and fetch cells through the map; selection anchors stay in visual space with conversion only at copy time; mouse reporting and cursor placement convert at their boundaries. Spec: `docs/superpowers/specs/2026-07-29-bidi-rendering-design.md`.
 
-**Tech Stack:** TypeScript, bidi-js 1.0.3 (new runtime dep), bun test, happy-dom.
+**Tech Stack:** TypeScript, bidi-js 1.0.3 (UBA 13.0 tables; an upstream table
+update is required for Unicode 15.1 BiDi classification), bun test, happy-dom.
 
 ## Global Constraints
 

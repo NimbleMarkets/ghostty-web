@@ -81,6 +81,15 @@ through to the next on init failure. At runtime, GPU device-loss (WebGPU) or
 context-loss (WebGL) automatically demotes to the next available backend on
 a fresh canvas.
 
+### Unicode and bidirectional text
+
+`Terminal.unicode.activeVersion` reports Unicode 15.1 for Ghostty's terminal,
+grapheme, and width behavior. Implicit right-to-left ordering currently uses
+[`bidi-js` 1.0.3](https://github.com/lojjic/bidi-js), whose generated tables
+implement Unicode Bidirectional Algorithm 13.0. Characters assigned after
+Unicode 13 may therefore have outdated BiDi classifications. Matching Unicode
+15.1 requires those tables to be updated upstream in `bidi-js`.
+
 ### Program status (OSC 7501)
 
 Subscribe to structured program-status reports from applications:
