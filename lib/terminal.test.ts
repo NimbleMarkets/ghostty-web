@@ -354,7 +354,7 @@ describe('Terminal', () => {
         if (disabled === 'hook') {
           expect(exports.ghostty_sys_set(SysOption.READ_SHARED_MEMORY, 0)).toBe(0);
         } else {
-          const ptr = exports.ghostty_wasm_alloc_u8_array(1);
+          const ptr = exports.ghostty_wasm_alloc(1);
           try {
             new Uint8Array(exports.memory.buffer)[ptr] = 0;
             expect(
@@ -365,7 +365,7 @@ describe('Terminal', () => {
               )
             ).toBe(0);
           } finally {
-            exports.ghostty_wasm_free_u8_array(ptr, 1);
+            exports.ghostty_wasm_free(ptr, 1);
           }
         }
         const name = `/ntc-disabled-${disabled}`;

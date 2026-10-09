@@ -42,7 +42,7 @@ import type { WebGL2Renderer } from './renderer-webgl';
 import type { WebGPURenderer } from './renderer-webgpu';
 import { ScrollbarOverlay } from './scrollbar-overlay';
 import { SelectionManager } from './selection-manager';
-import type { ILink, ILinkProvider } from './types';
+import type { ILink, ILinkProvider, ProgramStatusReport } from './types';
 
 // ============================================================================
 // Terminal Class
@@ -131,6 +131,34 @@ export class Terminal implements ITerminalCore {
   public readonly onBell: IEvent<void> = this.bellEmitter.event;
   public readonly onSelectionChange: IEvent<void> = this.selectionChangeEmitter.event;
   public readonly onKey: IEvent<IKeyEvent> = this.keyEmitter.event;
+  private programStatusEmitter = new EventEmitter<ProgramStatusReport>();
+  private programStatusListeners = 0;
+
+  /** OSC 7501 reports. Subscribe to enable capability replies; the host owns record lifetimes. */
+  public readonly onProgramStatus: IEvent<ProgramStatusReport> = (listener) => {
+    const subscription = this.programStatusEmitter.event(listener);
+    this.programStatusListeners++;
+    this.syncProgramStatusHandler();
+    let disposed = false;
+    return {
+      dispose: () => {
+        if (disposed) return;
+        disposed = true;
+        subscription.dispose();
+        this.programStatusListeners--;
+        this.syncProgramStatusHandler();
+      },
+    };
+  };
+
+  private syncProgramStatusHandler(): void {
+    this.wasmTerm?.setProgramStatusHandler(
+      this.programStatusListeners > 0
+        ? (report) => this.programStatusEmitter.fire(report)
+        : undefined
+    );
+  }
+
   public readonly onTitleChange: IEvent<string> = this.titleChangeEmitter.event;
   public readonly onScroll: IEvent<number> = this.scrollEmitter.event;
   public readonly onRender: IEvent<{ start: number; end: number }> = this.renderEmitter.event;
@@ -433,6 +461,7 @@ export class Terminal implements ITerminalCore {
       // Create WASM terminal with current dimensions and config
       const config = this.buildWasmConfig();
       this.wasmTerm = this.ghostty!.createTerminal(this.cols, this.rows, config);
+      this.syncProgramStatusHandler();
 
       // Create canvas element
       this.canvas = document.createElement('canvas');
@@ -777,6 +806,7 @@ export class Terminal implements ITerminalCore {
 
     // Write directly to WASM terminal (handles VT parsing internally)
     this.wasmTerm!.write(data);
+    if (this.isDisposed) return;
 
     // Same-id/same-size replacements can reuse a WASM address and placement
     // signature. Invalidate even when the APC spans several terminal writes.
@@ -970,6 +1000,7 @@ export class Terminal implements ITerminalCore {
     }
     const config = this.buildWasmConfig();
     this.wasmTerm = this.ghostty!.createTerminal(this.cols, this.rows, config);
+    this.syncProgramStatusHandler();
 
     // The fresh WASM terminal starts with zero cell pixel dims, so CSI
     // 14/16/18 t and kitty graphics sizing would silently report zeros
@@ -982,6 +1013,15 @@ export class Terminal implements ITerminalCore {
 
     // Reset title
     this.currentTitle = '';
+    this.programStatusEmitter.fire({
+      state: 'clear',
+      kind: null,
+      progress: null,
+      id: '',
+      app: '',
+      title: '',
+      message: '',
+    });
   }
 
   /**
@@ -1386,6 +1426,7 @@ export class Terminal implements ITerminalCore {
     this.selectionChangeEmitter.dispose();
     this.keyEmitter.dispose();
     this.titleChangeEmitter.dispose();
+    this.programStatusEmitter.dispose();
     this.scrollEmitter.dispose();
     this.renderEmitter.dispose();
     this.cursorMoveEmitter.dispose();

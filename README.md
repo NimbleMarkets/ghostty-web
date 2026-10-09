@@ -6,7 +6,7 @@
 
 - Migrate from xterm by changing your import: `@xterm/xterm` → `ghostty-web`
 - WASM-compiled parser from Ghostty—the same code that runs the native app
-- Zero runtime dependencies, ~400KB WASM bundle
+- ~940 KiB WASM bundle
 
 Originally created for [Mux](https://github.com/coder/mux) (a desktop app for isolated, parallel agentic development), but designed to be used anywhere.
 
@@ -80,6 +80,37 @@ Three GPU/CPU rendering backends are supported. Pass
 through to the next on init failure. At runtime, GPU device-loss (WebGPU) or
 context-loss (WebGL) automatically demotes to the next available backend on
 a fresh canvas.
+
+### Program status (OSC 7501)
+
+Subscribe to structured program-status reports from applications:
+
+```typescript
+const subscription = term.onProgramStatus((report) => {
+  console.log(report.state, report.app, report.message, report.progress);
+});
+// Later, stop receiving reports:
+subscription.dispose();
+```
+
+`ProgramStatusReport` is exported from `ghostty-web`. Its `state` is `idle`,
+`working`, `done`, `blocked`, `error`, or `clear`; `kind` is `permission`,
+`question`, `auth`, or `null`. Progress is a percentage or `null`. The `id`,
+`app`, `title`, and `message` fields are strings; title and message are already
+decoded from base64 to UTF-8.
+
+Subscriptions may be created before `open()`. The terminal answers OSC 7501
+support queries only while at least one listener is subscribed. Reports arrive
+synchronously during `write()`, after WASM parsing finishes. The host application
+owns the status records: replace each record by `id`, remove a cleared id and its
+descendants, and clear everything for a `clear` report with an empty id. Both RIS
+and `term.reset()` emit that full clear. The host must also apply the protocol's
+process-exit lifetime rules; the browser terminal cannot detect PTY process exits.
+
+The Ghostty submodule is pinned to `a4aacd918ba9e79929ff608034c60a4341773ef0`
+(October 6, 2026), which adds the public libghostty-vt program-status callback.
+Rebuilding requires Zig **0.16.0**; use
+`ZIG=/absolute/path/to/zig bun run build` if your system compiler differs.
 
 ### Renderer HUD
 

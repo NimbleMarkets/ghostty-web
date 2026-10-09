@@ -362,14 +362,8 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   // Memory helpers
   ghostty_wasm_alloc_opaque(): number;
   ghostty_wasm_free_opaque(ptr: number): void;
-  ghostty_wasm_alloc_u8_array(len: number): number;
-  ghostty_wasm_free_u8_array(ptr: number, len: number): void;
-  ghostty_wasm_alloc_u16_array(len: number): number;
-  ghostty_wasm_free_u16_array(ptr: number, len: number): void;
-  ghostty_wasm_alloc_u8(): number;
-  ghostty_wasm_free_u8(ptr: number): void;
-  ghostty_wasm_alloc_usize(): number;
-  ghostty_wasm_free_usize(ptr: number): void;
+  ghostty_wasm_alloc(len: number): number;
+  ghostty_wasm_free(ptr: number, len: number): void;
 
   // SGR parser
   ghostty_sgr_new(allocator: number, parserPtrPtr: number): number;
@@ -408,7 +402,12 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_key_event_set_utf8(event: number, ptr: number, len: number): void;
 
   // Terminal lifecycle
-  ghostty_terminal_new(allocatorPtr: number, terminalPtrPtr: number, optionsPtr: number): number; // GhosttyResult (0 = success)
+  ghostty_terminal_new(
+    allocatorPtr: number,
+    terminalPtrPtr: number,
+    cols: number,
+    rows: number
+  ): number; // GhosttyResult (0 = success)
   ghostty_terminal_free(terminal: TerminalHandle): void;
   ghostty_terminal_resize(
     terminal: TerminalHandle,
@@ -579,9 +578,6 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   // buffers back to the library.
   ghostty_alloc(allocatorPtr: number, len: number): number;
   ghostty_free(allocatorPtr: number, ptr: number, len: number): void;
-  // Mode queries: mode is a packed u16 (low 15 bits = mode value, bit 15 = ANSI flag).
-  ghostty_terminal_mode_get(terminal: TerminalHandle, mode: number, outBoolPtr: number): number;
-  ghostty_terminal_mode_set(terminal: TerminalHandle, mode: number, value: boolean): number;
   // grid_ref / point_from_grid_ref: row/cell-level access. Not yet wired
   // up on the TS side (used to implement isRowWrapped / getHyperlinkUri /
   // scrollback iteration).
@@ -676,6 +672,7 @@ export enum TerminalData {
   COLOR_PALETTE_DEFAULT = 25,
   KITTY_IMAGE_STORAGE_LIMIT = 26,
   KITTY_GRAPHICS = 30,
+  MODE = 37,
 }
 
 /**
@@ -697,6 +694,9 @@ export enum TerminalOption {
   COLOR_PALETTE = 14,
   KITTY_IMAGE_STORAGE_LIMIT = 15,
   KITTY_IMAGE_MEDIUM_SHARED_MEM = 18,
+  SCROLLBACK_MAX_LINES = 28,
+  MODE = 34,
+  PROGRAM_STATUS = 46,
 }
 
 /**
@@ -707,7 +707,8 @@ export enum SysOption {
   USERDATA = 0,
   DECODE_PNG = 1,
   LOG = 2,
-  READ_SHARED_MEMORY = 3,
+  RANDOM_SECURE = 3,
+  READ_SHARED_MEMORY = 4,
 }
 
 /**
@@ -950,7 +951,7 @@ export enum CellWide {
 
 /**
  * Pack a terminal mode number + ANSI flag into the u16 wire format used by
- * ghostty_terminal_mode_get/_set. Bits 0–14 hold the value (u15), bit 15
+ * GhosttyTerminalModeConfig. Bits 0–14 hold the value (u15), bit 15
  * is set for ANSI modes (cleared for DEC private modes).
  */
 export function packMode(mode: number, isAnsi: boolean): number {
@@ -991,7 +992,7 @@ export const CURSOR_STRUCT_SIZE = 8;
 export const COLORS_STRUCT_SIZE = 12;
 
 /**
- * Terminal configuration (passed to ghostty_terminal_new_with_config)
+ * Terminal configuration applied by the TypeScript bridge
  * All color values use 0xRRGGBB format. A value of 0 means "use default".
  */
 export interface GhosttyTerminalConfig {
@@ -1081,7 +1082,7 @@ export interface Cursor {
 }
 
 /**
- * Terminal configuration (passed to ghostty_terminal_new_with_config)
+ * Terminal configuration applied by the TypeScript bridge
  */
 export interface TerminalConfig {
   scrollback_limit: number; // Number of scrollback lines (default: 10,000)
@@ -1274,4 +1275,20 @@ export enum TerminalMode {
   ALT_SCREEN = 1047,
   ALT_SCREEN_WITH_CURSOR = 1049,
   BRACKETED_PASTE = 2004,
+}
+
+/** OSC 7501 report. Each report replaces the record for its id.
+ * `clear` removes that id and descendants; an empty id clears all records.
+ * Embedders own record lifetimes, including cleanup when the process exits.
+ */
+export interface ProgramStatusReport {
+  state: 'idle' | 'working' | 'done' | 'blocked' | 'error' | 'clear';
+  kind: 'permission' | 'question' | 'auth' | null;
+  /** Percentage (0–100), or null when absent. */
+  progress: number | null;
+  id: string;
+  app: string;
+  /** Decoded UTF-8 text; empty when absent. */
+  title: string;
+  message: string;
 }

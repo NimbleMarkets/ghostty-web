@@ -3,11 +3,13 @@ set -euo pipefail
 
 echo "🔨 Building ghostty-vt.wasm..."
 
-# Check for Zig (ghostty's build.zig pins a specific version)
-if ! command -v zig &> /dev/null; then
+# Set ZIG to an absolute executable path to override the system compiler.
+ZIG=${ZIG:-zig}
+# Check for Zig (ghostty's build.zig.zon pins a specific version)
+if ! command -v "$ZIG" &> /dev/null; then
     echo "❌ Error: Zig not found"
     echo ""
-    echo "Use the version pinned by ghostty/build.zig (currently 0.15.2)."
+    echo "Use the version pinned by ghostty/build.zig.zon (currently 0.16.0)."
     echo "  macOS:   brew install zig (may not match)"
     echo "  Nix:     nix develop"
     echo "  Manual:  https://ziglang.org/download/"
@@ -15,7 +17,7 @@ if ! command -v zig &> /dev/null; then
     exit 1
 fi
 
-ZIG_VERSION=$(zig version)
+ZIG_VERSION=$("$ZIG" version)
 echo "✓ Found Zig $ZIG_VERSION"
 
 # Initialize submodule on first checkout (gitlink is a file, not a directory)
@@ -64,7 +66,7 @@ fi
 # Build WASM
 echo "⚙️  Building WASM (takes ~20 seconds)..."
 cd ghostty
-zig build -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall
+"$ZIG" build -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall
 cd ..
 
 # Copy to project root
