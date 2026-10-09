@@ -416,6 +416,16 @@ export class GhosttyTerminal {
       // carries cols/rows, so colors land here via
       // ghostty_terminal_set(COLOR_*).
       if (config) this.applyConfig(config);
+      // Upstream defaults to a 10,000-byte scrollback budget alongside the
+      // line limit, and whichever limit is reached first wins. Remove the
+      // byte budget (NULL) so scrollbackLimit means lines, as it always has.
+      const bytesResult = this.exports.ghostty_terminal_set(
+        this.handle,
+        TerminalOption.SCROLLBACK_MAX_BYTES,
+        0
+      );
+      if (bytesResult !== 0)
+        throw new Error(`Removing scrollback byte limit failed: ${bytesResult}`);
       const limitPtr = this.exports.ghostty_wasm_alloc(4);
       if (!limitPtr) throw new Error('Failed to allocate scrollback limit');
       try {
@@ -424,11 +434,12 @@ export class GhosttyTerminal {
           config?.scrollbackLimit ?? 10000,
           true
         );
-        this.exports.ghostty_terminal_set(
+        const linesResult = this.exports.ghostty_terminal_set(
           this.handle,
           TerminalOption.SCROLLBACK_MAX_LINES,
           limitPtr
         );
+        if (linesResult !== 0) throw new Error(`Setting scrollback limit failed: ${linesResult}`);
       } finally {
         this.exports.ghostty_wasm_free(limitPtr, 4);
       }
@@ -437,13 +448,20 @@ export class GhosttyTerminal {
       // multi-codepoint clusters (flag emoji, ZWJ sequences, skin tones)
       // as a single cell. Coder's old C-side patch enabled it inside the
       // terminal_new() shim; the new public C ABI doesn't, so we enable
-      // it here from JS to preserve coder's defaults.
+      // it here from JS to preserve coder's defaults. MODE_DEFAULT sets both
+      // the current value and the value restored by RIS, so a program that
+      // sends ESC c doesn't turn clustering off for the rest of the session.
       const modePtr = this.exports.ghostty_wasm_alloc(4);
       try {
         const view = new DataView(this.memory.buffer);
         view.setUint16(modePtr, packMode(2027, false), true);
         view.setUint8(modePtr + 2, 1);
-        this.exports.ghostty_terminal_set(this.handle, TerminalOption.MODE, modePtr);
+        const modeResult = this.exports.ghostty_terminal_set(
+          this.handle,
+          TerminalOption.MODE_DEFAULT,
+          modePtr
+        );
+        if (modeResult !== 0) throw new Error(`Enabling mode 2027 failed: ${modeResult}`);
       } finally {
         this.exports.ghostty_wasm_free(modePtr, 4);
       }
