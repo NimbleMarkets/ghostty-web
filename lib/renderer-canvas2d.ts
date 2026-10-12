@@ -45,6 +45,7 @@ function cachedMatchesPixels(
     format: KittyImageFormat;
     dataPtr: number;
     dataLen: number;
+    revision: number;
   },
   pixels: KittyImagePixels
 ): boolean {
@@ -53,7 +54,8 @@ function cachedMatchesPixels(
     cached.height === pixels.height &&
     cached.format === pixels.format &&
     cached.dataPtr === pixels.data.byteOffset &&
-    cached.dataLen === pixels.data.length
+    cached.dataLen === pixels.data.length &&
+    cached.revision === (pixels.revision ?? 0)
   );
 }
 
@@ -92,11 +94,11 @@ export class CanvasRenderer implements Renderer {
    * a canvas painted from the WASM-side RGBA bytes so per-frame compositing
    * is just a drawImage call.
    *
-   * Staleness key combines width/height/format/dataPtr/dataLen — the
+   * Staleness key combines revision/width/height/format/dataPtr/dataLen — the
    * kitty protocol allows reusing an id with new bytes, and dataLen alone
    * is too weak (transposed dims or format change can keep byte count
-   * identical). dataPtr is the WASM byteOffset, which changes whenever
-   * ghostty frees + re-allocates the image bytes (i.e., on retransmit).
+   * identical). dataPtr is the WASM byteOffset; revision catches retransmits that
+   * reuse that address.
    */
   private kittyImageCache = new Map<
     number,
@@ -107,6 +109,7 @@ export class CanvasRenderer implements Renderer {
       format: KittyImageFormat;
       dataPtr: number;
       dataLen: number;
+      revision: number;
     }
   >();
 
@@ -116,6 +119,8 @@ export class CanvasRenderer implements Renderer {
    * a handful of entries). Looked up by U+10EEEE placeholder cells in
    * renderPlaceholderCell to find the placement's grid dimensions.
    */
+  private frameKittyPixels = new Map<number, KittyImagePixels | null>();
+
   private kittyVirtualPlacements = new Map<number, KittyPlacementInfo>();
 
   /**
@@ -148,6 +153,7 @@ export class CanvasRenderer implements Renderer {
       imgFormat: KittyImageFormat;
       dataPtr: number;
       dataLen: number;
+      revision: number;
     }
   >();
 
@@ -172,6 +178,7 @@ export class CanvasRenderer implements Renderer {
       imgFormat: KittyImageFormat;
       dataPtr: number;
       dataLen: number;
+      revision: number;
     }
   >();
 
@@ -197,6 +204,7 @@ export class CanvasRenderer implements Renderer {
 
   /** @internal Test-only entry to precomputeKittyState. Not part of the public API. */
   public _testPrecomputeKittyState(buffer: IRenderable, rows: number): void {
+    this.frameKittyPixels.clear();
     this.precomputeKittyState(buffer, rows);
   }
 
@@ -229,8 +237,12 @@ export class CanvasRenderer implements Renderer {
   private previousHoveredHyperlinkId: number = 0;
 
   // Regex link hover tracking (for links without hyperlink_id)
-  private hoveredLinkRange: { startX: number; startY: number; endX: number; endY: number } | null =
-    null;
+  private hoveredLinkRange: {
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+  } | null = null;
   private previousHoveredLinkRange: {
     startX: number;
     startY: number;
@@ -321,8 +333,8 @@ export class CanvasRenderer implements Renderer {
     this.canvasEl.style.height = `${cssHeight}px`;
 
     // Set actual canvas size (scaled for DPI)
-    this.canvasEl.width = cssWidth * this.devicePixelRatio;
-    this.canvasEl.height = cssHeight * this.devicePixelRatio;
+    this.canvasEl.width = Math.floor(cssWidth * this.devicePixelRatio);
+    this.canvasEl.height = Math.floor(cssHeight * this.devicePixelRatio);
 
     // Scale context to match DPI (setting canvas.width/height resets the context)
     this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
@@ -380,8 +392,8 @@ export class CanvasRenderer implements Renderer {
     if (graphics === null) return null;
     let sig = '';
     for (const p of buffer.iterPlacements(graphics, false)) {
-      const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
-      sig += `${p.imageId}|${p.isVirtual ? 1 : 0}|${p.viewportCol},${p.viewportRow}|${p.pixelWidth}x${p.pixelHeight}|${p.sourceX},${p.sourceY},${p.sourceWidth}x${p.sourceHeight}|${pixels?.width ?? 0}x${pixels?.height ?? 0}|${pixels?.format ?? 0}|${pixels?.data.byteOffset ?? 0}+${pixels?.data.length ?? 0};`;
+      const pixels = this.getFrameKittyPixels(buffer, graphics, p.imageId);
+      sig += `${p.imageId}|${p.isVirtual ? 1 : 0}|${p.viewportCol},${p.viewportRow}|${p.pixelWidth}x${p.pixelHeight}|${p.sourceX},${p.sourceY},${p.sourceWidth}x${p.sourceHeight}|${pixels?.width ?? 0}x${pixels?.height ?? 0}|${pixels?.format ?? 0}|${pixels?.data.byteOffset ?? 0}+${pixels?.data.length ?? 0}|${pixels?.revision ?? 0};`;
     }
     return sig;
   }
@@ -391,6 +403,8 @@ export class CanvasRenderer implements Renderer {
     viewportY: number = 0,
     scrollbackProvider?: IScrollbackProvider
   ): void {
+    this.frameKittyPixels.clear();
+
     // Frame-skip gate. See WebGPURenderer.render() for rationale. Must
     // run BEFORE invalidateNext is reset and BEFORE precomputeKittyState
     // (which mutates this.lastKittyVirtualSigs) — when the gate decides
@@ -429,6 +443,14 @@ export class CanvasRenderer implements Renderer {
     // Multiple update() calls are safe - dirty state persists until clearDirty().
     const cursor = buffer.getCursor();
     const dims = buffer.getDimensions();
+    // Snapshot lazily, once per frame. Ghostty's getLine rebuilds the whole
+    // viewport, so calling it for each row makes painting quadratic in rows.
+    let viewport: GhosttyCell[] | undefined;
+    const getScreenLine = (y: number): GhosttyCell[] | null => {
+      if (y < 0 || y >= dims.rows) return null;
+      viewport ??= buffer.getViewport();
+      return viewport.slice(y * dims.cols, (y + 1) * dims.cols);
+    };
 
     // Pre-frame: build the virtual-placement index so unicode-placeholder
     // cells can look up their target image's grid layout in O(1) during
@@ -447,8 +469,8 @@ export class CanvasRenderer implements Renderer {
 
     // Resize canvas if dimensions changed
     const needsResize =
-      this.canvasEl.width !== dims.cols * this.metrics.width * this.devicePixelRatio ||
-      this.canvasEl.height !== dims.rows * this.metrics.height * this.devicePixelRatio;
+      this.canvasEl.width !== Math.floor(dims.cols * this.metrics.width * this.devicePixelRatio) ||
+      this.canvasEl.height !== Math.floor(dims.rows * this.metrics.height * this.devicePixelRatio);
 
     if (needsResize) {
       this.resize(dims.cols, dims.rows);
@@ -468,7 +490,7 @@ export class CanvasRenderer implements Renderer {
       // Mark cursor lines as needing redraw
       if (!forceAllMut && !buffer.isRowDirty(cursor.y)) {
         // Need to redraw cursor line
-        const line = buffer.getLine(cursor.y);
+        const line = getScreenLine(cursor.y);
         if (line) {
           this.renderLine(line, cursor.y, dims.cols);
         }
@@ -476,7 +498,7 @@ export class CanvasRenderer implements Renderer {
       if (cursorMoved && this.lastCursorPosition.y !== cursor.y) {
         // Also redraw old cursor line if cursor moved to different line
         if (!forceAllMut && !buffer.isRowDirty(this.lastCursorPosition.y)) {
-          const line = buffer.getLine(this.lastCursorPosition.y);
+          const line = getScreenLine(this.lastCursorPosition.y);
           if (line) {
             this.renderLine(line, this.lastCursorPosition.y, dims.cols);
           }
@@ -537,11 +559,11 @@ export class CanvasRenderer implements Renderer {
           } else {
             // This row is from visible screen
             const screenRow = y - Math.floor(viewportY);
-            line = buffer.getLine(screenRow);
+            line = getScreenLine(screenRow);
           }
         } else {
           // At bottom - fetch from visible screen
-          line = buffer.getLine(y);
+          line = getScreenLine(y);
         }
 
         if (line) {
@@ -633,11 +655,11 @@ export class CanvasRenderer implements Renderer {
         } else {
           // This row is from visible screen (lower part of viewport)
           const screenRow = viewportY > 0 ? y - Math.floor(viewportY) : y;
-          line = buffer.getLine(screenRow);
+          line = getScreenLine(screenRow);
         }
       } else {
         // At bottom - fetch from visible screen
-        line = buffer.getLine(y);
+        line = getScreenLine(y);
       }
 
       if (line) {
@@ -795,10 +817,8 @@ export class CanvasRenderer implements Renderer {
 
     // Kitty unicode placeholder: cells with codepoint U+10EEEE represent
     // a slice of a virtually-placed image. Substitute the slice draw for
-    // text rendering. If it's not a valid placeholder (e.g., the image
-    // hasn't been transmitted yet), fall through and render as text —
-    // typically the system "missing glyph" box, which is the expected
-    // behavior for a stray U+10EEEE.
+    // text rendering. Malformed diacritics fall through to ordinary text.
+    // Valid placeholders awaiting an image paint background only.
     if (cell.codepoint === KITTY_PLACEHOLDER) {
       if (this.renderPlaceholderCell(cell, x, y)) return;
     }
@@ -997,13 +1017,14 @@ export class CanvasRenderer implements Renderer {
             // rationale (Canvas2D-only damage gap, doesn't affect GPU
             // renderers).
             if (!virtualBytesChanged) {
-              const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+              const pixels = this.getFrameKittyPixels(buffer, graphics, p.imageId);
               const sig = {
                 imgWidth: pixels?.width ?? 0,
                 imgHeight: pixels?.height ?? 0,
                 imgFormat: pixels?.format ?? (0 as KittyImageFormat),
                 dataPtr: pixels?.data.byteOffset ?? 0,
                 dataLen: pixels?.data.length ?? 0,
+                revision: pixels?.revision ?? 0,
               };
               newVirtualSigs.set(p.imageId, sig);
               const prev = this.lastKittyVirtualSigs.get(p.imageId);
@@ -1013,26 +1034,28 @@ export class CanvasRenderer implements Renderer {
                 prev.imgHeight !== sig.imgHeight ||
                 prev.imgFormat !== sig.imgFormat ||
                 prev.dataPtr !== sig.dataPtr ||
-                prev.dataLen !== sig.dataLen
+                prev.dataLen !== sig.dataLen ||
+                prev.revision !== sig.revision
               ) {
                 virtualBytesChanged = true;
               }
             } else {
               // Already going to invalidate everything; still record sig so
               // future frames have something to compare against.
-              const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+              const pixels = this.getFrameKittyPixels(buffer, graphics, p.imageId);
               newVirtualSigs.set(p.imageId, {
                 imgWidth: pixels?.width ?? 0,
                 imgHeight: pixels?.height ?? 0,
                 imgFormat: pixels?.format ?? (0 as KittyImageFormat),
                 dataPtr: pixels?.data.byteOffset ?? 0,
                 dataLen: pixels?.data.length ?? 0,
+                revision: pixels?.revision ?? 0,
               });
             }
             continue;
           }
           this.currentDirectPlacements.push(p);
-          const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+          const pixels = this.getFrameKittyPixels(buffer, graphics, p.imageId);
           const sig = {
             viewportCol: p.viewportCol,
             viewportRow: p.viewportRow,
@@ -1047,6 +1070,7 @@ export class CanvasRenderer implements Renderer {
             imgFormat: pixels?.format ?? (0 as KittyImageFormat),
             dataPtr: pixels?.data.byteOffset ?? 0,
             dataLen: pixels?.data.length ?? 0,
+            revision: pixels?.revision ?? 0,
           };
           newSigs.set(p.imageId, sig);
           const prev = this.lastKittyDirectSigs.get(p.imageId);
@@ -1064,7 +1088,8 @@ export class CanvasRenderer implements Renderer {
             prev.imgHeight !== sig.imgHeight ||
             prev.imgFormat !== sig.imgFormat ||
             prev.dataPtr !== sig.dataPtr ||
-            prev.dataLen !== sig.dataLen;
+            prev.dataLen !== sig.dataLen ||
+            prev.revision !== sig.revision;
           if (changed) {
             markRows(sig.viewportRow, sig.pixelHeight);
             if (prev) markRows(prev.viewportRow, prev.pixelHeight);
@@ -1104,13 +1129,24 @@ export class CanvasRenderer implements Renderer {
    * renderKittyImages (direct placements) and renderPlaceholderCell
    * (unicode-placeholder cells).
    */
+  private getFrameKittyPixels(
+    buffer: IRenderable,
+    graphics: number,
+    imageId: number
+  ): KittyImagePixels | null {
+    if (!this.frameKittyPixels.has(imageId)) {
+      this.frameKittyPixels.set(imageId, buffer.getKittyImagePixels?.(graphics, imageId) ?? null);
+    }
+    return this.frameKittyPixels.get(imageId) ?? null;
+  }
+
   private getOrDecodeKittyImage(
     buffer: IRenderable,
     graphics: number,
     imageId: number
   ): HTMLCanvasElement | null {
     const cached = this.kittyImageCache.get(imageId);
-    const pixels = buffer.getKittyImagePixels?.(graphics, imageId);
+    const pixels = this.getFrameKittyPixels(buffer, graphics, imageId);
     if (!pixels) return cached?.canvas ?? null;
     if (cached && cachedMatchesPixels(cached, pixels)) return cached.canvas;
     const canvas = this.decodeKittyImageToCanvas(pixels);
@@ -1122,6 +1158,7 @@ export class CanvasRenderer implements Renderer {
       format: pixels.format,
       dataPtr: pixels.data.byteOffset,
       dataLen: pixels.data.length,
+      revision: pixels.revision ?? 0,
     });
     return canvas;
   }
@@ -1259,14 +1296,12 @@ export class CanvasRenderer implements Renderer {
    * draws the matching slice scaled to one terminal cell.
    *
    * Returns true if the cell was handled as a placeholder; false to
-   * fall through to normal text rendering (e.g., unknown image, no
-   * matching virtual placement, or malformed diacritics).
+   * fall through to normal text rendering for malformed diacritics.
+   * A valid placeholder without its image/placement paints background only.
    */
   private renderPlaceholderCell(cell: GhosttyCell, x: number, y: number): boolean {
     const buffer = this.currentRenderBuffer;
     const graphics = this.currentKittyGraphics;
-    if (!buffer || graphics === null) return false;
-
     // Image id from fg color (low 24 bits) + optional 3rd diacritic
     // (high byte). The base codepoint U+10EEEE is in `cell.codepoint`;
     // `cell.grapheme` carries the *extras* — [0]=row, [1]=col,
@@ -1277,6 +1312,10 @@ export class CanvasRenderer implements Renderer {
     const rowD = diacriticToInt(extras[0]!);
     const colD = diacriticToInt(extras[1]!);
     if (rowD < 0 || colD < 0) return false;
+    // Keep valid graphics placeholders out of the text path while their
+    // image or placement is being replaced. Malformed stray codepoints
+    // still fall through to ordinary text rendering.
+    if (!buffer || graphics === null) return true;
     void x;
     void y;
     const fgRgb = (cell.fg_r << 16) | (cell.fg_g << 8) | cell.fg_b;
@@ -1287,12 +1326,12 @@ export class CanvasRenderer implements Renderer {
     }
 
     const placement = this.kittyVirtualPlacements.get(imageId);
-    if (!placement) return false;
+    if (!placement) return true;
 
-    const pixels = buffer.getKittyImagePixels?.(graphics, imageId);
-    if (!pixels) return false;
+    const pixels = this.getFrameKittyPixels(buffer, graphics, imageId);
+    if (!pixels) return true;
     const canvas = this.getOrDecodeKittyImage(buffer, graphics, imageId);
-    if (!canvas) return false;
+    if (!canvas) return true;
 
     // Slice geometry: image is conceptually scaled to fit
     // gridCols × gridRows cells; this cell shows one of those cells.
@@ -1332,7 +1371,7 @@ export class CanvasRenderer implements Renderer {
 
     for (const p of this.currentDirectPlacements) {
       let cached = this.kittyImageCache.get(p.imageId);
-      const pixels = buffer.getKittyImagePixels(graphics, p.imageId);
+      const pixels = this.getFrameKittyPixels(buffer, graphics, p.imageId);
       if (!pixels) continue;
 
       // Cache miss or stale (image was re-transmitted under the same id).
@@ -1347,6 +1386,7 @@ export class CanvasRenderer implements Renderer {
           format: pixels.format,
           dataPtr: pixels.data.byteOffset,
           dataLen: pixels.data.length,
+          revision: pixels.revision ?? 0,
         };
         this.kittyImageCache.set(p.imageId, cached);
       }

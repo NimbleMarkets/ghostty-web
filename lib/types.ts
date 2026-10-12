@@ -850,6 +850,8 @@ export const KITTY_PLACEMENT_RENDER_INFO_SIZE = 48;
  * mutating terminal call — copy out before vt_write if you need to retain.
  */
 export interface KittyImagePixels {
+  /** Changes after graphics writes, even when WASM reuses a pixel allocation. */
+  revision?: number;
   width: number;
   height: number;
   format: KittyImageFormat;

@@ -7,6 +7,7 @@
  */
 
 import { decode as decodePng } from 'fast-png';
+import { KittyGraphicsRevision } from './kitty-graphics-revision';
 import {
   CellData,
   CellFlags,
@@ -283,6 +284,8 @@ export class KeyEncoder {
  * - No per-row WASM boundary crossings!
  */
 export class GhosttyTerminal {
+  private kittyRevision = new KittyGraphicsRevision();
+
   private exports: GhosttyWasmExports;
   private memory: WebAssembly.Memory;
   private handle: TerminalHandle;
@@ -709,6 +712,7 @@ export class GhosttyTerminal {
     new Uint8Array(this.memory.buffer).set(bytes, ptr);
     try {
       this.exports.ghostty_terminal_vt_write(this.handle, ptr, bytes.length);
+      this.kittyRevision.write(bytes);
     } finally {
       this.exports.ghostty_wasm_free(ptr, bytes.length);
     }
@@ -937,6 +941,7 @@ export class GhosttyTerminal {
         height,
         format,
         data: new Uint8Array(this.memory.buffer, dataPtr, dataLen),
+        revision: this.kittyRevision.value,
       };
     } finally {
       this.exports.ghostty_wasm_free(u32Ptr, 4);
@@ -1887,8 +1892,11 @@ export class GhosttyTerminal {
    * register their handle in instancesByHandle.
    */
   private installCallbacks(): void {
-    const table = (this.exports as unknown as { __indirect_function_table: WebAssembly.Table })
-      .__indirect_function_table;
+    const table = (
+      this.exports as unknown as {
+        __indirect_function_table: WebAssembly.Table;
+      }
+    ).__indirect_function_table;
 
     let registry = GhosttyTerminal.callbackRegistries.get(table);
     if (!registry) {

@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { RowBidiMapper } from './bidi';
+import { KITTY_PLACEHOLDER, ROWCOLUMN_DIACRITICS } from './kitty_diacritics';
 import { CanvasRenderer } from './renderer-canvas2d';
 import { DEFAULT_THEME } from './renderer-core';
 import type { IRenderable } from './renderer-types';
@@ -183,6 +184,126 @@ describe('CanvasRenderer', () => {
       renderer._testPrecomputeKittyState(stubB, rows);
       expect(renderer._testGetKittyDamagedRows().size).toBe(rows);
 
+      renderer.destroy();
+    });
+
+    test('retransmit at the same address damages virtual and direct placements', () => {
+      for (const isVirtual of [true, false]) {
+        const renderer = new CanvasRenderer(document.createElement('canvas'));
+        const data = new Uint8Array(100 * 100 * 4);
+        const image: KittyImagePixels = {
+          width: 100,
+          height: 100,
+          format: KittyImageFormat.RGBA,
+          data,
+          revision: 1,
+        };
+        const stub = makeStub({
+          cols: 4,
+          rows: 12,
+          placements: [{ ...vp(42), isVirtual }],
+          pixelsByImageId: new Map([[42, image]]),
+        });
+        renderer._testPrecomputeKittyState(stub, 12);
+        renderer._testPrecomputeKittyState(stub, 12);
+        expect(renderer._testGetKittyDamagedRows().size).toBe(0);
+        data[0] = 200;
+        image.revision = 2;
+        renderer._testPrecomputeKittyState(stub, 12);
+        expect(renderer._testGetKittyDamagedRows().size).toBeGreaterThan(0);
+        renderer.destroy();
+      }
+    });
+
+    test('one viewport and image read per frame; image revision breaks frame skip', () => {
+      const canvas = document.createElement('canvas');
+      const renderer = new CanvasRenderer(canvas);
+      const image: KittyImagePixels = {
+        width: 16,
+        height: 16,
+        format: KittyImageFormat.RGBA,
+        data: new Uint8Array(16 * 16 * 4),
+        revision: 1,
+      };
+      const stub = makeStub({
+        cols: 4,
+        rows: 30,
+        placements: [{ ...vp(42), gridCols: 4, gridRows: 30 }],
+        pixelsByImageId: new Map([[42, image]]),
+      });
+      // The DOM harness has no ImageData implementation; decoding is
+      // covered separately. Keep this test focused on reads and damage.
+      (
+        renderer as unknown as { decodeKittyImageToCanvas: () => HTMLCanvasElement }
+      ).decodeKittyImageToCanvas = () => document.createElement('canvas');
+      let viewportReads = 0;
+      let pixelReads = 0;
+      let paints = 0;
+      const cells = stub.getViewport().map((cell, i) => ({
+        ...cell,
+        codepoint: KITTY_PLACEHOLDER,
+        fg_b: 42,
+        grapheme: [ROWCOLUMN_DIACRITICS[Math.floor(i / 4)]!, ROWCOLUMN_DIACRITICS[i % 4]!],
+        grapheme_len: 2,
+      }));
+      stub.getViewport = () => {
+        viewportReads++;
+        return cells;
+      };
+      stub.getLine = () => {
+        throw new Error('per-row viewport reconstruction');
+      };
+      stub.getKittyImagePixels = () => {
+        pixelReads++;
+        return image;
+      };
+      stub.clearDirty = () => {
+        paints++;
+      };
+      renderer.render(stub);
+      expect(viewportReads).toBe(1);
+      expect(pixelReads).toBe(1);
+      renderer.render(stub); // Drain the initial resize invalidation.
+      const settledPaints = paints;
+      renderer.render(stub);
+      expect(paints).toBe(settledPaints);
+      image.revision = 2;
+      viewportReads = 0;
+      pixelReads = 0;
+      renderer.render(stub);
+      expect(paints).toBe(settledPaints + 1);
+      expect(viewportReads).toBe(1);
+      expect(pixelReads).toBe(1);
+      renderer.destroy();
+    });
+
+    test('fractional DPR does not clear the canvas again on each dirty frame', () => {
+      const canvas = document.createElement('canvas');
+      // Browser canvas dimensions are unsigned integers. Emulate that
+      // coercion explicitly because the test DOM does not implement it.
+      for (const key of ['width', 'height'] as const) {
+        let value = canvas[key];
+        Object.defineProperty(canvas, key, {
+          get: () => value,
+          set: (next: number) => {
+            value = Math.floor(next);
+          },
+        });
+      }
+      const renderer = new CanvasRenderer(canvas, { devicePixelRatio: 1.25 });
+      const stub = makeStub({ cols: 3, rows: 3, placements: [], pixelsByImageId: new Map() });
+      let resizes = 0;
+      const resize = renderer.resize.bind(renderer);
+      renderer.resize = (cols, rows) => {
+        resizes++;
+        resize(cols, rows);
+      };
+      renderer.render(stub);
+      renderer.invalidate();
+      renderer.render(stub);
+      renderer.invalidate();
+      renderer.render(stub);
+      expect(resizes).toBe(1);
       renderer.destroy();
     });
 
@@ -534,4 +655,23 @@ describe('bidi reordering (canvas2d)', () => {
     expect(moveTos).toContain(20); // underline at visual x=2 (ש's visual slot)
     expect(moveTos).not.toContain(10); // NOT at visual x=1 (ל, not in range)
   });
+});
+
+test('Canvas2D does not draw missing-glyph boxes while an image placement is unavailable', () => {
+  const renderer = new CanvasRenderer(document.createElement('canvas'));
+  const r = renderer as any;
+  const requests: string[] = [];
+  r.ctx.fillText = (text: string) => requests.push(text);
+  const cell = {
+    codepoint: KITTY_PLACEHOLDER,
+    grapheme: [ROWCOLUMN_DIACRITICS[0]!, ROWCOLUMN_DIACRITICS[0]!],
+    grapheme_len: 2,
+    width: 1,
+    flags: 0,
+    fgIsDefault: true,
+    bgIsDefault: true,
+  };
+  r.renderCellText(cell, 0, 0);
+  expect(requests).toEqual([]);
+  renderer.destroy();
 });

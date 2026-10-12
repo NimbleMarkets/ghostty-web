@@ -3678,3 +3678,55 @@ describe('Write PTY response routing', () => {
     });
   });
 });
+
+describe('Synchronized output', () => {
+  test('holds animation-frame and input-echo paints until a split closing marker completes', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const term = await createIsolatedTerminal({ cols: 20, rows: 4 });
+    await term.open(container);
+    const { renderArgs, restore } = spyOnRendererRender(term);
+    try {
+      term.input('x', true);
+      term.write('\x1b[?2026h\x1b[HNEW');
+      expect(term.getMode(2026)).toBe(true);
+      (term as any).renderTick();
+      expect(renderArgs).toHaveLength(0);
+      term.write(new TextEncoder().encode('\x1b[?2026'));
+      (term as any).renderTick();
+      expect(renderArgs).toHaveLength(0);
+      term.write('l');
+      expect(term.getMode(2026)).toBe(false);
+      expect(renderArgs).toHaveLength(1);
+    } finally {
+      restore();
+      term.dispose();
+      container.remove();
+    }
+  });
+
+  test('an interrupted hold times out without changing the application mode', async () => {
+    const container = document.createElement('div');
+    const term = await createIsolatedTerminal({ cols: 20, rows: 4 });
+    await term.open(container);
+    const { renderArgs, restore } = spyOnRendererRender(term);
+    try {
+      term.write('\x1b[?2026hpartial');
+      (term as any).renderTick();
+      expect(renderArgs).toHaveLength(0);
+      await new Promise((resolve) => setTimeout(resolve, 1050));
+      expect(renderArgs.length).toBeGreaterThan(0);
+      const paints = renderArgs.length;
+      expect(term.getMode(2026)).toBe(true);
+      term.write('\x1b[?2026l');
+      expect((term as any).syncOutputDeadline).toBeUndefined();
+      term.write('\x1b[?2026hnext');
+      (term as any).renderTick();
+      expect(renderArgs).toHaveLength(paints);
+    } finally {
+      restore();
+      term.dispose();
+      expect((term as any).syncOutputTimer).toBeUndefined();
+    }
+  });
+});

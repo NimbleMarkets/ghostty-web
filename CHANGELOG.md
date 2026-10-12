@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Fixed
+
+- Repaint Canvas2D image revisions even when terminal cells are unchanged.
+  Read each viewport and image once per frame, and avoid repeated canvas
+  clears at fractional display scaling.
+
+- Keep valid image placeholders out of the font fallback while their image
+  placement is unavailable, preventing grids of missing-glyph boxes.
+
+- Honor synchronized output (DEC mode 2026) across split writes and input
+  echoes, so partial screen updates are never painted. A one-second timeout
+  releases an interrupted hold; disposal cancels the timer.
+
+- Redraw retransmitted Kitty images when WASM reuses a pixel allocation.
+  Graphics revisions invalidate Canvas2D, WebGL and WebGPU caches; ordinary
+  text writes retain cached images. Same-size atlas updates reuse their slot.
+
 ### Added
 
 - `installRendererHud(terminal, opts?)` and `parseRendererFromURL()` — lift

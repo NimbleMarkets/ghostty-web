@@ -590,6 +590,11 @@ export function encodeCells(
               arr[i + 5] = (colD & 0xffff) | ((rowD & 0xffff) << 16);
               arr[i + 6] = idx;
               arr[i + 7] = (placement.gridCols & 0xffff) | ((placement.gridRows & 0xffff) << 16);
+            } else {
+              // A valid graphics cell can outlive its placement during an
+              // image replacement. Its private-use codepoint is not text:
+              // drawing the font's missing-glyph box flashes a whole grid.
+              flags |= FLAG_INVISIBLE;
             }
           }
         }
@@ -740,9 +745,8 @@ export function kittyImageToRGBA(pixels: KittyImagePixels): Uint8Array | null {
  *
  * Cache is keyed by imageId. Each entry stores a signature (width, height,
  * format, data byteOffset, data length) so we re-upload only when the
- * underlying image data changes (caller passes the same KittyImagePixels
- * object whose .data is a view into WASM memory; if the WASM image changes
- * the byteOffset/length will too).
+ * underlying image data changes. The graphics revision catches retransmits
+ * that reuse the same WASM allocation.
  */
 export abstract class KittyTextureCacheBase<TBackendTexture> {
   private cache = new Map<
@@ -754,6 +758,7 @@ export abstract class KittyTextureCacheBase<TBackendTexture> {
       format: number;
       dataPtr: number;
       dataLen: number;
+      revision: number;
       dataBuf: ArrayBufferLike;
     }
   >();
@@ -772,7 +777,7 @@ export abstract class KittyTextureCacheBase<TBackendTexture> {
    * Returns null if the image cannot be converted (e.g. undecoded PNG) or
    * if texture allocation fails.
    *
-   * Signature: width × height × format × data.byteOffset × data.length ×
+   * Signature: revision × width × height × format × data.byteOffset × data.length ×
    * data.buffer (object identity). In practice the WASM heap never moves so
    * byteOffset/length alone would be stable, but including the buffer
    * reference ensures correctness in test environments where each
@@ -787,7 +792,8 @@ export abstract class KittyTextureCacheBase<TBackendTexture> {
       cached.format === pixels.format &&
       cached.dataPtr === pixels.data.byteOffset &&
       cached.dataLen === pixels.data.length &&
-      cached.dataBuf === pixels.data.buffer;
+      cached.dataBuf === pixels.data.buffer &&
+      cached.revision === (pixels.revision ?? 0);
     if (sigMatches) return cached.handle;
 
     const rgba = kittyImageToRGBA(pixels);
@@ -804,6 +810,7 @@ export abstract class KittyTextureCacheBase<TBackendTexture> {
       format: pixels.format,
       dataPtr: pixels.data.byteOffset,
       dataLen: pixels.data.length,
+      revision: pixels.revision ?? 0,
       dataBuf: pixels.data.buffer,
     });
     return handle;
@@ -829,6 +836,7 @@ export type KittyAtlasEntry = {
     format: number;
     dataPtr: number;
     dataLen: number;
+    revision: number;
     dataBuf: ArrayBufferLike;
   };
 };
@@ -901,13 +909,18 @@ export abstract class KittyAtlasBase {
       cached.signature.format === pixels.format &&
       cached.signature.dataPtr === pixels.data.byteOffset &&
       cached.signature.dataLen === pixels.data.length &&
-      cached.signature.dataBuf === pixels.data.buffer;
+      cached.signature.dataBuf === pixels.data.buffer &&
+      cached.signature.revision === (pixels.revision ?? 0);
     if (sigMatches) return cached;
 
     const rgba = kittyImageToRGBA(pixels);
     if (!rgba) return null;
 
-    let slot = this.tryPack(pixels.width, pixels.height);
+    // Retransmitting the same-size image updates its existing atlas region.
+    let slot =
+      cached && cached.slot.w === pixels.width && cached.slot.h === pixels.height
+        ? cached.slot
+        : this.tryPack(pixels.width, pixels.height);
     if (!slot) {
       this.clearAndReset();
       slot = this.tryPack(pixels.width, pixels.height);
@@ -934,6 +947,7 @@ export abstract class KittyAtlasBase {
         format: pixels.format,
         dataPtr: pixels.data.byteOffset,
         dataLen: pixels.data.length,
+        revision: pixels.revision ?? 0,
         dataBuf: pixels.data.buffer,
       },
     };

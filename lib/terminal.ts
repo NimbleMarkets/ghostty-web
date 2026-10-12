@@ -169,6 +169,8 @@ export class Terminal implements ITerminalCore {
   private isDisposed = false;
   private isSwapping = false;
   private animationFrameId?: number;
+  private syncOutputDeadline?: number;
+  private syncOutputTimer?: ReturnType<typeof setTimeout>;
   private writeQueue: Uint8Array[] = [];
   private awaitingEcho = false;
 
@@ -323,7 +325,7 @@ export class Terminal implements ITerminalCore {
 
     // Force full re-render with new font
     this.renderer.invalidate();
-    this.renderer.render(this.wasmTerm, this.viewportY, this);
+    this.renderFrame();
     this.scrollbarOverlay?.render({
       viewportY: this.viewportY,
       scrollbackLength: this.getScrollbackLength(),
@@ -654,7 +656,7 @@ export class Terminal implements ITerminalCore {
 
       // Render initial blank screen (force full redraw)
       this.renderer!.invalidate();
-      this.renderer!.render(this.wasmTerm!, this.viewportY, this);
+      this.renderFrame();
       this.scrollbarOverlay?.render({
         viewportY: this.viewportY,
         scrollbackLength: this.getScrollbackLength(),
@@ -807,6 +809,7 @@ export class Terminal implements ITerminalCore {
     // Write directly to WASM terminal (handles VT parsing internally)
     this.wasmTerm!.write(data);
     if (this.isDisposed) return;
+    this.holdSynchronizedOutput();
 
     // Same-id/same-size replacements can reuse a WASM address and placement
     // signature. Invalidate even when the APC spans several terminal writes.
@@ -847,10 +850,10 @@ export class Terminal implements ITerminalCore {
     // Echo latency: the first write after user input is almost certainly
     // the shell echoing the keystroke. Paint it synchronously instead of
     // waiting for the next animation frame.
-    if (this.awaitingEcho) {
+    if (this.awaitingEcho && !this.holdSynchronizedOutput()) {
       this.awaitingEcho = false;
       if (this.renderer && this.wasmTerm) {
-        this.renderer.render(this.wasmTerm, this.viewportY, this);
+        this.renderFrame();
       }
     }
 
@@ -962,7 +965,7 @@ export class Terminal implements ITerminalCore {
 
       // Force full render
       this.renderer!.invalidate();
-      this.renderer!.render(this.wasmTerm!, this.viewportY, this);
+      this.renderFrame();
       this.scrollbarOverlay?.render({
         viewportY: this.viewportY,
         scrollbackLength: this.getScrollbackLength(),
@@ -1502,6 +1505,32 @@ export class Terminal implements ITerminalCore {
     this.animationFrameId = requestAnimationFrame(this.renderTick);
   }
 
+  // DEC mode 2026 brackets an atomic screen update. VT parsing continues
+  // while it is held, but none of our paint paths may expose that partial
+  // state. A bounded hold also recovers from a missing closing marker.
+  private holdSynchronizedOutput(): boolean {
+    if (!this.wasmTerm?.getMode(2026)) {
+      if (this.syncOutputTimer !== undefined) clearTimeout(this.syncOutputTimer);
+      this.syncOutputTimer = undefined;
+      this.syncOutputDeadline = undefined;
+      return false;
+    }
+    if (this.syncOutputDeadline === undefined) {
+      this.syncOutputDeadline = Date.now() + 1000;
+      this.syncOutputTimer = setTimeout(() => {
+        this.syncOutputTimer = undefined;
+        this.requestRender();
+      }, 1000);
+    }
+    return Date.now() < this.syncOutputDeadline;
+  }
+
+  private renderFrame(): boolean {
+    if (!this.renderer || !this.wasmTerm || this.holdSynchronizedOutput()) return false;
+    this.renderer.render(this.wasmTerm, this.viewportY, this);
+    return true;
+  }
+
   private renderTick = (): void => {
     this.animationFrameId = undefined;
     if (this.isDisposed || !this.isOpen) return;
@@ -1511,7 +1540,7 @@ export class Terminal implements ITerminalCore {
     // 1. Calls update() once to sync state and check dirty flags
     // 2. Only redraws dirty rows unless invalidate() was called before this frame.
     // 3. Always calls clearDirty() at the end
-    this.renderer!.render(this.wasmTerm!, this.viewportY, this);
+    if (!this.renderFrame()) return;
     this.scrollbarOverlay?.render({
       viewportY: this.viewportY,
       scrollbackLength: this.getScrollbackLength(),
@@ -1599,6 +1628,10 @@ export class Terminal implements ITerminalCore {
    * Clean up components (called on dispose or error)
    */
   private cleanupComponents(): void {
+    if (this.syncOutputTimer !== undefined) clearTimeout(this.syncOutputTimer);
+    this.syncOutputTimer = undefined;
+    this.syncOutputDeadline = undefined;
+
     // Dispose selection manager
     if (this.selectionManager) {
       this.selectionManager.dispose();
@@ -2223,7 +2256,7 @@ export class Terminal implements ITerminalCore {
 
       // Trigger render to show updated opacity
       if (this.renderer && this.wasmTerm) {
-        this.renderer.render(this.wasmTerm, this.viewportY, this);
+        this.renderFrame();
         this.scrollbarOverlay?.render({
           viewportY: this.viewportY,
           scrollbackLength: this.getScrollbackLength(),
@@ -2252,7 +2285,7 @@ export class Terminal implements ITerminalCore {
 
       // Trigger render to show updated opacity
       if (this.renderer && this.wasmTerm) {
-        this.renderer.render(this.wasmTerm, this.viewportY, this);
+        this.renderFrame();
         this.scrollbarOverlay?.render({
           viewportY: this.viewportY,
           scrollbackLength: this.getScrollbackLength(),
@@ -2268,7 +2301,7 @@ export class Terminal implements ITerminalCore {
         this.scrollbarOpacity = 0;
         // Final render to clear scrollbar completely
         if (this.renderer && this.wasmTerm) {
-          this.renderer.render(this.wasmTerm, this.viewportY, this);
+          this.renderFrame();
           this.scrollbarOverlay?.render({
             viewportY: this.viewportY,
             scrollbackLength: this.getScrollbackLength(),

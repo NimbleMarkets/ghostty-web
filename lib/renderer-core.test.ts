@@ -271,6 +271,34 @@ describe('encodeCells: kitty placeholder grapheme cache', () => {
     expect(cellArray[0 * CELL_U32S + 4]! & FLAG_IS_KITTY_PLACEHOLDER).toBeFalsy();
   });
 
+  test('an image placeholder awaiting its placement never rasterizes a missing-glyph box', () => {
+    const cell = makeCell({
+      codepoint: KITTY_PLACEHOLDER,
+      grapheme_len: 2,
+      grapheme: [ROWCOLUMN_DIACRITICS[0]!, ROWCOLUMN_DIACRITICS[0]!],
+    });
+    const buffer = makeStubBuffer({ cols: 1, rows: 1, cells: [cell], placements: [] });
+    const requests: string[] = [];
+    const atlas = {
+      getOrRaster: (text: string) => {
+        requests.push(text);
+        return { u: 0, v: 0, w: 8, h: 16 };
+      },
+    };
+    encodeCells(new Uint32Array(CELL_U32S), buffer, 0, undefined, {
+      metrics: { width: 8, height: 16, baseline: 12 },
+      selectionManager: undefined,
+      hoveredHyperlinkId: 0,
+      hoveredLinkRange: null,
+      cursorStyle: 'block',
+      cursorBlinkVisible: false,
+      atlas: atlas as unknown as GlyphAtlasBase,
+      kittyEnabled: true,
+      blockElementShaderEnabled: false,
+    });
+    expect(requests).toEqual([]);
+  });
+
   test('builds grapheme string from cell.grapheme without calling buffer.getGraphemeString', () => {
     // Non-placeholder multi-codepoint cell — e.g. a ZWJ family emoji
     // sequence. Pre-fix, encodeCells crossed into WASM via
@@ -494,6 +522,22 @@ describe('KittyTextureCacheBase', () => {
     expect(cache.created.length).toBe(1); // no new texture
   });
 
+  test('a retransmit at the same WASM address invalidates the texture', () => {
+    const cache = new StubCache();
+    const data = new Uint8Array([10, 20, 30, 255]);
+    const pixels = {
+      width: 1,
+      height: 1,
+      format: KittyImageFormat.RGBA,
+      data,
+      revision: 1,
+    };
+    cache.getOrUpload(42, pixels);
+    data[0] = 200;
+    cache.getOrUpload(42, { ...pixels, revision: 2 });
+    expect(cache.uploaded.length).toBe(2);
+  });
+
   test('signature mismatch destroys old and creates new', () => {
     const cache = new StubCache();
     const px1 = {
@@ -588,6 +632,18 @@ describe('KittyAtlasBase', () => {
     const b = atlas.addOrUpdate(1, p);
     expect(b).toBe(a);
     expect(atlas.uploads.length).toBe(1); // no second upload
+  });
+
+  test('same-address retransmit reuploads into the existing atlas slot', () => {
+    const atlas = new StubAtlas(64);
+    const p = { ...pixels(64, 64), revision: 1 };
+    const a = atlas.addOrUpdate(42, p)!;
+    p.data[0] = 200;
+    const b = atlas.addOrUpdate(42, { ...p, revision: 2 })!;
+    expect(b.slot).toEqual(a.slot);
+    expect(atlas.uploads.length).toBe(2);
+    expect(atlas.addOrUpdate(42, { ...p, revision: 2 })).toBe(b);
+    expect(atlas.uploads.length).toBe(2);
   });
 
   test('overflow triggers clearAndReset and packs at (0,0) again', () => {

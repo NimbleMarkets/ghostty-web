@@ -1018,7 +1018,7 @@ export class WebGPURenderer implements Renderer {
     let sig = '';
     for (const p of buffer.iterPlacements(graphics, false)) {
       const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
-      sig += `${p.imageId}|${p.isVirtual ? 1 : 0}|${p.viewportCol},${p.viewportRow}|${p.pixelWidth}x${p.pixelHeight}|${p.sourceX},${p.sourceY},${p.sourceWidth}x${p.sourceHeight}|${pixels?.width ?? 0}x${pixels?.height ?? 0}|${pixels?.format ?? 0}|${pixels?.data.byteOffset ?? 0}+${pixels?.data.length ?? 0};`;
+      sig += `${p.imageId}|${p.isVirtual ? 1 : 0}|${p.viewportCol},${p.viewportRow}|${p.pixelWidth}x${p.pixelHeight}|${p.sourceX},${p.sourceY},${p.sourceWidth}x${p.sourceHeight}|${pixels?.width ?? 0}x${pixels?.height ?? 0}|${pixels?.format ?? 0}|${pixels?.data.byteOffset ?? 0}+${pixels?.data.length ?? 0}@${pixels?.revision ?? 0};`;
     }
     return sig;
   }
@@ -1120,7 +1120,10 @@ export class WebGPURenderer implements Renderer {
 
     // Collect kitty direct placements (must happen before beginRenderPass — writeBuffer
     // during a render pass is a validation error).
-    const directPlacements: Array<{ params: Float32Array; view: GPUTextureView }> = [];
+    const directPlacements: Array<{
+      params: Float32Array;
+      view: GPUTextureView;
+    }> = [];
     if (this.kittyPipeline && buffer.getKittyGraphics && buffer.iterPlacements) {
       const graphics = buffer.getKittyGraphics();
       if (graphics !== null) {

@@ -765,7 +765,7 @@ export class WebGL2Renderer implements Renderer {
     let sig = '';
     for (const p of buffer.iterPlacements(graphics, false)) {
       const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
-      sig += `${p.imageId}|${p.isVirtual ? 1 : 0}|${p.viewportCol},${p.viewportRow}|${p.pixelWidth}x${p.pixelHeight}|${p.sourceX},${p.sourceY},${p.sourceWidth}x${p.sourceHeight}|${pixels?.width ?? 0}x${pixels?.height ?? 0}|${pixels?.format ?? 0}|${pixels?.data.byteOffset ?? 0}+${pixels?.data.length ?? 0};`;
+      sig += `${p.imageId}|${p.isVirtual ? 1 : 0}|${p.viewportCol},${p.viewportRow}|${p.pixelWidth}x${p.pixelHeight}|${p.sourceX},${p.sourceY},${p.sourceWidth}x${p.sourceHeight}|${pixels?.width ?? 0}x${pixels?.height ?? 0}|${pixels?.format ?? 0}|${pixels?.data.byteOffset ?? 0}+${pixels?.data.length ?? 0}@${pixels?.revision ?? 0};`;
     }
     return sig;
   }
