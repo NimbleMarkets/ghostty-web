@@ -191,6 +191,7 @@ export class Terminal implements ITerminalCore {
   private scrollAnimationFrame?: number;
   private customWheelEventHandler?: (event: WheelEvent) => boolean;
   private lastCursorY: number = 0; // Track cursor position for onCursorMove
+  private lastCursorStyle?: 'block' | 'underline' | 'bar'; // Follow DECSCUSR from the application
 
   // Scrollbar interaction state
   private isDraggingScrollbar: boolean = false;
@@ -1556,6 +1557,16 @@ export class Terminal implements ITerminalCore {
       this.cursorMoveEmitter.fire();
     }
 
+    // DECSCUSR (ESC [ Ps SP q): vim and shells switch the cursor shape at
+    // runtime. The first frame records the WASM default without applying it,
+    // so the configured cursorStyle stays until the application asks.
+    if (cursor.style !== this.lastCursorStyle) {
+      if (this.lastCursorStyle !== undefined) {
+        this.renderer?.setCursorStyle(cursor.style);
+      }
+      this.lastCursorStyle = cursor.style;
+    }
+
     // Note: onRender event is intentionally not fired here to avoid
     // performance issues. Consumers can use requestAnimationFrame if
     // they need frame-by-frame updates.
@@ -2037,14 +2048,24 @@ export class Terminal implements ITerminalCore {
    * Handle wheel events for scrolling (Phase 2)
    */
   private handleWheel = (e: WheelEvent): void => {
+    // Allow custom handler to override
+    if (this.customWheelEventHandler && this.customWheelEventHandler(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    // An application that tracks the mouse (vim with `set mouse=a`, a TUI
+    // with mouse reporting on) wants wheel events reported as mouse buttons
+    // 64/65, not arrow keys. InputHandler listens on the same element in the
+    // bubbling phase and sends the SGR report, so leave the event to it.
+    if (this.wasmTerm?.hasMouseTracking()) {
+      return;
+    }
+
     // Always prevent default browser scrolling
     e.preventDefault();
     e.stopPropagation();
-
-    // Allow custom handler to override
-    if (this.customWheelEventHandler && this.customWheelEventHandler(e)) {
-      return;
-    }
 
     // Check if in alternate screen mode (vim, less, htop, etc.)
     const isAltScreen = this.wasmTerm?.isAlternateScreen() ?? false;

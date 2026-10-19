@@ -4,6 +4,19 @@
 
 ### Fixed
 
+- Report wheel events as SGR mouse buttons 64/65 when the application has
+  mouse tracking on, instead of arrow keys, so vim with `set mouse=a` and
+  TUIs with mouse reporting scroll their own content. Arrow keys remain the
+  fallback on the alternate screen without tracking (coder/ghostty-web#145).
+
+- Forward Ctrl+V and Cmd+V to the application as 0x16 before the browser's
+  paste event, so a program that reads the clipboard itself, for an image
+  paste, sees the key; text paste is unchanged (coder/ghostty-web#145).
+
+- Follow DECSCUSR cursor shape changes from the application at runtime. The
+  configured `cursorStyle` stays until the program asks for a bar, block or
+  underline (coder/ghostty-web#145).
+
 - Repaint Canvas2D image revisions even when terminal cells are unchanged.
   Read each viewport and image once per frame, and avoid repeated canvas
   clears at fractional display scaling.

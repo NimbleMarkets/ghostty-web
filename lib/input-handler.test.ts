@@ -1170,10 +1170,13 @@ describe('InputHandler', () => {
         }
       );
 
-      // Ctrl+V should NOT call onData callback (lets paste event handle it)
-      simulateKey(container, createKeyEvent('KeyV', 'v', { ctrl: true }));
+      // Ctrl+V is forwarded as 0x16, for an application that reads the
+      // clipboard itself, and the browser's paste event still fires for text.
+      const event = createKeyEvent('KeyV', 'v', { ctrl: true });
+      simulateKey(container, event);
 
-      expect(dataReceived.length).toBe(0);
+      expect(dataReceived).toEqual(['\x16']);
+      expect(event.preventDefault).not.toHaveBeenCalled();
     });
 
     test('allows Cmd+V to trigger paste', () => {
@@ -1186,10 +1189,12 @@ describe('InputHandler', () => {
         }
       );
 
-      // Cmd+V should NOT call onData callback (lets paste event handle it)
-      simulateKey(container, createKeyEvent('KeyV', 'v', { meta: true }));
+      // Cmd+V is forwarded as 0x16 too, and the paste event still fires.
+      const event = createKeyEvent('KeyV', 'v', { meta: true });
+      simulateKey(container, event);
 
-      expect(dataReceived.length).toBe(0);
+      expect(dataReceived).toEqual(['\x16']);
+      expect(event.preventDefault).not.toHaveBeenCalled();
     });
   });
 
