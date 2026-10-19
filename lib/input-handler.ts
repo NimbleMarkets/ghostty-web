@@ -392,9 +392,21 @@ export class InputHandler {
       }
     }
 
-    // Allow Ctrl+V and Cmd+V to trigger paste event (don't preventDefault)
+    // Ctrl+V and Cmd+V: forward the key, then let the browser's native paste
+    // event fire (no preventDefault). An application that reads the clipboard
+    // itself, for an image paste, waits for 0x16 in its input; text paste
+    // still arrives through handlePaste afterwards.
     if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV') {
-      // Let the browser's native paste event fire
+      const encoded = this.encoder.encode({
+        action: KeyAction.PRESS,
+        key: Key.V,
+        mods: Mods.CTRL,
+        utf8: 'v',
+      });
+      const data = new TextDecoder().decode(encoded);
+      if (data.length > 0) {
+        this.onDataCallback(data);
+      }
       return;
     }
 

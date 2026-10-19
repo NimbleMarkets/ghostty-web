@@ -3730,3 +3730,33 @@ describe('Synchronized output', () => {
     }
   });
 });
+
+describe('Terminal cursor shape (DECSCUSR)', () => {
+  test('follows the cursor shape the application sets at runtime', async () => {
+    if (typeof document === 'undefined') return;
+    const term = await createIsolatedTerminal({ cols: 80, rows: 24, cursorStyle: 'underline' });
+    const container = document.createElement('div');
+    await term.open(container);
+    const setCursorStyle = spyOn(term.renderer!, 'setCursorStyle');
+
+    // The first frame keeps the configured style: the WASM default is not applied.
+    (term as any).renderTick();
+    expect(setCursorStyle).not.toHaveBeenCalled();
+
+    // vim insert mode: blinking bar. Normal mode: steady block.
+    term.write('\x1b[5 q');
+    (term as any).renderTick();
+    expect(setCursorStyle).toHaveBeenLastCalledWith('bar');
+
+    term.write('\x1b[2 q');
+    (term as any).renderTick();
+    expect(setCursorStyle).toHaveBeenLastCalledWith('block');
+
+    // An unchanged shape is not re-applied every frame.
+    setCursorStyle.mockClear();
+    (term as any).renderTick();
+    expect(setCursorStyle).not.toHaveBeenCalled();
+
+    term.dispose();
+  });
+});

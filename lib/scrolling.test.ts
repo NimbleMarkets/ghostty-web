@@ -136,6 +136,26 @@ describe('Terminal Scrolling', () => {
       expect(dataSent.length).toBeCloseTo(3, 1); // ~3 arrows per click
     });
 
+    test('should send SGR wheel events, not arrows, when the app tracks the mouse', async () => {
+      // vim with `set mouse=a`, or any TUI with mouse reporting on, expects
+      // button 64/65 wheel reports; arrow keys would move its cursor instead.
+      terminal.write('\x1B[?1000h\x1B[?1006h');
+      const dataSent: string[] = [];
+      terminal.onData((data) => dataSent.push(data));
+
+      // Happy DOM drops clientX/clientY from WheelEventInit; a browser sets them.
+      const wheelAt = (deltaY: number): WheelEvent => {
+        const event = new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'clientX', { value: 0 });
+        Object.defineProperty(event, 'clientY', { value: 0 });
+        return event;
+      };
+      container.dispatchEvent(wheelAt(-100));
+      container.dispatchEvent(wheelAt(100));
+
+      expect(dataSent).toEqual(['\x1b[<64;1;1M', '\x1b[<65;1;1M']);
+    });
+
     test('should not scroll viewport in alternate screen', async () => {
       const initialViewportY = terminal.viewportY;
 
