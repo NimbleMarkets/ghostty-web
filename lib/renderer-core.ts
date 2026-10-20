@@ -112,8 +112,10 @@ export function parseHexColor(hex: string): [number, number, number] {
 /**
  * Measure cell metrics for a given font. Uses an offscreen Canvas2D context
  * (the only DOM API that exposes per-glyph measureText). Width is the
- * advance of 'M' (typically the widest character in monospace fonts);
- * height adds 2px padding to absorb glyph overflow + anti-aliasing.
+ * advance of 'M'. Height includes descenders, the primary font's line box,
+ * and a representative emoji fallback. Measuring only M's ink gives a short
+ * baseline and clips color emoji at the top of GPU atlas slots; Canvas2D
+ * instead lets the same glyph bleed into the preceding row.
  */
 export function measureFont(fontSize: number, fontFamily: string): FontMetrics {
   const c = document.createElement('canvas');
@@ -121,9 +123,18 @@ export function measureFont(fontSize: number, fontFamily: string): FontMetrics {
   ctx.font = `${fontSize}px ${fontFamily}`;
   const m = ctx.measureText('M');
   const width = Math.ceil(m.width);
-  const ascent = m.actualBoundingBoxAscent || fontSize * 0.8;
-  const descent = m.actualBoundingBoxDescent || fontSize * 0.2;
-  const height = Math.ceil(ascent + descent) + 2;
+  // Keep the column advance independent of the fallback font. Its emoji
+  // normally occupies two columns, but needs a taller vertical ink box.
+  const sample = ctx.measureText('Mg😀');
+  const ascent = Math.max(
+    sample.actualBoundingBoxAscent || fontSize * 0.8,
+    m.fontBoundingBoxAscent || 0
+  );
+  const descent = Math.max(
+    sample.actualBoundingBoxDescent || fontSize * 0.2,
+    m.fontBoundingBoxDescent || 0
+  );
+  const height = Math.ceil(ascent) + Math.ceil(descent) + 2;
   const baseline = Math.ceil(ascent) + 1;
   return { width, height, baseline };
 }

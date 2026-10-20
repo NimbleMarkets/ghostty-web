@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { RowBidiMapper } from './bidi';
 import { KITTY_PLACEHOLDER, ROWCOLUMN_DIACRITICS } from './kitty_diacritics';
 import {
@@ -16,12 +16,74 @@ import {
   encodeCells,
   isColorGlyph,
   kittyImageToRGBA,
+  measureFont,
   premultiplyAlpha,
   visualCursorX,
 } from './renderer-core';
 import type { IRenderable } from './renderer-types';
 import type { GhosttyCell, KittyPlacementInfo } from './types';
 import { KittyImageFormat } from './types';
+
+describe('measureFont: fallback glyph bounds', () => {
+  function withMetrics(
+    primary: Partial<TextMetrics>,
+    fallback: Partial<TextMetrics>,
+    check: () => void
+  ) {
+    const canvas = {
+      getContext: () => ({
+        font: '',
+        measureText: (text: string) => (text === 'M' ? primary : fallback),
+      }),
+    };
+    const create = spyOn(document, 'createElement').mockReturnValue(
+      canvas as unknown as HTMLCanvasElement
+    );
+    try {
+      check();
+    } finally {
+      create.mockRestore();
+    }
+  }
+
+  test('fits the full Safari color-emoji ink above and below the baseline without widening columns', () => {
+    withMetrics(
+      {
+        width: 9.0015,
+        actualBoundingBoxAscent: 8.6719,
+        actualBoundingBoxDescent: 0,
+        fontBoundingBoxAscent: 13,
+        fontBoundingBoxDescent: 4,
+      },
+      { width: 38, actualBoundingBoxAscent: 15, actualBoundingBoxDescent: 3.75 },
+      () => {
+        const metrics = measureFont(15, 'monospace');
+        expect(metrics.width).toBe(10);
+        expect(metrics.baseline - 15).toBeGreaterThanOrEqual(1);
+        expect(metrics.height - metrics.baseline - 3.75).toBeGreaterThanOrEqual(1);
+        expect(metrics).toEqual({ width: 10, height: 21, baseline: 16 });
+      }
+    );
+  });
+
+  test('preserves a primary font line box larger than the representative fallback ink', () => {
+    withMetrics(
+      { width: 8, fontBoundingBoxAscent: 17.2, fontBoundingBoxDescent: 5.1 },
+      { actualBoundingBoxAscent: 12.4, actualBoundingBoxDescent: 3.3 },
+      () => {
+        const metrics = measureFont(15, 'monospace');
+        expect(metrics.baseline).toBe(19);
+        expect(metrics.height).toBe(26);
+      }
+    );
+  });
+
+  test('retains the size-based fallback when the browser has no ink or font bounds', () => {
+    withMetrics({ width: 9 }, {}, () => {
+      expect(measureFont(15, 'monospace')).toEqual({ width: 9, height: 17, baseline: 13 });
+    });
+  });
+});
 
 // Build a fresh GhosttyCell with safe defaults. Tests override fields they care about.
 function makeCell(overrides: Partial<GhosttyCell> = {}): GhosttyCell {

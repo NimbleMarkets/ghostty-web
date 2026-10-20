@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- Include descenders, primary font line bounds, and emoji fallback ink in cell
+  height and baseline measurements, while keeping column width based on the
+  monospace advance. Measuring only the ink in M clipped the top of joined
+  emoji in WebGPU and WebGL atlas slots and let Canvas2D paint into the row
+  above. Rows may become taller with fonts that need the additional space.
+
 - Draw color emoji in their own colors with the WebGPU and WebGL renderers.
   Both treated every glyph as a coverage mask in the foreground color, so
   emoji came out as silhouettes in the text color. The atlas now marks glyphs
