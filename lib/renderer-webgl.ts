@@ -118,6 +118,7 @@ const uint FLAG_IS_KITTY_PLACEHOLDER = 1u << 11;
 const uint FLAG_USE_THEME_FG = 1u << 12;
 const uint FLAG_USE_THEME_BG = 1u << 13;
 const uint FLAG_IS_CURSOR_CELL = 1u << 14;
+const uint FLAG_COLOR_GLYPH = 1u << 15;
 uniform highp usampler2D uCellTex;
 uniform highp sampler2D uAtlasTex;
 uniform highp sampler2D uKittyAtlas;
@@ -169,9 +170,13 @@ void main() {
   vec2 auv = vec2(float(atlasUV & 0xffffu), float((atlasUV >> 16) & 0xffffu));
   vec2 asz = vec2(float(atlasSize & 0xffffu), float((atlasSize >> 16) & 0xffffu));
   vec2 texCoord = (auv + vUv * asz) / float(grid.atlasSize);
-  float mask = textureLod(uAtlasTex, texCoord, 0.0).a;
-  float alpha = (flags & FLAG_FAINT) != 0u ? mask * 0.5 : mask;
-  vec3 outRgb = mix(bg, fg, alpha);
+  vec4 texel = textureLod(uAtlasTex, texCoord, 0.0);
+  float fade = (flags & FLAG_FAINT) != 0u ? 0.5 : 1.0;
+  // A color glyph (emoji) is premultiplied RGBA drawn as it is; any other
+  // glyph is a coverage mask in the fg.
+  vec3 outRgb = (flags & FLAG_COLOR_GLYPH) != 0u
+    ? bg * (1.0 - texel.a * fade) + texel.rgb * fade
+    : mix(bg, fg, texel.a * fade);
   float baselineFrac = 0.85;
   float underlineThickness = 1.0 / grid.cellSize.y;
   bool hoverActive = (flags & (FLAG_IS_HYPERLINK_HOVERED | FLAG_IS_LINK_RANGE_HOVERED)) != 0u;

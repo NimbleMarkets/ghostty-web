@@ -405,6 +405,17 @@ describe('WebGL2Renderer', () => {
       expect(uniformNames).toContain('uCellTex');
       expect(uniformNames).toContain('uAtlasTex');
     });
+
+    test('text shader keeps the colors of color glyphs', async () => {
+      const canvas = document.createElement('canvas');
+      await WebGL2Renderer.create(canvas, {});
+      const sources = getStub()
+        .calls.filter((c) => c.method === 'shaderSource')
+        .map((c) => c.args[1] as string);
+      const text = sources.find((src) => src.includes('uAtlasTex') && src.includes('fragColor'));
+      expect(text).toContain('const uint FLAG_COLOR_GLYPH = 1u << 15;');
+      expect(text).toContain('(flags & FLAG_COLOR_GLYPH) != 0u');
+    });
   });
 
   describe('cell texture upload', () => {

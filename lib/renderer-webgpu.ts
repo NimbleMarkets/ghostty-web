@@ -110,6 +110,7 @@ const FLAG_IS_KITTY_PLACEHOLDER: u32 = 1u << 11u;
 const FLAG_USE_THEME_FG: u32 = 1u << 12u;
 const FLAG_USE_THEME_BG: u32 = 1u << 13u;
 const FLAG_IS_CURSOR_CELL: u32 = 1u << 14u;
+const FLAG_COLOR_GLYPH: u32 = 1u << 15u;
 
 fn drawBlockElement(idx: u32, uv: vec2<f32>) -> bool {
   switch idx {
@@ -254,10 +255,15 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
   // the surrounding control flow non-uniform. Chrome's WGSL validator
   // rejects textureSample under non-uniform CF; Safari was lenient.
   // The atlas has no mips, so explicit LOD 0 is correct.
-  let mask = textureSampleLevel(atlasTex, atlasSamp, texCoord, 0.0).a;
+  let texel = textureSampleLevel(atlasTex, atlasSamp, texCoord, 0.0);
+  let fade = select(1.0, 0.5, (flags & FLAG_FAINT) != 0u);
 
-  let alpha = select(mask, mask * 0.5, (flags & FLAG_FAINT) != 0u);
-  let outRgb = mix(bg, fg, alpha);
+  // A color glyph (emoji) is premultiplied RGBA drawn as it is; any other
+  // glyph is a coverage mask in the fg.
+  var outRgb = mix(bg, fg, texel.a * fade);
+  if ((flags & FLAG_COLOR_GLYPH) != 0u) {
+    outRgb = bg * (1.0 - texel.a * fade) + texel.rgb * fade;
+  }
 
   // Underline (thin line near baseline) and strikethrough (mid-cell).
   let baselineFrac = 0.85;       // matches CanvasRenderer's renderCellText

@@ -5,6 +5,7 @@ import {
   type AtlasSlot,
   CELL_BYTES,
   CELL_U32S,
+  FLAG_COLOR_GLYPH,
   FLAG_IS_CURSOR_CELL,
   FLAG_IS_KITTY_PLACEHOLDER,
   FLAG_IS_LINK_RANGE_HOVERED,
@@ -13,7 +14,9 @@ import {
   KittyAtlasBase,
   KittyTextureCacheBase,
   encodeCells,
+  isColorGlyph,
   kittyImageToRGBA,
+  premultiplyAlpha,
   visualCursorX,
 } from './renderer-core';
 import type { IRenderable } from './renderer-types';
@@ -367,6 +370,67 @@ describe('encodeCells: kitty placeholder grapheme cache', () => {
   // Confirm the test imports are wired — exercises CELL_BYTES so its import is used.
   test('CELL_BYTES matches CELL_U32S * 4', () => {
     expect(CELL_BYTES).toBe(CELL_U32S * 4);
+  });
+});
+
+describe('color glyphs', () => {
+  // The atlas rasterizes text in white: a glyph whose pixels are not white
+  // came from a color font (emoji) and must keep its colors.
+  const px = (...p: number[][]) => new Uint8ClampedArray(p.flat());
+
+  test('white text at any coverage is not a color glyph', () => {
+    expect(isColorGlyph(px([255, 255, 255, 255], [255, 255, 255, 40], [0, 0, 0, 0]))).toBe(false);
+  });
+
+  test('an empty raster is not a color glyph', () => {
+    expect(isColorGlyph(new Uint8ClampedArray(0))).toBe(false);
+  });
+
+  test('colored pixels make a color glyph', () => {
+    expect(isColorGlyph(px([255, 255, 255, 255], [230, 120, 40, 255]))).toBe(true);
+  });
+
+  test('dark opaque pixels make a color glyph, as in a black emoji', () => {
+    expect(isColorGlyph(px([20, 20, 20, 255]))).toBe(true);
+  });
+
+  test('nearly transparent fringes do not count', () => {
+    expect(isColorGlyph(px([90, 10, 200, 6]))).toBe(false);
+  });
+
+  test('premultiplyAlpha scales color by coverage', () => {
+    const rgba = px([200, 100, 50, 128], [10, 20, 30, 0], [255, 255, 255, 255]);
+    premultiplyAlpha(rgba);
+    expect([...rgba]).toEqual([100, 50, 25, 128, 0, 0, 0, 0, 255, 255, 255, 255]);
+  });
+
+  test('encodeCells flags both halves of a wide color glyph', () => {
+    const cols = 3;
+    const cells = [
+      makeCell({ codepoint: 0x1f4c1, width: 2 }), // 📁
+      makeCell({ codepoint: 0, width: 0 }),
+      makeCell({ codepoint: 0x41 }),
+    ];
+    const stubAtlas = {
+      getOrRaster: (grapheme: string) => ({ u: 0, v: 0, w: 16, h: 16, color: grapheme !== 'A' }),
+    };
+    const buffer = makeStubBuffer({ cols, rows: 1, cells, placements: [] });
+    const cellArray = new Uint32Array(cols * CELL_U32S);
+    encodeCells(cellArray, buffer, 0, undefined, {
+      metrics: { width: 8, height: 16, baseline: 12 },
+      selectionManager: undefined,
+      hoveredHyperlinkId: 0,
+      hoveredLinkRange: null,
+      cursorStyle: 'block' as const,
+      cursorBlinkVisible: false,
+      atlas: stubAtlas as unknown as GlyphAtlasBase,
+      kittyEnabled: false,
+      blockElementShaderEnabled: false,
+    });
+    const flags = (x: number) => cellArray[x * CELL_U32S + 4]!;
+    expect(flags(0) & FLAG_COLOR_GLYPH).toBe(FLAG_COLOR_GLYPH);
+    expect(flags(1) & FLAG_COLOR_GLYPH).toBe(FLAG_COLOR_GLYPH);
+    expect(flags(2) & FLAG_COLOR_GLYPH).toBe(0);
   });
 });
 

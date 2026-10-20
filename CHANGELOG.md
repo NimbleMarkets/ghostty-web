@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- Draw color emoji in their own colors with the WebGPU and WebGL renderers.
+  Both treated every glyph as a coverage mask in the foreground color, so
+  emoji came out as silhouettes in the text color. The atlas now marks glyphs
+  rasterized in color and stores them premultiplied; the shaders composite
+  those over the background, honoring faint. Canvas2D already drew them.
+
 - Report wheel events as SGR mouse buttons 64/65 when the application has
   mouse tracking on, instead of arrow keys, so vim with `set mouse=a` and
   TUIs with mouse reporting scroll their own content. Arrow keys remain the

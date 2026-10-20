@@ -41,6 +41,8 @@ export const FLAG_IS_KITTY_PLACEHOLDER = 1 << 11;
 export const FLAG_USE_THEME_FG = 1 << 12;
 export const FLAG_USE_THEME_BG = 1 << 13;
 export const FLAG_IS_CURSOR_CELL = 1 << 14;
+/** The glyph has its own colors (a color emoji): draw them, not the fg. */
+export const FLAG_COLOR_GLYPH = 1 << 15;
 
 // ---------------------------------------------------------------------------
 // Default theme
@@ -233,7 +235,35 @@ export function buildGridUBOBytes(state: GridUBOState): Uint32Array {
 // Glyph atlas (shared shelf-packed cache; texture upload/grow per backend)
 // ---------------------------------------------------------------------------
 
-export type AtlasSlot = { u: number; v: number; w: number; h: number };
+/** `color` marks a glyph rasterized in its own colors, stored premultiplied. */
+export type AtlasSlot = { u: number; v: number; w: number; h: number; color?: boolean };
+
+/**
+ * Whether a glyph rasterized in white came out in other colors, as one from
+ * a color emoji font does. Faint fringes (alpha < 16) are ignored; any other
+ * pixel more than a little off white counts, so black emoji parts do too.
+ */
+export function isColorGlyph(rgba: Uint8ClampedArray): boolean {
+  for (let i = 0; i + 3 < rgba.length; i += 4) {
+    if (rgba[i + 3]! < 16) continue;
+    if (Math.min(rgba[i]!, rgba[i + 1]!, rgba[i + 2]!) < 232) return true;
+  }
+  return false;
+}
+
+/**
+ * Multiplies each pixel's color by its alpha, in place, so a color glyph
+ * blends and filters correctly: the shader adds it over bg * (1 - alpha).
+ */
+export function premultiplyAlpha(rgba: Uint8ClampedArray): void {
+  for (let i = 0; i + 3 < rgba.length; i += 4) {
+    const a = rgba[i + 3]!;
+    if (a === 255) continue;
+    rgba[i] = Math.round((rgba[i]! * a) / 255);
+    rgba[i + 1] = Math.round((rgba[i + 1]! * a) / 255);
+    rgba[i + 2] = Math.round((rgba[i + 2]! * a) / 255);
+  }
+}
 
 /**
  * Backend-agnostic glyph atlas. Owns shelf packing, the grapheme cache,
@@ -352,6 +382,12 @@ export abstract class GlyphAtlasBase {
     ctx.fillText(grapheme, 0, baseline);
 
     const img = ctx.getImageData(0, 0, w, h);
+    // A color font ignores fillStyle: keep such a glyph's colors, which the
+    // shaders draw as they are instead of as a coverage mask in the fg.
+    if (isColorGlyph(img.data)) {
+      slot.color = true;
+      premultiplyAlpha(img.data);
+    }
     this.uploadRegion(slot, img.data, w, h);
     return slot;
   }
@@ -630,6 +666,7 @@ export function encodeCells(
         const styleBits = (flags & FLAG_BOLD ? 1 : 0) | (flags & FLAG_ITALIC ? 2 : 0);
         const widthInCells = c.width === 2 ? 2 : 1;
         const slot = ctx.atlas.getOrRaster(grapheme, styleBits, ctx.metrics.baseline, widthInCells);
+        if (slot.color) flags |= FLAG_COLOR_GLYPH;
         arr[i + 2] = (slot.u & 0xffff) | ((slot.v & 0xffff) << 16);
         arr[i + 3] =
           widthInCells === 2
