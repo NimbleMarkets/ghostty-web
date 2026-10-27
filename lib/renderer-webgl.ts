@@ -14,8 +14,10 @@
  *   T12: setters / lifecycle
  *   T13: webglcontextlost listener API
  *
- * No kitty graphics, no in-shader block-element drawing in v1.
+ * Kitty images use layered textured rectangles; block elements use the glyph atlas.
  */
+
+import type { ImageFrame } from './render-images';
 
 import type { RowBidiMapper } from './bidi';
 import { CursorBlink } from './cursor-blink';
@@ -119,6 +121,7 @@ const uint FLAG_USE_THEME_FG = 1u << 12;
 const uint FLAG_USE_THEME_BG = 1u << 13;
 const uint FLAG_IS_CURSOR_CELL = 1u << 14;
 const uint FLAG_COLOR_GLYPH = 1u << 15;
+uniform int uTextPass; // 0: combined legacy, 1: backgrounds, 2: glyphs
 uniform highp usampler2D uCellTex;
 uniform highp sampler2D uAtlasTex;
 uniform highp sampler2D uKittyAtlas;
@@ -151,7 +154,17 @@ void main() {
   if ((flags & FLAG_INVERSE) != 0u) { vec3 tmp = fg; fg = bg; bg = tmp; }
   if ((flags & FLAG_IS_SELECTED) != 0u) { bg = pal.selectionBg.rgb; fg = pal.selectionFg.rgb; }
   if ((flags & FLAG_IS_CURSOR_CELL) != 0u) { bg = pal.cursorBg.rgb; fg = pal.cursorFg.rgb; }
-  if ((flags & FLAG_INVISIBLE) != 0u) { fragColor = vec4(bg, 1.0); return; }
+  if (uTextPass == 3 && (flags & FLAG_IS_CURSOR_CELL) == 0u) discard;
+  if (uTextPass == 1) {
+    bool defaultBg = (flags & FLAG_INVERSE) != 0u ? (flags & FLAG_USE_THEME_FG) != 0u : (flags & FLAG_USE_THEME_BG) != 0u;
+    if (defaultBg && (flags & (FLAG_IS_SELECTED | FLAG_IS_CURSOR_CELL)) == 0u) discard;
+    fragColor = vec4(bg, 1.0); return;
+  }
+  if ((flags & FLAG_INVISIBLE) != 0u) {
+    if (uTextPass == 2) discard;
+    fragColor = vec4(bg, 1.0); return;
+  }
+  if (uTextPass == 2) bg = vec3(0.0);
   if ((flags & FLAG_IS_KITTY_PLACEHOLDER) != 0u) {
     // Slice + grid encoded in c1.y / c1.w (was blockOrSlice / _r in WGSL).
     uint sliceCol = c1.y & 0xffffu;
@@ -189,7 +202,7 @@ void main() {
   if ((flags & FLAG_STRIKETHROUGH) != 0u && abs(vUv.y - 0.5) < underlineThickness) {
     fragColor = vec4(fg, 1.0); return;
   }
-  fragColor = vec4(outRgb, 1.0);
+  fragColor = vec4(outRgb, uTextPass == 2 ? texel.a * fade : 1.0);
 }
 `;
 
@@ -449,6 +462,7 @@ export class WebGL2Renderer implements Renderer {
   private lastViewportYRendered = Number.NaN;
   private lastSelectionSig: string | null = null;
   private lastKittyPlacementSig: string | null = null;
+  private imageFrame?: ImageFrame;
   private cellArray = new Uint32Array(0);
   private atlas?: GLGlyphAtlas;
   private kittyAtlas?: GLKittyAtlas;
@@ -764,6 +778,7 @@ export class WebGL2Renderer implements Renderer {
 
   /** See WebGPURenderer.computeKittyPlacementSig. */
   private computeKittyPlacementSig(buffer: IRenderable): string | null {
+    if (this.imageFrame) return String(this.imageFrame.revision);
     if (!buffer.getKittyGraphics || !buffer.iterPlacements) return null;
     const graphics = buffer.getKittyGraphics();
     if (graphics === null) return null;
@@ -778,6 +793,7 @@ export class WebGL2Renderer implements Renderer {
   render(buffer: IRenderable, viewportY: number = 0, sb?: IScrollbackProvider): void {
     if (this.cols === 0 || this.rows === 0) return;
     const gl = this.gl;
+    this.imageFrame = buffer.getImageFrame?.(viewportY);
     const cursor = buffer.getCursor();
 
     // Frame-skip gate. See WebGPURenderer.render() for rationale.
@@ -804,6 +820,8 @@ export class WebGL2Renderer implements Renderer {
     this.lastSelectionSig = selSig ?? this.computeSelectionSig();
     this.lastKittyPlacementSig = kittySig ?? this.computeKittyPlacementSig(buffer);
 
+    if (this.imageFrame)
+      this.kittyTextures.retain(new Set(this.imageFrame.placements.map((p) => p.imageId)));
     const { usedKittyImageIds } = this.encodeCells(buffer, viewportY, sb);
     this.uploadGridUBO(viewportY, {
       ...cursor,
@@ -835,13 +853,15 @@ export class WebGL2Renderer implements Renderer {
 
     // Direct kitty placements pre-walk (must happen before draw, so the params
     // UBOs are already populated by the time we issue the kitty draw loop).
-    const directPlacements: Array<{ params: Float32Array; tex: WebGLTexture }> = [];
-    if (kittyGraphics !== null && buffer.iterPlacements) {
+    const directPlacements: Array<{ params: Float32Array; tex: WebGLTexture; layer: number }> = [];
+    if (this.imageFrame || (kittyGraphics !== null && buffer.iterPlacements)) {
       const cssW = this.cols * this.metrics.width;
       const cssH = this.rows * this.metrics.height;
-      for (const p of buffer.iterPlacements(kittyGraphics, true)) {
-        if (p.isVirtual) continue;
-        const pixels = buffer.getKittyImagePixels?.(kittyGraphics, p.imageId);
+      for (const p of this.imageFrame?.placements ?? buffer.iterPlacements!(kittyGraphics!, true)) {
+        if ('isVirtual' in p && p.isVirtual) continue;
+        const pixels = this.imageFrame
+          ? this.imageFrame.pixels(p.imageId)
+          : buffer.getKittyImagePixels?.(kittyGraphics!, p.imageId);
         if (!pixels) continue;
         const tex = this.kittyTextures.getOrUpload(p.imageId, pixels);
         if (!tex) continue;
@@ -850,15 +870,15 @@ export class WebGL2Renderer implements Renderer {
         params[1] = p.sourceY;
         params[2] = p.sourceWidth;
         params[3] = p.sourceHeight;
-        params[4] = p.viewportCol * this.metrics.width;
-        params[5] = p.viewportRow * this.metrics.height;
+        params[4] = p.viewportCol * this.metrics.width + ('offsetX' in p ? p.offsetX : 0);
+        params[5] = p.viewportRow * this.metrics.height + ('offsetY' in p ? p.offsetY : 0);
         params[6] = p.pixelWidth;
         params[7] = p.pixelHeight;
         params[8] = pixels.width;
         params[9] = pixels.height;
         params[10] = cssW;
         params[11] = cssH;
-        directPlacements.push({ params, tex });
+        directPlacements.push({ params, tex, layer: 'layer' in p ? p.layer : 2 });
       }
     }
     this.ensureKittyRingSize(directPlacements.length);
@@ -890,47 +910,62 @@ export class WebGL2Renderer implements Renderer {
     gl.clearColor(tr / 255, tg / 255, tb / 255, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // Text pass.
-    if (
-      this.textProgram &&
-      this.vao &&
-      this.cellTex &&
-      this.atlas &&
-      this.gridUBO &&
-      this.paletteUBO &&
-      this.kittyAtlas &&
-      this.kittyAtlasUBO
-    ) {
-      gl.useProgram(this.textProgram);
-      gl.bindVertexArray(this.vao);
-      gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.gridUBO);
-      gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, this.paletteUBO);
-      gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, this.kittyAtlasUBO);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.cellTex);
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, this.atlas.glTexture());
-      gl.activeTexture(gl.TEXTURE2);
-      gl.bindTexture(gl.TEXTURE_2D, this.kittyAtlas.glTexture());
-      gl.disable(gl.BLEND); // text pass overwrites
-      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.cols * this.rows);
-    }
-
-    // Direct kitty placements — draw between text and cursor so images sit over
-    // text but under the cursor (matches WebGPU ordering).
-    if (this.kittyProgram && directPlacements.length > 0) {
-      gl.useProgram(this.kittyProgram);
-      gl.bindVertexArray(this.vao!);
-      gl.enable(gl.BLEND);
-      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      gl.blendEquation(gl.FUNC_ADD);
-      for (let i = 0; i < directPlacements.length; i++) {
-        gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.kittyParamsRing[i]!);
+    const drawText = (textPass: number): void => {
+      if (
+        this.textProgram &&
+        this.vao &&
+        this.cellTex &&
+        this.atlas &&
+        this.gridUBO &&
+        this.paletteUBO &&
+        this.kittyAtlas &&
+        this.kittyAtlasUBO
+      ) {
+        gl.useProgram(this.textProgram);
+        gl.bindVertexArray(this.vao);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.gridUBO);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, this.paletteUBO);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, this.kittyAtlasUBO);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, directPlacements[i]!.tex);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindTexture(gl.TEXTURE_2D, this.cellTex);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.atlas.glTexture());
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, this.kittyAtlas.glTexture());
+        gl.uniform1i(gl.getUniformLocation(this.textProgram, 'uTextPass'), textPass);
+        gl.enable(gl.BLEND);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.cols * this.rows);
       }
-      gl.disable(gl.BLEND);
+    };
+    const drawImages = (layer: number): void => {
+      if (this.kittyProgram && directPlacements.length > 0) {
+        gl.useProgram(this.kittyProgram);
+        gl.bindVertexArray(this.vao!);
+        gl.enable(gl.BLEND);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(gl.FUNC_ADD);
+        for (let i = 0; i < directPlacements.length; i++) {
+          if (directPlacements[i]!.layer !== layer) continue;
+          gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.kittyParamsRing[i]!);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, directPlacements[i]!.tex);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+        gl.disable(gl.BLEND);
+      }
+    };
+    if (this.imageFrame) {
+      drawImages(0);
+      drawText(1);
+      drawImages(1);
+      drawText(2);
+      drawImages(2);
+      if (cursor.visible && this.cursorStyle === 'block' && viewportY === 0) drawText(3);
+    } else {
+      drawText(0);
+      drawImages(2);
     }
 
     // Cursor pass — only for non-block styles. Block cursor is handled by the

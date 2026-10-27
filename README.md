@@ -71,15 +71,31 @@ Three GPU/CPU rendering backends are supported. Pass
 `{ renderer: 'webgpu' | 'webgl' | 'canvas2d' | 'auto' }` (default `'auto'`) to the
 `Terminal` constructor.
 
-- **WebGPU** — preferred; required for full kitty graphics atlas performance
+- **WebGPU** — preferred GPU backend with cached image textures
 - **WebGL2** — fallback for browsers without WebGPU (notably Safari < 26 and
-  Firefox without the flag); shares the same atlas-based kitty path
+  Firefox without the flag); uses the same resolved image draw list
 - **Canvas2D** — universal fallback; supports kitty graphics via 2D context
 
 `'auto'` tries WebGPU → WebGL2 → Canvas2D in order, transparently falling
 through to the next on init failure. At runtime, GPU device-loss (WebGPU) or
 context-loss (WebGL) automatically demotes to the next available backend on
 a fresh canvas.
+
+All three backends use Ghostty's resolved Kitty image placements, including
+fixed, relative and Unicode-placeholder images, source cropping and pixel offsets.
+Images compose below cell backgrounds, below text or above text according to their
+layer and z-index. Contiguous placeholder strips are merged when their geometry
+allows it; they no longer use a 256-image shader lookup table.
+
+Image generations control pixel uploads independently of placement changes.
+Animation wakes the renderer at Ghostty's next frame deadline, respects synchronized
+output and stops scheduling when playback stops or the terminal is disposed.
+Off-screen decoded images/textures are evicted; each decoded-image cache is capped
+at 64 MiB. Images exceeding that budget may be omitted until resources are available.
+Legacy custom render buffers without `getImageFrame()` retain the older graphics path.
+
+Run `bun run dev` and open [the renderer checks](./demo/kitty-renderer-check.html)
+for real-browser layer and animation checks across all three backends.
 
 ### Unicode and bidirectional text
 
@@ -127,17 +143,17 @@ Rebuilding requires Zig **0.17.0**; use
 
 Compared with our previous October 6 pin (`a4aacd918`), this release brings:
 
-| Change                                                                                           | Availability in ghostty-web                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OSC 7501 revision 0.4: capability lists in support replies, stricter record IDs                  | Active through `onProgramStatus`; the host owns ancestor `app` inheritance.                                                                                                                  |
-| CSI 19 t screen-size reports and DECXCPR extended cursor reports                                 | Handled by WASM through existing response routing. CSI 19 t uses the text-area dimensions.                                                                                                   |
-| DECSTR soft reset, tab-stop clearing, pending-wrap, grapheme reflow, selection and history fixes | Included in the updated terminal core.                                                                                                                                                       |
-| Unified render-state image iterator                                                              | New upstream API resolves fixed, relative and Unicode-placeholder Kitty placements, with geometry, layers and placement generations. Our renderer still uses its existing graphics bindings. |
-| Kitty animation tick                                                                             | New upstream API advances frames and returns the next redraw deadline; browser animation scheduling is not wired up.                                                                         |
-| Kitty graphics in snapshots                                                                      | Upstream snapshots now preserve images, placements and animation state, with progressive pixel loading. No public TypeScript snapshot wrapper yet.                                           |
-| Prompt-based viewport navigation                                                                 | Upstream adds a prompt-delta scroll mode; no public TypeScript method yet.                                                                                                                   |
-| CSI 8 t window-resize callback                                                                   | Upstream exposes resize requests to the embedder; no browser callback is installed.                                                                                                          |
-| Bounded VT parsing                                                                               | `ghostty_terminal_vt_write_until` replaces `ghostty_terminal_vt_write_until_ground`, adding APC, DCS and OSC boundaries. Our normal write path is unchanged.                                 |
+| Change                                                                                           | Availability in ghostty-web                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OSC 7501 revision 0.4: capability lists in support replies, stricter record IDs                  | Active through `onProgramStatus`; the host owns ancestor `app` inheritance.                                                                                                                       |
+| CSI 19 t screen-size reports and DECXCPR extended cursor reports                                 | Handled by WASM through existing response routing. CSI 19 t uses the text-area dimensions.                                                                                                        |
+| DECSTR soft reset, tab-stop clearing, pending-wrap, grapheme reflow, selection and history fixes | Included in the updated terminal core.                                                                                                                                                            |
+| Unified render-state image iterator                                                              | New upstream API resolves fixed, relative and Unicode-placeholder Kitty placements, with geometry, layers and placement generations. All three renderers consume this list, including scrollback. |
+| Kitty animation tick                                                                             | New upstream API advances frames and returns the next redraw deadline; deadline-driven browser animation scheduling is enabled.                                                                   |
+| Kitty graphics in snapshots                                                                      | Upstream snapshots now preserve images, placements and animation state, with progressive pixel loading. No public TypeScript snapshot wrapper yet.                                                |
+| Prompt-based viewport navigation                                                                 | Upstream adds a prompt-delta scroll mode; no public TypeScript method yet.                                                                                                                        |
+| CSI 8 t window-resize callback                                                                   | Upstream exposes resize requests to the embedder; no browser callback is installed.                                                                                                               |
+| Bounded VT parsing                                                                               | `ghostty_terminal_vt_write_until` replaces `ghostty_terminal_vt_write_until_ground`, adding APC, DCS and OSC boundaries. Our normal write path is unchanged.                                      |
 
 The existing browser graphics/shared-memory and recycled-row patch applies
 unchanged. The build now uses Zig 0.17.0 and `-Doptimize=small`; CI and the Nix

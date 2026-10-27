@@ -6,8 +6,9 @@
  * snapshot of all render data in a single update call.
  */
 
+import { RenderImages } from './render-images';
+
 import { decode as decodePng } from 'fast-png';
-import { KittyGraphicsRevision } from './kitty-graphics-revision';
 import {
   CellData,
   CellFlags,
@@ -275,6 +276,8 @@ export class KeyEncoder {
   }
 }
 
+let nextImageRevision = 0;
+
 /**
  * GhosttyTerminal - High-performance terminal emulator
  *
@@ -284,7 +287,40 @@ export class KeyEncoder {
  * - No per-row WASM boundary crossings!
  */
 export class GhosttyTerminal {
-  private kittyRevision = new KittyGraphicsRevision();
+  private imageRevisions = new Map<number, { generation: bigint; revision: number }>();
+  private imageEpoch = 0;
+  private renderImages?: RenderImages;
+  private lastImageFrameRevision = -1;
+
+  private images(): RenderImages {
+    this.renderImages ??= new RenderImages(
+      this.exports,
+      this.handle,
+      this.renderHandle,
+      () => {
+        this.update();
+      },
+      () => ({ width: this.cellWidthPx, height: this.cellHeightPx }),
+      (g, id) => this.getKittyImagePixels(g, id)
+    );
+    return this.renderImages;
+  }
+
+  getImageFrame(viewportY = 0) {
+    const frame = this.images().getFrame(this.imageEpoch, viewportY);
+    if (frame.revision !== this.lastImageFrameRevision) {
+      const ids = new Set(frame.placements.map((p) => p.imageId));
+      for (const id of this.imageRevisions.keys()) if (!ids.has(id)) this.imageRevisions.delete(id);
+      this.lastImageFrameRevision = frame.revision;
+    }
+    return frame;
+  }
+
+  tickImageAnimations(now: number): number | null {
+    const result = this.images().tick(now);
+    if (result.changed) this.imageEpoch++;
+    return result.next;
+  }
 
   private exports: GhosttyWasmExports;
   private memory: WebAssembly.Memory;
@@ -623,6 +659,8 @@ export class GhosttyTerminal {
       this.renderHandle = 0;
     }
     if (this.handle) {
+      this.renderImages?.dispose();
+      this.renderImages = undefined;
       this.exports.ghostty_terminal_free(this.handle);
     }
   }
@@ -712,7 +750,7 @@ export class GhosttyTerminal {
     new Uint8Array(this.memory.buffer).set(bytes, ptr);
     try {
       this.exports.ghostty_terminal_vt_write(this.handle, ptr, bytes.length);
-      this.kittyRevision.write(bytes);
+      this.imageEpoch++;
     } finally {
       this.exports.ghostty_wasm_free(ptr, bytes.length);
     }
@@ -727,6 +765,7 @@ export class GhosttyTerminal {
     if (cols === this._cols && rows === this._rows) return;
     this._cols = cols;
     this._rows = rows;
+    this.imageEpoch++;
     this.exports.ghostty_terminal_resize(
       this.handle,
       cols,
@@ -756,6 +795,7 @@ export class GhosttyTerminal {
     view.setUint32(ptr + 0, lo, true);
     view.setUint32(ptr + 4, hi, true);
     this.exports.ghostty_terminal_set(this.handle, TerminalOption.KITTY_IMAGE_STORAGE_LIMIT, ptr);
+    this.imageEpoch++;
     this.exports.ghostty_wasm_free(ptr, 8);
   }
 
@@ -915,7 +955,7 @@ export class GhosttyTerminal {
     const image = this.exports.ghostty_kitty_graphics_image(graphics, imageId);
     if (image === 0) return null;
 
-    const u32Ptr = this.exports.ghostty_wasm_alloc(4);
+    const u32Ptr = this.exports.ghostty_wasm_alloc(8);
     try {
       const view = new DataView(this.memory.buffer);
       const read = (key: number): number => {
@@ -936,15 +976,26 @@ export class GhosttyTerminal {
         return null;
       }
 
+      this.exports.ghostty_kitty_graphics_image_get(
+        image,
+        KittyGraphicsImageData.GENERATION,
+        u32Ptr
+      );
+      const generation = new DataView(this.memory.buffer).getBigUint64(u32Ptr, true);
+      let stamp = this.imageRevisions.get(imageId);
+      if (!stamp || stamp.generation !== generation) {
+        stamp = { generation, revision: ++nextImageRevision };
+        this.imageRevisions.set(imageId, stamp);
+      }
       return {
         width,
         height,
         format,
         data: new Uint8Array(this.memory.buffer, dataPtr, dataLen),
-        revision: this.kittyRevision.value,
+        revision: stamp.revision,
       };
     } finally {
-      this.exports.ghostty_wasm_free(u32Ptr, 4);
+      this.exports.ghostty_wasm_free(u32Ptr, 8);
     }
   }
 
@@ -971,6 +1022,7 @@ export class GhosttyTerminal {
     if (w === this.cellWidthPx && h === this.cellHeightPx) return;
     this.cellWidthPx = w;
     this.cellHeightPx = h;
+    this.imageEpoch++;
     this.exports.ghostty_terminal_resize(this.handle, this._cols, this._rows, w, h);
   }
 
@@ -992,6 +1044,8 @@ export class GhosttyTerminal {
       this.exports.ghostty_render_state_free(this.renderHandle);
       this.renderHandle = 0;
     }
+    this.renderImages?.dispose();
+    this.renderImages = undefined;
     this.exports.ghostty_terminal_free(this.handle);
   }
 

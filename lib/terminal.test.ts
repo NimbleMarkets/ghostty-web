@@ -418,45 +418,22 @@ describe('Terminal', () => {
   });
 
   describe('Kitty graphics redraw', () => {
-    // A kitty image re-transmitted under the same id and size is decoded
-    // into the same wasm address as the one it replaces, so the renderer's
-    // placement signature cannot tell the frames apart and its frame-skip
-    // gate drops the redraw. The terminal must invalidate the renderer
-    // whenever a written chunk carries a kitty graphics APC (ESC _ G).
-    test('write() with a kitty graphics APC invalidates the renderer', async () => {
+    test('chunked retransmissions update image generations without scanning APC in JavaScript', async () => {
       const term = await createIsolatedTerminal();
       await term.open(container!);
-      // @ts-ignore - accessing private for test
-      const invalidate = spyOn(term.renderer, 'invalidate');
-
-      // 1x1 RGBA direct transmission, image id 7, as a string ...
       const apc = '\x1b_Ga=T,f=32,s=1,v=1,i=7;AAAAAA==\x1b\\';
       term.write(apc);
-      expect(invalidate).toHaveBeenCalled();
-
-      // ... and as bytes.
-      invalidate.mockClear();
+      const first = term.wasmTerm!.getImageFrame();
+      const pixels = first.pixels(7)!;
       term.write(new TextEncoder().encode(apc));
-      expect(invalidate).toHaveBeenCalled();
-
-      // The APC header and terminator can each straddle write boundaries.
-      invalidate.mockClear();
+      const second = term.wasmTerm!.getImageFrame();
+      expect(second.revision).not.toBe(first.revision);
+      expect(second.pixels(7)!.revision).not.toBe(pixels.revision);
       term.write('\x1b_');
-      expect(invalidate).not.toHaveBeenCalled();
       term.write('Ga=T,f=32,s=1,v=1,i=7;AAAAAA==');
-      expect(invalidate).toHaveBeenCalled();
-      invalidate.mockClear();
       term.write(new Uint8Array([0x1b]));
-      expect(invalidate).toHaveBeenCalled();
-      invalidate.mockClear();
       term.write(new Uint8Array([0x5c]));
-      expect(invalidate).toHaveBeenCalled();
-
-      // Ordinary output, including another APC kind and an OSC, must not.
-      invalidate.mockClear();
-      term.write('hello \x1b]0;title\x07 \x1b_Xnot-kitty\x1b\\');
-      expect(invalidate).not.toHaveBeenCalled();
-
+      expect(term.wasmTerm!.getImageFrame().revision).not.toBe(second.revision);
       term.dispose();
     });
   });

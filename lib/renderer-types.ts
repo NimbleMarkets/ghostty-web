@@ -15,6 +15,8 @@
  * via setOnRequestRender. The Terminal owns the actual scheduler.
  */
 
+import type { ImageFrame } from './render-images';
+
 import type { RowBidiMapper } from './bidi';
 import type { ITheme } from './interfaces';
 import type { SelectionManager } from './selection-manager';
@@ -57,6 +59,8 @@ export interface IRenderable {
   needsFullRedraw?(): boolean;
   clearDirty(): void;
   getGraphemeString?(row: number, col: number): string;
+
+  getImageFrame?(viewportY?: number): ImageFrame;
 
   // Kitty graphics — optional; absent on test fakes.
   getKittyGraphics?(): number | null;

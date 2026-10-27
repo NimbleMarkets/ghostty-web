@@ -102,6 +102,12 @@ export class StubWebGL2 {
   deleteProgram(p: unknown) {
     this.calls.push({ method: 'deleteProgram', args: [p] });
   }
+  deleteBuffer(b: unknown) {
+    this.calls.push({ method: 'deleteBuffer', args: [b] });
+  }
+  deleteVertexArray(v: unknown) {
+    this.calls.push({ method: 'deleteVertexArray', args: [v] });
+  }
   deleteTexture(t: unknown) {
     this.calls.push({ method: 'deleteTexture', args: [t] });
   }

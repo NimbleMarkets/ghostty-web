@@ -664,7 +664,7 @@ describe('KittyTextureCacheBase', () => {
     expect(cache.uploaded.length).toBe(2);
   });
 
-  test('signature mismatch destroys old and creates new', () => {
+  test('changed pixels reuse an equally sized texture', () => {
     const cache = new StubCache();
     const px1 = {
       width: 2,
@@ -680,8 +680,22 @@ describe('KittyTextureCacheBase', () => {
     };
     cache.getOrUpload(42, px1 as any);
     cache.getOrUpload(42, px2 as any);
-    expect(cache.created.length).toBe(2);
+    expect(cache.created.length).toBe(1);
+    expect(cache.uploaded.length).toBe(2);
+    expect(cache.destroyed.length).toBe(0);
+  });
+
+  test('off-screen textures are evicted and oversized images respect the GPU budget', () => {
+    const cache = new StubCache();
+    const pixels = { width: 1, height: 1, format: KittyImageFormat.RGBA, data: new Uint8Array(4) };
+    cache.getOrUpload(1, pixels);
+    cache.getOrUpload(2, pixels);
+    cache.retain(new Set([2]));
+    expect(cache.get(1)).toBeUndefined();
+    expect(cache.get(2)).toBeDefined();
     expect(cache.destroyed.length).toBe(1);
+    expect(cache.getOrUpload(3, { ...pixels, width: 4097, height: 4097 })).toBeNull();
+    expect(cache.created.length).toBe(2);
   });
 
   test('unsupported format returns null without creating', () => {

@@ -516,7 +516,12 @@ export function encodeCells(
   const usedKittyImageIds: number[] = [];
   const usedKittyImageIndex = new Map<number, number>();
 
-  if (ctx.kittyEnabled && buffer.getKittyGraphics && buffer.iterPlacements) {
+  if (
+    ctx.kittyEnabled &&
+    !buffer.getImageFrame &&
+    buffer.getKittyGraphics &&
+    buffer.iterPlacements
+  ) {
     const graphics = buffer.getKittyGraphics();
     if (graphics !== null) {
       for (const p of buffer.iterPlacements(graphics, false)) {
@@ -612,7 +617,8 @@ export function encodeCells(
         if (inRange) flags |= FLAG_IS_LINK_RANGE_HOVERED;
       }
       const cp = c.codepoint || 0;
-      if (ctx.kittyEnabled && cp === KITTY_PLACEHOLDER) {
+      if (buffer.getImageFrame && cp === KITTY_PLACEHOLDER) flags |= FLAG_INVISIBLE;
+      if (ctx.kittyEnabled && !buffer.getImageFrame && cp === KITTY_PLACEHOLDER) {
         // Combining diacritics ride on the cell as `c.grapheme` (extras
         // beyond the base codepoint), populated by GhosttyTerminal.getViewport
         // during the existing per-cell walk. Reading them here avoids the
@@ -811,6 +817,18 @@ export abstract class KittyTextureCacheBase<TBackendTexture> {
     }
   >();
 
+  private readonly budget = 64 * 1024 * 1024;
+
+  /** Evict off-screen images before preparing draws, never textures in this frame. */
+  retain(imageIds: ReadonlySet<number>): void {
+    for (const [id, entry] of this.cache) {
+      if (!imageIds.has(id)) {
+        this.destroyTexture(entry.handle);
+        this.cache.delete(id);
+      }
+    }
+  }
+
   protected abstract createTexture(width: number, height: number): TBackendTexture | null;
   protected abstract uploadFull(
     handle: TBackendTexture,
@@ -844,11 +862,20 @@ export abstract class KittyTextureCacheBase<TBackendTexture> {
       cached.revision === (pixels.revision ?? 0);
     if (sigMatches) return cached.handle;
 
+    const bytes = pixels.width * pixels.height * 4;
+    let used = 0;
+    for (const [id, entry] of this.cache)
+      if (id !== imageId) used += entry.width * entry.height * 4;
+    if (used + bytes > this.budget) return null;
     const rgba = kittyImageToRGBA(pixels);
     if (!rgba) return null;
 
-    if (cached) this.destroyTexture(cached.handle);
-    const handle = this.createTexture(pixels.width, pixels.height);
+    const reuse = cached && cached.width === pixels.width && cached.height === pixels.height;
+    if (cached && !reuse) {
+      this.destroyTexture(cached.handle);
+      this.cache.delete(imageId);
+    }
+    const handle = reuse ? cached.handle : this.createTexture(pixels.width, pixels.height);
     if (!handle) return null;
     this.uploadFull(handle, rgba, pixels.width, pixels.height);
     this.cache.set(imageId, {

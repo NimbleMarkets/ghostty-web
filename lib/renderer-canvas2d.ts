@@ -10,6 +10,8 @@
  * - Dirty line optimization for 60 FPS
  */
 
+import type { ImageFrame } from './render-images';
+
 import type { RowBidiMapper } from './bidi';
 import { CursorBlink } from './cursor-blink';
 import type { ITheme } from './interfaces';
@@ -61,6 +63,8 @@ function cachedMatchesPixels(
 
 export class CanvasRenderer implements Renderer {
   public readonly backend = 'canvas2d' as const;
+  private imageFrame?: ImageFrame;
+  private previousImageFrame?: ImageFrame;
   private canvasEl: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private fontSize: number;
@@ -387,6 +391,7 @@ export class CanvasRenderer implements Renderer {
 
   /** See WebGPURenderer.computeKittyPlacementSig. */
   private computeKittyPlacementSig(buffer: IRenderable): string | null {
+    if (this.imageFrame) return String(this.imageFrame.revision);
     if (!buffer.getKittyGraphics || !buffer.iterPlacements) return null;
     const graphics = buffer.getKittyGraphics();
     if (graphics === null) return null;
@@ -404,6 +409,7 @@ export class CanvasRenderer implements Renderer {
     scrollbackProvider?: IScrollbackProvider
   ): void {
     this.frameKittyPixels.clear();
+    this.imageFrame = buffer.getImageFrame?.(viewportY);
 
     // Frame-skip gate. See WebGPURenderer.render() for rationale. Must
     // run BEFORE invalidateNext is reset and BEFORE precomputeKittyState
@@ -700,6 +706,7 @@ export class CanvasRenderer implements Renderer {
     // This is critical - if we don't clear after a full redraw, the dirty
     // state persists and the next frame might not detect new changes properly.
     buffer.clearDirty();
+    this.invalidateNext = false;
   }
 
   /**
@@ -729,6 +736,8 @@ export class CanvasRenderer implements Renderer {
     const map = this.bidiMapper?.getMap(line) ?? null;
     const reorder = map !== null && !map.isIdentity;
 
+    this.renderImageLayer(0, y);
+
     // PASS 1: Draw all cell backgrounds first
     // This ensures all backgrounds are painted before any text, allowing text
     // to "bleed" across cell boundaries without being covered by adjacent backgrounds
@@ -739,6 +748,8 @@ export class CanvasRenderer implements Renderer {
       this.renderCellBackground(cell, x, y, lx);
     }
 
+    this.renderImageLayer(1, y);
+
     // PASS 2: Draw all cell text and decorations
     // Now text can safely extend beyond cell boundaries (for complex scripts)
     for (let x = 0; x < line.length; x++) {
@@ -747,6 +758,7 @@ export class CanvasRenderer implements Renderer {
       if (cell.width === 0) continue; // Skip spacer cells for wide characters
       this.renderCellText(cell, x, y, undefined, reorder ? map!.mirror?.get(lx) : undefined, lx);
     }
+    this.renderImageLayer(2, y);
   }
 
   /**
@@ -820,6 +832,7 @@ export class CanvasRenderer implements Renderer {
     // text rendering. Malformed diacritics fall through to ordinary text.
     // Valid placeholders awaiting an image paint background only.
     if (cell.codepoint === KITTY_PLACEHOLDER) {
+      if (this.imageFrame) return;
       if (this.renderPlaceholderCell(cell, x, y)) return;
     }
 
@@ -982,6 +995,28 @@ export class CanvasRenderer implements Renderer {
    * per-cell hot path doesn't have to re-resolve it.
    */
   private precomputeKittyState(buffer: IRenderable, dimsRows: number): void {
+    if (this.imageFrame) {
+      this.currentDirectPlacements = [];
+      this.kittyDamagedRows.clear();
+      if (this.imageFrame !== this.previousImageFrame) {
+        for (const frame of [this.previousImageFrame, this.imageFrame]) {
+          for (const p of frame?.placements ?? []) {
+            const top = p.viewportRow + p.offsetY / this.metrics.height;
+            for (
+              let y = Math.max(0, Math.floor(top));
+              y < Math.min(dimsRows, Math.ceil(top + p.pixelHeight / this.metrics.height));
+              y++
+            )
+              this.kittyDamagedRows.add(y);
+          }
+        }
+      }
+      this.previousImageFrame = this.imageFrame;
+      const visible = new Set(this.imageFrame.placements.map((p) => p.imageId));
+      for (const id of this.kittyImageCache.keys())
+        if (!visible.has(id)) this.kittyImageCache.delete(id);
+      return;
+    }
     this.kittyVirtualPlacements.clear();
     this.currentDirectPlacements = [];
     this.kittyDamagedRows.clear();
@@ -1364,6 +1399,55 @@ export class CanvasRenderer implements Renderer {
     return true;
   }
 
+  private renderImageLayer(layer: number, row: number): void {
+    const frame = this.imageFrame;
+    if (!frame) return;
+    const h = this.metrics.height;
+    this.ctx.save();
+    this.ctx.beginPath();
+    this.ctx.rect(0, row * h, this.canvasEl.width / this.devicePixelRatio, h);
+    this.ctx.clip();
+    this.ctx.imageSmoothingEnabled = false;
+    for (const p of frame.placements) {
+      const y = p.viewportRow * h + p.offsetY;
+      if (p.layer !== layer || y >= (row + 1) * h || y + p.pixelHeight <= row * h) continue;
+      const pixels = frame.pixels(p.imageId);
+      if (!pixels) continue;
+      let cached = this.kittyImageCache.get(p.imageId);
+      if (!cached || !cachedMatchesPixels(cached, pixels)) {
+        let bytes = pixels.width * pixels.height * 4;
+        for (const [id, entry] of this.kittyImageCache) {
+          if (id !== p.imageId) bytes += entry.width * entry.height * 4;
+        }
+        if (bytes > 64 * 1024 * 1024) continue;
+        const canvas = this.decodeKittyImageToCanvas(pixels);
+        if (!canvas) continue;
+        cached = {
+          canvas,
+          width: pixels.width,
+          height: pixels.height,
+          format: pixels.format,
+          dataPtr: pixels.data.byteOffset,
+          dataLen: pixels.data.length,
+          revision: pixels.revision ?? 0,
+        };
+        this.kittyImageCache.set(p.imageId, cached);
+      }
+      this.ctx.drawImage(
+        cached.canvas,
+        p.sourceX,
+        p.sourceY,
+        p.sourceWidth,
+        p.sourceHeight,
+        p.viewportCol * this.metrics.width + p.offsetX,
+        y,
+        p.pixelWidth,
+        p.pixelHeight
+      );
+    }
+    this.ctx.restore();
+  }
+
   private renderKittyImages(): void {
     const buffer = this.currentRenderBuffer;
     const graphics = this.currentKittyGraphics;
@@ -1377,6 +1461,11 @@ export class CanvasRenderer implements Renderer {
       // Cache miss or stale (image was re-transmitted under the same id).
       // See kittyImageCache docstring for staleness-key rationale.
       if (!cached || !cachedMatchesPixels(cached, pixels)) {
+        let bytes = pixels.width * pixels.height * 4;
+        for (const [id, entry] of this.kittyImageCache) {
+          if (id !== p.imageId) bytes += entry.width * entry.height * 4;
+        }
+        if (bytes > 64 * 1024 * 1024) continue;
         const canvas = this.decodeKittyImageToCanvas(pixels);
         if (!canvas) continue;
         cached = {

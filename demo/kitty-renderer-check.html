@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Kitty renderer checks</title>
+    <style>
+      body {
+        background: #eee;
+        color: #222;
+        font: 16px system-ui;
+        margin: 24px;
+      }
+      canvas {
+        display: block;
+        border: 1px solid #aaa;
+        margin: 8px 0;
+      }
+      pre {
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Kitty renderer checks</h1>
+    <p>
+      Each backend should show three red image blocks, with green cell backgrounds covering only the
+      left image. The middle image covers backgrounds but leaves white text visible; the right image
+      covers text.
+    </p>
+    <pre id="results"></pre>
+    <script type="module">
+      import { Ghostty } from '../lib/ghostty.ts';
+      import { CanvasRenderer } from '../lib/renderer-canvas2d.ts';
+      import { WebGL2Renderer } from '../lib/renderer-webgl.ts';
+      import { WebGPURenderer } from '../lib/renderer-webgpu.ts';
+      const log = (text) => (document.querySelector('#results').textContent += text + '\n');
+      window.addEventListener('error', (e) => log('ERROR: ' + e.message));
+      window.addEventListener('unhandledrejection', (e) => log('ERROR: ' + e.reason));
+      const ghostty = await Ghostty.load('/ghostty-vt.wasm');
+      for (const backend of ['canvas2d', 'webgl', 'webgpu']) {
+        const heading = document.createElement('h2');
+        heading.textContent = backend;
+        document.body.append(heading);
+        const canvas = document.createElement('canvas');
+        document.body.append(canvas);
+        let renderer, device;
+        try {
+          if (backend === 'webgpu') {
+            const adapter = await navigator.gpu?.requestAdapter();
+            if (!adapter) throw Error('WebGPU unavailable');
+            device = await adapter.requestDevice();
+            device.pushErrorScope('validation');
+            device.addEventListener('uncapturederror', (e) => log('GPU ERROR: ' + e.error.message));
+            renderer = await WebGPURenderer.create(canvas, device, { fontSize: 22 });
+          } else
+            renderer =
+              backend === 'webgl'
+                ? await WebGL2Renderer.create(canvas, { fontSize: 22 })
+                : new CanvasRenderer(canvas, { fontSize: 22 });
+          renderer.resize(24, 5);
+          const term = ghostty.createTerminal(24, 5);
+          const metrics = renderer.getMetrics();
+          term.setCellPixelSize(metrics.width, metrics.height);
+          term.write('\x1b[?25l');
+          for (let i = 0; i < 3; i++) {
+            const col = 1 + i * 8,
+              z = [-2147483648, -1, 1][i];
+            term.write(
+              `\x1b[2;${col}H\x1b_Ga=T,f=32,s=1,v=1,i=${i + 1},c=6,r=3,C=1,z=${z};/wAA/w==\x1b\\`
+            );
+            term.write(`\x1b[3;${col}H\x1b[48;2;0;180;0m\x1b[38;2;255;255;255m TEXT \x1b[0m`);
+          }
+          renderer.render(term);
+          const capture = document.createElement('canvas');
+          capture.width = canvas.width;
+          capture.height = canvas.height;
+          const ctx = capture.getContext('2d');
+          ctx.drawImage(canvas, 0, 0);
+          const dpr = canvas.width / (24 * metrics.width);
+          const sample = (x, y) =>
+            Array.from(
+              ctx.getImageData(
+                Math.floor(x * metrics.width * dpr),
+                Math.floor(y * metrics.height * dpr),
+                1,
+                1
+              ).data
+            );
+          const samples = [sample(0.1, 2.1), sample(8.1, 2.1), sample(16.1, 2.1)];
+          const ok =
+            samples[0][1] > 100 &&
+            samples[0][0] < 30 &&
+            samples[1][0] > 200 &&
+            samples[1][1] < 30 &&
+            samples[2][0] > 200 &&
+            samples[2][1] < 30;
+          log(`${backend}: ${ok ? 'PASS' : 'FAIL'} compositing samples ${JSON.stringify(samples)}`);
+          term.write(
+            '\x1bc\x1b[?25l\x1b_Ga=T,f=32,i=1,s=1,v=1,c=2,r=2;/wAA/w==\x1b\\' +
+              '\x1b_Ga=f,f=32,i=1,s=1,v=1,z=40;AAD//w==\x1b\\' +
+              '\x1b_Ga=a,i=1,r=1,z=30\x1b\\\x1b_Ga=a,i=1,s=3\x1b\\'
+          );
+          const readAnimatedPixel = () => {
+            const copy = document.createElement('canvas');
+            copy.width = canvas.width;
+            copy.height = canvas.height;
+            const context = copy.getContext('2d');
+            context.drawImage(canvas, 0, 0);
+            return Array.from(context.getImageData(2, 2, 1, 1).data);
+          };
+          term.tickImageAnimations(1000);
+          renderer.render(term);
+          const firstPixel = readAnimatedPixel();
+          term.tickImageAnimations(1030);
+          renderer.render(term);
+          const secondPixel = readAnimatedPixel();
+          log(
+            `${backend}: ${firstPixel[0] === 255 && secondPixel[2] === 255 && secondPixel[0] === 0 ? 'PASS' : 'FAIL'} animation uploads ${JSON.stringify([firstPixel, secondPixel])}`
+          );
+          canvas.replaceWith(capture);
+          if (device) {
+            await device.queue.onSubmittedWorkDone();
+            const error = await device.popErrorScope();
+            log(`webgpu validation: ${error ? error.message : 'PASS'}`);
+          }
+          renderer.destroy();
+          term.free();
+          device?.destroy();
+        } catch (error) {
+          log(`${backend}: ERROR ${error.stack ?? error}`);
+        }
+      }
+    </script>
+  </body>
+</html>

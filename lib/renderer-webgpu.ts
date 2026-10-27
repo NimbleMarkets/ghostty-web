@@ -15,6 +15,8 @@
  * - Phase B: migrate virtual placements to shared KittyAtlasBase; drop requiredLimits
  */
 
+import type { ImageFrame } from './render-images';
+
 import type { RowBidiMapper } from './bidi';
 import { CursorBlink } from './cursor-blink';
 import type { ITheme } from './interfaces';
@@ -49,6 +51,7 @@ import type { SelectionManager } from './selection-manager';
 // ---------------------------------------------------------------------------
 
 const TEXT_SHADER = /* wgsl */ `
+override textPass: u32 = 0u;
 struct GridUBO {
   gridSize: vec2<u32>,
   cellSize: vec2<f32>,
@@ -209,11 +212,20 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
     fg = pal.cursorFg.rgb;
   }
 
+  if (textPass == 3u && (flags & FLAG_IS_CURSOR_CELL) == 0u) { discard; }
+  if (textPass == 1u) {
+    let defaultBg = select((flags & FLAG_USE_THEME_BG) != 0u, (flags & FLAG_USE_THEME_FG) != 0u, (flags & FLAG_INVERSE) != 0u);
+    if (defaultBg && (flags & (FLAG_IS_SELECTED | FLAG_IS_CURSOR_CELL)) == 0u) { discard; }
+    return vec4<f32>(bg, 1.0);
+  }
+  if (textPass == 2u) { bg = vec3<f32>(0.0); }
+
   // Invisible cells still get their (possibly selection/cursor/inverse-
   // overridden) bg painted, just no glyph or block-element content.
   // Matches CanvasRenderer's two-pass split where the bg pass always
   // runs and only the text pass returns early on INVISIBLE.
   if ((flags & FLAG_INVISIBLE) != 0u) {
+    if (textPass == 2u) { discard; }
     return vec4<f32>(bg, 1.0);
   }
 
@@ -233,12 +245,12 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
     let idx = cell.blockOrSlice;
     let shade = blockShade(idx);
     if (shade > 0.0) {
-      return vec4<f32>(mix(bg, fg, shade), 1.0);
+      return vec4<f32>(mix(bg, fg, shade), select(1.0, shade, textPass == 2u));
     }
     if (drawBlockElement(idx, in.uv)) {
       return vec4<f32>(fg, 1.0);
     }
-    return vec4<f32>(bg, 1.0);
+    return vec4<f32>(bg, select(1.0, 0.0, textPass == 2u));
   }
 
   let auv = vec2<f32>(
@@ -285,7 +297,7 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
       return vec4<f32>(fg, 1.0);
     }
   }
-  return vec4<f32>(outRgb, 1.0);
+  return vec4<f32>(outRgb, select(1.0, texel.a * fade, textPass == 2u));
 }
 `;
 
@@ -576,6 +588,9 @@ export class WebGPURenderer implements Renderer {
 
   // Text pipeline
   private textPipeline?: GPURenderPipeline;
+  private backgroundPipeline?: GPURenderPipeline;
+  private glyphPipeline?: GPURenderPipeline;
+  private blockCursorPipeline?: GPURenderPipeline;
   private textBindGroupLayout?: GPUBindGroupLayout;
 
   // Cursor pipeline
@@ -614,6 +629,7 @@ export class WebGPURenderer implements Renderer {
   private lastViewportYRendered = Number.NaN;
   private lastSelectionSig: string | null = null;
   private lastKittyPlacementSig: string | null = null;
+  private imageFrame?: ImageFrame;
 
   /**
    * Create a WebGPURenderer.
@@ -730,25 +746,31 @@ export class WebGPURenderer implements Renderer {
     const layout = this.device.createPipelineLayout({
       bindGroupLayouts: [this.textBindGroupLayout],
     });
-    this.textPipeline = this.device.createRenderPipeline({
-      layout,
-      vertex: { module, entryPoint: 'vsMain' },
-      fragment: {
-        module,
-        entryPoint: 'fsMain',
-        targets: [
-          {
-            format: this.preferredFormat,
-            blend: {
-              color: { srcFactor: 'one', dstFactor: 'zero', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'zero', operation: 'add' },
+    const createTextPipeline = (textPass: number) =>
+      this.device.createRenderPipeline({
+        layout,
+        vertex: { module, entryPoint: 'vsMain' },
+        fragment: {
+          module,
+          entryPoint: 'fsMain',
+          constants: { textPass },
+          targets: [
+            {
+              format: this.preferredFormat,
+              blend: {
+                color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              },
             },
-          },
-        ],
-      },
-      primitive: { topology: 'triangle-list' },
-      label: 'textPipeline',
-    });
+          ],
+        },
+        primitive: { topology: 'triangle-list' },
+        label: 'textPipeline',
+      });
+    this.textPipeline = createTextPipeline(0);
+    this.backgroundPipeline = createTextPipeline(1);
+    this.glyphPipeline = createTextPipeline(2);
+    this.blockCursorPipeline = createTextPipeline(3);
 
     this.cursorBindGroupLayout = this.device.createBindGroupLayout({
       entries: [
@@ -1018,6 +1040,7 @@ export class WebGPURenderer implements Renderer {
    * Returns null when no placements are visible.
    */
   private computeKittyPlacementSig(buffer: IRenderable): string | null {
+    if (this.imageFrame) return String(this.imageFrame.revision);
     if (!buffer.getKittyGraphics || !buffer.iterPlacements) return null;
     const graphics = buffer.getKittyGraphics();
     if (graphics === null) return null;
@@ -1031,6 +1054,7 @@ export class WebGPURenderer implements Renderer {
 
   render(buffer: IRenderable, viewportY: number = 0, sb?: IScrollbackProvider): void {
     if (this.cols === 0 || this.rows === 0) return;
+    this.imageFrame = buffer.getImageFrame?.(viewportY);
     const cursor = buffer.getCursor();
 
     // Frame-skip gate. If nothing relevant has changed since the last
@@ -1070,6 +1094,8 @@ export class WebGPURenderer implements Renderer {
     this.lastSelectionSig = selSig ?? this.computeSelectionSig();
     this.lastKittyPlacementSig = kittySig ?? this.computeKittyPlacementSig(buffer);
 
+    if (this.imageFrame)
+      this.kittyTextures.retain(new Set(this.imageFrame.placements.map((p) => p.imageId)));
     const { usedKittyImageIds } = this.encodeCells(buffer, viewportY, sb);
     this.uploadGridUBO(viewportY, {
       ...cursor,
@@ -1129,15 +1155,21 @@ export class WebGPURenderer implements Renderer {
     const directPlacements: Array<{
       params: Float32Array;
       view: GPUTextureView;
+      layer: number;
     }> = [];
-    if (this.kittyPipeline && buffer.getKittyGraphics && buffer.iterPlacements) {
-      const graphics = buffer.getKittyGraphics();
-      if (graphics !== null) {
+    if (
+      this.kittyPipeline &&
+      (this.imageFrame || (buffer.getKittyGraphics && buffer.iterPlacements))
+    ) {
+      const graphics = buffer.getKittyGraphics?.() ?? null;
+      if (this.imageFrame || graphics !== null) {
         const cssW = this.cols * this.metrics.width;
         const cssH = this.rows * this.metrics.height;
-        for (const p of buffer.iterPlacements(graphics, true)) {
-          if (p.isVirtual) continue;
-          const pixels = buffer.getKittyImagePixels?.(graphics, p.imageId);
+        for (const p of this.imageFrame?.placements ?? buffer.iterPlacements!(graphics!, true)) {
+          if ('isVirtual' in p && p.isVirtual) continue;
+          const pixels = this.imageFrame
+            ? this.imageFrame.pixels(p.imageId)
+            : buffer.getKittyImagePixels?.(graphics!, p.imageId);
           if (!pixels) continue;
           const tex = this.kittyTextures.getOrUpload(p.imageId, pixels);
           if (!tex) continue;
@@ -1146,15 +1178,19 @@ export class WebGPURenderer implements Renderer {
           params[1] = p.sourceY;
           params[2] = p.sourceWidth;
           params[3] = p.sourceHeight;
-          params[4] = p.viewportCol * this.metrics.width;
-          params[5] = p.viewportRow * this.metrics.height;
+          params[4] = p.viewportCol * this.metrics.width + ('offsetX' in p ? p.offsetX : 0);
+          params[5] = p.viewportRow * this.metrics.height + ('offsetY' in p ? p.offsetY : 0);
           params[6] = p.pixelWidth;
           params[7] = p.pixelHeight;
           params[8] = pixels.width;
           params[9] = pixels.height;
           params[10] = cssW;
           params[11] = cssH;
-          directPlacements.push({ params, view: tex.createView() });
+          directPlacements.push({
+            params,
+            view: tex.createView(),
+            layer: 'layer' in p ? p.layer : 2,
+          });
         }
       }
     }
@@ -1190,18 +1226,32 @@ export class WebGPURenderer implements Renderer {
         },
       ],
     });
-    // Order matches CanvasRenderer: text grid → kitty image composite →
-    // cursor on top. Drawing kitty after the cursor would let images
-    // cover the cursor, which Canvas2D never does.
-    if (this.textPipeline && textBindGroup) {
-      pass.setPipeline(this.textPipeline);
-      pass.setBindGroup(0, textBindGroup);
-      pass.draw(6, this.cols * this.rows);
-    }
-    for (let i = 0; i < kittyBindGroups.length; i++) {
-      pass.setPipeline(this.kittyPipeline!);
-      pass.setBindGroup(0, kittyBindGroups[i]!);
-      pass.draw(6);
+    const drawText = (pipeline: GPURenderPipeline | undefined): void => {
+      if (pipeline && textBindGroup) {
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, textBindGroup);
+        pass.draw(6, this.cols * this.rows);
+      }
+    };
+    const drawImages = (layer: number): void => {
+      for (let i = 0; i < kittyBindGroups.length; i++) {
+        if (directPlacements[i]!.layer !== layer) continue;
+        pass.setPipeline(this.kittyPipeline!);
+        pass.setBindGroup(0, kittyBindGroups[i]!);
+        pass.draw(6);
+      }
+    };
+    if (this.imageFrame) {
+      drawImages(0);
+      drawText(this.backgroundPipeline);
+      drawImages(1);
+      drawText(this.glyphPipeline);
+      drawImages(2);
+      if (cursor.visible && this.cursorStyle === 'block' && viewportY === 0)
+        drawText(this.blockCursorPipeline);
+    } else {
+      drawText(this.textPipeline);
+      drawImages(2);
     }
     if (this.cursorPipeline && this.cursorBindGroup) {
       pass.setPipeline(this.cursorPipeline);

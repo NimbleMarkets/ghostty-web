@@ -91,6 +91,7 @@ export type {
 
 // Low-level components (for custom integrations)
 export { CanvasRenderer } from './renderer-canvas2d';
+export type { ImageFrame, RenderImage } from './render-images';
 export type {
   Renderer,
   RendererBackend,

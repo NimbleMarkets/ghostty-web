@@ -481,6 +481,19 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ): number;
   ghostty_grid_ref_style(refPtr: number, outStylePtr: number): number;
 
+  ghostty_render_state_image_iterator_new(allocator: number, out: number): number;
+  ghostty_render_state_image_iterator_free(iterator: number): void;
+  ghostty_render_state_image_iterator_next(iterator: number): boolean;
+  ghostty_render_state_image_get_multi(
+    iterator: number,
+    count: number,
+    keys: number,
+    values: number,
+    written: number
+  ): number;
+  ghostty_terminal_scroll_viewport(terminal: number, viewport: number): void;
+  ghostty_kitty_graphics_animation_tick(graphics: number, now: bigint, next: number): number;
+
   // Kitty graphics — placement iteration + image lookup. The graphics
   // handle comes from ghostty_terminal_get(terminal, KITTY_GRAPHICS, *out)
   // and is borrowed: invalidated by ANY mutating terminal call.
@@ -620,6 +633,8 @@ export enum RenderStateData {
   CURSOR_VIEWPORT_X = 15,
   CURSOR_VIEWPORT_Y = 16,
   CURSOR_VIEWPORT_WIDE_TAIL = 17,
+  IMAGE_ITERATOR = 22,
+  IMAGE_PLACEMENTS_GENERATION = 23,
 }
 
 /**
@@ -717,6 +732,7 @@ export enum SysOption {
  * Keys for ghostty_kitty_graphics_get(). Mirrors GhosttyKittyGraphicsData.
  */
 export enum KittyGraphicsData {
+  GENERATION = 2,
   PLACEMENT_ITERATOR = 1,
 }
 
@@ -743,6 +759,7 @@ export enum KittyGraphicsPlacementData {
  * Keys for ghostty_kitty_graphics_image_get(). Mirrors GhosttyKittyGraphicsImageData.
  */
 export enum KittyGraphicsImageData {
+  GENERATION = 9,
   ID = 1,
   NUMBER = 2,
   WIDTH = 3,
@@ -850,7 +867,7 @@ export const KITTY_PLACEMENT_RENDER_INFO_SIZE = 48;
  * mutating terminal call — copy out before vt_write if you need to retain.
  */
 export interface KittyImagePixels {
-  /** Changes after graphics writes, even when WASM reuses a pixel allocation. */
+  /** Per-image content revision, including retransmission and animation frames. */
   revision?: number;
   width: number;
   height: number;
