@@ -121,7 +121,7 @@ const uint FLAG_USE_THEME_FG = 1u << 12;
 const uint FLAG_USE_THEME_BG = 1u << 13;
 const uint FLAG_IS_CURSOR_CELL = 1u << 14;
 const uint FLAG_COLOR_GLYPH = 1u << 15;
-uniform int uTextPass; // 0: combined legacy, 1: backgrounds, 2: glyphs
+uniform int uTextPass; // 0: combined, 1: backgrounds, 2: glyphs, 3: cursor
 uniform highp usampler2D uCellTex;
 uniform highp sampler2D uAtlasTex;
 uniform highp sampler2D uKittyAtlas;
@@ -478,6 +478,7 @@ export class WebGL2Renderer implements Renderer {
   private cursorProgram?: WebGLProgram;
   private kittyProgram?: WebGLProgram;
   private textProgramUniforms = {
+    textPass: null as WebGLUniformLocation | null,
     cellTex: null as WebGLUniformLocation | null,
     atlasTex: null as WebGLUniformLocation | null,
   };
@@ -602,6 +603,7 @@ export class WebGL2Renderer implements Renderer {
     gl.uniformBlockBinding(prog, palIdx, 1);
     gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'KittyAtlasUBO'), 2);
     // Texture-sampler uniform locations.
+    this.textProgramUniforms.textPass = gl.getUniformLocation(prog, 'uTextPass');
     this.textProgramUniforms.cellTex = gl.getUniformLocation(prog, 'uCellTex');
     this.textProgramUniforms.atlasTex = gl.getUniformLocation(prog, 'uAtlasTex');
     // Bind sampler texture units (0 = cellTex, 1 = atlasTex, 2 = kitty atlas).
@@ -932,10 +934,14 @@ export class WebGL2Renderer implements Renderer {
         gl.bindTexture(gl.TEXTURE_2D, this.atlas.glTexture());
         gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(gl.TEXTURE_2D, this.kittyAtlas.glTexture());
-        gl.uniform1i(gl.getUniformLocation(this.textProgram, 'uTextPass'), textPass);
-        gl.enable(gl.BLEND);
-        gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-        gl.blendEquation(gl.FUNC_ADD);
+        gl.uniform1i(this.textProgramUniforms.textPass, textPass);
+        if (textPass === 0) {
+          gl.disable(gl.BLEND);
+        } else {
+          gl.enable(gl.BLEND);
+          gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+          gl.blendEquation(gl.FUNC_ADD);
+        }
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.cols * this.rows);
       }
     };
@@ -956,7 +962,9 @@ export class WebGL2Renderer implements Renderer {
         gl.disable(gl.BLEND);
       }
     };
-    if (this.imageFrame) {
+    // Empty image frames are normal for text-only terminals. Keep their text
+    // in one opaque pass; split passes are needed only for image compositing.
+    if (this.imageFrame && directPlacements.length > 0) {
       drawImages(0);
       drawText(1);
       drawImages(1);

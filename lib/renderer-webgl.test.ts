@@ -506,6 +506,29 @@ describe('WebGL2Renderer', () => {
       expect(args[3]).toBe(20 * 5);
     });
 
+    test('empty resolved image frames use one text pass, including a block cursor', async () => {
+      for (const visible of [false, true]) {
+        const r = await WebGL2Renderer.create(document.createElement('canvas'), {
+          cursorStyle: 'block',
+        });
+        r.resize(20, 5);
+        const stub = getStub();
+        stub.calls.length = 0;
+        r.render({
+          getLine: () => null,
+          getViewport: () => [],
+          getCursor: () => ({ x: 0, y: 0, visible }),
+          getDimensions: () => ({ cols: 20, rows: 5 }),
+          isRowDirty: () => false,
+          clearDirty: () => {},
+          getImageFrame: () => ({ revision: 1, placements: [], pixels: () => null }),
+        } as any);
+        expect(stub.countCalls('drawArraysInstanced')).toBe(1);
+        expect(stub.countCalls('getUniformLocation')).toBe(0);
+        r.destroy();
+      }
+    });
+
     test('render() binds gridUBO and paletteUBO via bindBufferBase', async () => {
       const canvas = document.createElement('canvas');
       const r = await WebGL2Renderer.create(canvas, {});

@@ -1,0 +1,326 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Renderer before/after benchmark</title>
+    <style>
+      body {
+        font: 15px system-ui;
+        margin: 24px;
+        background: #f4f4f4;
+        color: #222;
+      }
+      td,
+      th {
+        padding: 5px 10px;
+        text-align: right;
+      }
+      th:first-child,
+      td:first-child {
+        text-align: left;
+      }
+      table {
+        border-collapse: collapse;
+      }
+      tr {
+        border-bottom: 1px solid #ccc;
+      }
+      #canvases {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        opacity: 0.01;
+        pointer-events: none;
+      }
+      pre {
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Renderer before/after benchmark</h1>
+    <p>
+      80 × 24 cells, 14 px font, same WASM and compiler. Seven paired samples, alternating order.
+      Times include VT writes where applicable. GPU completion is fenced once per batch; these are
+      throughput measurements, not display FPS.
+    </p>
+    <button id="run">Run benchmark</button>
+    <pre id="status">Ready</pre>
+    <table>
+      <thead>
+        <tr>
+          <th>Backend / workload</th>
+          <th>Before ms/op</th>
+          <th>After ms/op</th>
+          <th>Before/after</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="canvases"></div>
+    <script type="module">
+      import * as before from '/before.js';
+      import * as after from '/after.js';
+      const status = document.querySelector('#status');
+      const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+      const pause = () => new Promise((r) => setTimeout(r, 20));
+      const payload = (size, red) => {
+        const data = new Uint8Array(size * size * 4);
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = red;
+          data[i + 1] = 80;
+          data[i + 2] = 150;
+          data[i + 3] = 255;
+        }
+        let text = '';
+        for (let i = 0; i < data.length; i += 8192)
+          text += String.fromCharCode(...data.subarray(i, i + 8192));
+        return btoa(text);
+      };
+      const pixels64 = [payload(64, 100), payload(64, 200)];
+      const pixels256 = payload(256, 160);
+      const put = (id, data, size = 64, options = '') =>
+        `\x1b_Ga=T,f=32,s=${size},v=${size},i=${id},c=8,r=4,C=1${options};${data}\x1b\\`;
+      const scenarios = [
+        'idle-text',
+        'idle-16-images',
+        'text-row-update',
+        'full-text-redraw',
+        'full-16-images-redraw',
+        'placeholder-redraw',
+        'replace-one-of-16',
+      ];
+      async function fixture(api, backend, scenario) {
+        const canvas = document.createElement('canvas');
+        document.querySelector('#canvases').append(canvas);
+        let device, renderer;
+        const opts = { fontSize: 14, cursorBlink: false };
+        if (backend === 'webgpu') {
+          const adapter = await navigator.gpu?.requestAdapter();
+          if (!adapter) throw Error('WebGPU unavailable');
+          device = await adapter.requestDevice();
+          renderer = await api.WebGPURenderer.create(canvas, device, opts);
+        } else
+          renderer =
+            backend === 'webgl'
+              ? await api.WebGL2Renderer.create(canvas, opts)
+              : new api.CanvasRenderer(canvas, opts);
+        renderer.resize(80, 24);
+        const ghostty = await api.Ghostty.load('/ghostty-vt.wasm');
+        const term = ghostty.createTerminal(80, 24);
+        const metrics = renderer.getMetrics();
+        term.setCellPixelSize(metrics.width, metrics.height);
+        term.write('\x1b[?25l');
+        for (let y = 0; y < 24; y++)
+          term.write(
+            `\x1b[${y + 1};1H\x1b[${31 + (y % 6)}m` +
+              'Terminal output 0123456789 abcdefghijklmnopqrstuvwxyz '.repeat(2).slice(0, 79) +
+              '\x1b[0m'
+          );
+        if (scenario.includes('16'))
+          for (let i = 0; i < 16; i++)
+            term.write(
+              `\x1b[${1 + Math.floor(i / 4) * 6};${1 + (i % 4) * 20}H` + put(i + 1, pixels64[0])
+            );
+        if (scenario === 'placeholder-redraw') {
+          term.write(`\x1b_Ga=T,f=32,s=256,v=256,i=7,c=32,r=16,U=1;${pixels256}\x1b\\`);
+          for (let y = 0; y < 16; y++) {
+            let line = `\x1b[${y + 1};1H\x1b[38;2;0;0;7m`;
+            for (let x = 0; x < 32; x++)
+              line += String.fromCodePoint(
+                0x10eeee,
+                api.ROWCOLUMN_DIACRITICS[y],
+                api.ROWCOLUMN_DIACRITICS[x]
+              );
+            term.write(line + '\x1b[0m');
+          }
+        }
+        let iteration = 0;
+        const step = () => {
+          iteration++;
+          if (scenario === 'text-row-update')
+            term.write(
+              `\x1b[${1 + (iteration % 24)};1H\x1b[32mstatus ${String(iteration).padStart(8, '0')}\x1b[0m`
+            );
+          if (scenario === 'replace-one-of-16')
+            term.write('\x1b[1;1H' + put(1, pixels64[iteration % 2]));
+          if (scenario.endsWith('redraw')) renderer.invalidate();
+          renderer.render(term);
+        };
+        const gl = backend === 'webgl' ? canvas.getContext('webgl2') : null;
+        const drain = async () => {
+          if (device) await device.queue.onSubmittedWorkDone();
+          else if (gl) gl.finish();
+          else canvas.getContext('2d').getImageData(0, 0, 1, 1);
+        };
+        const warmupStart = performance.now();
+        while (performance.now() - warmupStart < 250) {
+          for (let i = 0; i < 20; i++) step();
+          await drain();
+        }
+        await drain();
+        return {
+          step,
+          drain,
+          renderer,
+          term,
+          metrics,
+          dispose() {
+            renderer.destroy();
+            device?.destroy();
+            term.free();
+            canvas.remove();
+          },
+        };
+      }
+      async function sample(f, n) {
+        const visibility = document.visibilityState;
+        const start = performance.now();
+        for (let i = 0; i < n; i++) f.step();
+        const cpu = performance.now() - start;
+        await f.drain();
+        return { cpu: cpu / n, total: (performance.now() - start) / n, visibility };
+      }
+      function instrument(f) {
+        const counts = { pixelReads: 0, uploads: 0, textureCreates: 0, placementWalks: 0 };
+        const restores = [];
+        const wrap = (obj, key, count) => {
+          if (!obj || typeof obj[key] !== 'function') return;
+          const original = obj[key];
+          obj[key] = function (...args) {
+            counts[count]++;
+            return original.apply(this, args);
+          };
+          restores.push(() => (obj[key] = original));
+        };
+        wrap(f.term, 'getKittyImagePixels', 'pixelReads');
+        wrap(f.term, 'iterPlacements', 'placementWalks');
+        wrap(f.renderer.kittyTextures, 'uploadFull', 'uploads');
+        wrap(f.renderer.kittyTextures, 'createTexture', 'textureCreates');
+        wrap(f.renderer, 'decodeKittyImageToCanvas', 'uploads');
+        f.step();
+        for (const restore of restores) restore();
+        return counts;
+      }
+      async function profile(f) {
+        const times = {};
+        const restores = [];
+        for (const [obj, key] of [
+          [f.term, 'write'],
+          [f.term, 'getImageFrame'],
+          [f.term, 'getViewport'],
+          [f.term, 'update'],
+          [f.term, 'clearDirty'],
+          [f.renderer, 'encodeCells'],
+        ]) {
+          if (typeof obj[key] !== 'function') continue;
+          const original = obj[key];
+          times[key] = 0;
+          obj[key] = function (...args) {
+            const start = performance.now();
+            try {
+              return original.apply(this, args);
+            } finally {
+              times[key] += performance.now() - start;
+            }
+          };
+          restores.push(() => (obj[key] = original));
+        }
+        const total = await sample(f, 1000);
+        for (const restore of restores) restore();
+        for (const key of Object.keys(times)) times[key] /= 1000;
+        return { total, inclusiveMsPerOp: times };
+      }
+      async function run() {
+        document.querySelector('#run').disabled = true;
+        document.querySelector('#rows').textContent = '';
+        const results = {
+          metadata: {
+            ...(await (await fetch('/metadata')).json()),
+            userAgent: navigator.userAgent,
+            dpr: devicePixelRatio,
+            date: new Date().toISOString(),
+            repetitions: 7,
+            warmupMs: 250,
+            cols: 80,
+            rows: 24,
+            fontSize: 14,
+          },
+          cases: [],
+          errors: [],
+        };
+        const query = new URLSearchParams(location.search);
+        for (const backend of ['canvas2d', 'webgl', 'webgpu'].filter(
+          (x) => !query.has('backend') || query.get('backend') === x
+        ))
+          for (const scenario of scenarios.filter(
+            (x) => !query.has('scenario') || query.get('scenario') === x
+          )) {
+            status.textContent = `Running ${backend}: ${scenario}`;
+            await pause();
+            let a, b;
+            try {
+              a = await fixture(before, backend, scenario);
+              b = await fixture(after, backend, scenario);
+              const ca = await sample(a, 5),
+                cb = await sample(b, 5);
+              const n = scenario.startsWith('idle')
+                ? 10000
+                : Math.max(
+                    20,
+                    Math.min(1000, Math.floor(100 / Math.max(ca.total, cb.total, 0.01)))
+                  );
+              const samples = { before: [], after: [] };
+              for (let r = 0; r < 7; r++) {
+                for (const side of r % 2 ? ['after', 'before'] : ['before', 'after']) {
+                  samples[side].push(await sample(side === 'before' ? a : b, n));
+                  await pause();
+                }
+              }
+              const item = {
+                backend,
+                scenario,
+                iterationsPerSample: n,
+                metrics: a.metrics,
+                samples,
+                beforeMs: median(samples.before.map((x) => x.total)),
+                afterMs: median(samples.after.map((x) => x.total)),
+                beforeCpuMs: median(samples.before.map((x) => x.cpu)),
+                afterCpuMs: median(samples.after.map((x) => x.cpu)),
+                counters: { before: instrument(a), after: instrument(b) },
+              };
+              if (query.has('profile'))
+                item.profile = { before: await profile(a), after: await profile(b) };
+              results.cases.push(item);
+              const row = document.createElement('tr');
+              for (const v of [
+                `${backend} / ${scenario}`,
+                item.beforeMs.toFixed(4),
+                item.afterMs.toFixed(4),
+                (item.beforeMs / item.afterMs).toFixed(2) + '×',
+              ]) {
+                const cell = document.createElement('td');
+                cell.textContent = v;
+                row.append(cell);
+              }
+              document.querySelector('#rows').append(row);
+            } catch (error) {
+              results.errors.push({ backend, scenario, error: String(error) });
+            } finally {
+              a?.dispose();
+              b?.dispose();
+            }
+            await fetch('/results', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(results),
+            });
+          }
+        status.textContent = `Complete: ${results.cases.length} cases; ${results.errors.length} errors. Results saved to .vite/renderer-bench/results.json.\n${JSON.stringify(results.errors)}`;
+        document.querySelector('#run').disabled = false;
+      }
+      document.querySelector('#run').addEventListener('click', run);
+      if (new URLSearchParams(location.search).has('run')) run();
+    </script>
+  </body>
+</html>

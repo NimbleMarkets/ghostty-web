@@ -1,0 +1,1907 @@
+{
+  "metadata": {
+    "before": "efd00b1ab06d4badea73aa0c878ae721556ad1a7",
+    "after": "5d75d88bc158ff486f1027d42b55f1469cd68072",
+    "wasmHash": "55e6a47a56f92a3459d2d38f307e6382cddb626507b59372e3f75f48cb74e0ec",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Safari/605.1.15",
+    "dpr": 2,
+    "date": "2026-10-27T21:21:51.376Z",
+    "repetitions": 7,
+    "cols": 80,
+    "rows": 24,
+    "fontSize": 14
+  },
+  "cases": [
+    {
+      "backend": "canvas2d",
+      "scenario": "idle-text",
+      "iterationsPerSample": 300,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.006666666666666667,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          }
+        ]
+      },
+      "beforeMs": 0.0033333333333333335,
+      "afterMs": 0.0033333333333333335,
+      "beforeCpuMs": 0.0033333333333333335,
+      "afterCpuMs": 0.0033333333333333335,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 1
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "canvas2d",
+      "scenario": "idle-16-images",
+      "iterationsPerSample": 300,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.016666666666666666,
+            "total": 0.016666666666666666
+          },
+          {
+            "cpu": 0.016666666666666666,
+            "total": 0.016666666666666666
+          },
+          {
+            "cpu": 0.016666666666666666,
+            "total": 0.016666666666666666
+          },
+          {
+            "cpu": 0.013333333333333334,
+            "total": 0.016666666666666666
+          },
+          {
+            "cpu": 0.013333333333333334,
+            "total": 0.013333333333333334
+          },
+          {
+            "cpu": 0.016666666666666666,
+            "total": 0.016666666666666666
+          },
+          {
+            "cpu": 0.013333333333333334,
+            "total": 0.013333333333333334
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          }
+        ]
+      },
+      "beforeMs": 0.016666666666666666,
+      "afterMs": 0.0033333333333333335,
+      "beforeCpuMs": 0.016666666666666666,
+      "afterCpuMs": 0.0033333333333333335,
+      "counters": {
+        "before": {
+          "pixelReads": 16,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 1
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "canvas2d",
+      "scenario": "text-row-update",
+      "iterationsPerSample": 100,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.5,
+            "total": 0.61
+          },
+          {
+            "cpu": 0.41,
+            "total": 0.47
+          },
+          {
+            "cpu": 0.39,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.4,
+            "total": 0.5
+          },
+          {
+            "cpu": 0.39,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.38,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.39,
+            "total": 0.45
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.52,
+            "total": 0.56
+          },
+          {
+            "cpu": 0.53,
+            "total": 0.6
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.52
+          },
+          {
+            "cpu": 0.4,
+            "total": 0.46
+          },
+          {
+            "cpu": 0.39,
+            "total": 0.46
+          },
+          {
+            "cpu": 0.39,
+            "total": 0.45
+          }
+        ]
+      },
+      "beforeMs": 0.45,
+      "afterMs": 0.49,
+      "beforeCpuMs": 0.39,
+      "afterCpuMs": 0.42,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 2
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "canvas2d",
+      "scenario": "full-text-redraw",
+      "iterationsPerSample": 33,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.8787878787878788,
+            "total": 1.4242424242424243
+          },
+          {
+            "cpu": 0.8484848484848485,
+            "total": 1.3636363636363635
+          },
+          {
+            "cpu": 0.8484848484848485,
+            "total": 1.3636363636363635
+          },
+          {
+            "cpu": 0.8484848484848485,
+            "total": 1.2121212121212122
+          },
+          {
+            "cpu": 0.8787878787878788,
+            "total": 1.4545454545454546
+          },
+          {
+            "cpu": 0.8484848484848485,
+            "total": 1.2424242424242424
+          },
+          {
+            "cpu": 0.8787878787878788,
+            "total": 1.0909090909090908
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.9393939393939394,
+            "total": 1.3333333333333333
+          },
+          {
+            "cpu": 0.9393939393939394,
+            "total": 1.2727272727272727
+          },
+          {
+            "cpu": 0.9090909090909091,
+            "total": 1.3636363636363635
+          },
+          {
+            "cpu": 0.9090909090909091,
+            "total": 1.121212121212121
+          },
+          {
+            "cpu": 0.9090909090909091,
+            "total": 1.2727272727272727
+          },
+          {
+            "cpu": 0.9090909090909091,
+            "total": 1.4242424242424243
+          },
+          {
+            "cpu": 0.9090909090909091,
+            "total": 1.3636363636363635
+          }
+        ]
+      },
+      "beforeMs": 1.3636363636363635,
+      "afterMs": 1.3333333333333333,
+      "beforeCpuMs": 0.8484848484848485,
+      "afterCpuMs": 0.9090909090909091,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 2
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "canvas2d",
+      "scenario": "full-16-images-redraw",
+      "iterationsPerSample": 37,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 1.1081081081081081,
+            "total": 1.4324324324324325
+          },
+          {
+            "cpu": 1.0810810810810811,
+            "total": 1.4324324324324325
+          },
+          {
+            "cpu": 1.0810810810810811,
+            "total": 1.3513513513513513
+          },
+          {
+            "cpu": 1.054054054054054,
+            "total": 1.4054054054054055
+          },
+          {
+            "cpu": 1.054054054054054,
+            "total": 1.2432432432432432
+          },
+          {
+            "cpu": 0.918918918918919,
+            "total": 1.4324324324324325
+          },
+          {
+            "cpu": 0.8648648648648649,
+            "total": 1.3243243243243243
+          }
+        ],
+        "after": [
+          {
+            "cpu": 1.1081081081081081,
+            "total": 1.135135135135135
+          },
+          {
+            "cpu": 1.1081081081081081,
+            "total": 1.135135135135135
+          },
+          {
+            "cpu": 1.135135135135135,
+            "total": 1.162162162162162
+          },
+          {
+            "cpu": 1.1081081081081081,
+            "total": 1.135135135135135
+          },
+          {
+            "cpu": 1.1081081081081081,
+            "total": 1.135135135135135
+          },
+          {
+            "cpu": 1.1081081081081081,
+            "total": 1.135135135135135
+          },
+          {
+            "cpu": 1.135135135135135,
+            "total": 1.135135135135135
+          }
+        ]
+      },
+      "beforeMs": 1.4054054054054055,
+      "afterMs": 1.135135135135135,
+      "beforeCpuMs": 1.054054054054054,
+      "afterCpuMs": 1.1081081081081081,
+      "counters": {
+        "before": {
+          "pixelReads": 16,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 2
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "canvas2d",
+      "scenario": "placeholder-redraw",
+      "iterationsPerSample": 37,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 1.027027027027027,
+            "total": 1.2432432432432432
+          },
+          {
+            "cpu": 1.027027027027027,
+            "total": 1.162162162162162
+          },
+          {
+            "cpu": 1.027027027027027,
+            "total": 1.2432432432432432
+          },
+          {
+            "cpu": 1.027027027027027,
+            "total": 1.2702702702702702
+          },
+          {
+            "cpu": 1.027027027027027,
+            "total": 1.2702702702702702
+          },
+          {
+            "cpu": 1,
+            "total": 1.162162162162162
+          },
+          {
+            "cpu": 1.027027027027027,
+            "total": 1.2162162162162162
+          }
+        ],
+        "after": [
+          {
+            "cpu": 1,
+            "total": 1.3243243243243243
+          },
+          {
+            "cpu": 1,
+            "total": 1.2702702702702702
+          },
+          {
+            "cpu": 1,
+            "total": 1.2432432432432432
+          },
+          {
+            "cpu": 0.8108108108108109,
+            "total": 1.1081081081081081
+          },
+          {
+            "cpu": 0.7837837837837838,
+            "total": 1.054054054054054
+          },
+          {
+            "cpu": 0.7837837837837838,
+            "total": 1.054054054054054
+          },
+          {
+            "cpu": 0.7837837837837838,
+            "total": 1.135135135135135
+          }
+        ]
+      },
+      "beforeMs": 1.2432432432432432,
+      "afterMs": 1.135135135135135,
+      "beforeCpuMs": 1.027027027027027,
+      "afterCpuMs": 0.8108108108108109,
+      "counters": {
+        "before": {
+          "pixelReads": 1,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 2
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "canvas2d",
+      "scenario": "replace-one-of-16",
+      "iterationsPerSample": 10,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 5.7,
+            "total": 5.7
+          },
+          {
+            "cpu": 5.4,
+            "total": 5.4
+          },
+          {
+            "cpu": 5.4,
+            "total": 5.5
+          },
+          {
+            "cpu": 5.5,
+            "total": 5.6
+          },
+          {
+            "cpu": 5.8,
+            "total": 5.8
+          },
+          {
+            "cpu": 5.6,
+            "total": 5.6
+          },
+          {
+            "cpu": 5.5,
+            "total": 5.6
+          }
+        ],
+        "after": [
+          {
+            "cpu": 1.5,
+            "total": 1.7
+          },
+          {
+            "cpu": 1.4,
+            "total": 1.6
+          },
+          {
+            "cpu": 1.5,
+            "total": 1.7
+          },
+          {
+            "cpu": 1.5,
+            "total": 1.7
+          },
+          {
+            "cpu": 1.6,
+            "total": 1.7
+          },
+          {
+            "cpu": 1.5,
+            "total": 1.7
+          },
+          {
+            "cpu": 1.4,
+            "total": 1.6
+          }
+        ]
+      },
+      "beforeMs": 5.6,
+      "afterMs": 1.7,
+      "beforeCpuMs": 5.5,
+      "afterCpuMs": 1.5,
+      "counters": {
+        "before": {
+          "pixelReads": 16,
+          "uploads": 16,
+          "textureCreates": 0,
+          "placementWalks": 2
+        },
+        "after": {
+          "pixelReads": 1,
+          "uploads": 1,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgl",
+      "scenario": "idle-text",
+      "iterationsPerSample": 1000,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.004,
+            "total": 0.004
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.002,
+            "total": 0.002
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.004,
+            "total": 0.004
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.002,
+            "total": 0.002
+          },
+          {
+            "cpu": 0.002,
+            "total": 0.002
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          }
+        ]
+      },
+      "beforeMs": 0.003,
+      "afterMs": 0.003,
+      "beforeCpuMs": 0.003,
+      "afterCpuMs": 0.003,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 1
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgl",
+      "scenario": "idle-16-images",
+      "iterationsPerSample": 1000,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.015,
+            "total": 0.015
+          },
+          {
+            "cpu": 0.013,
+            "total": 0.013
+          },
+          {
+            "cpu": 0.012,
+            "total": 0.012
+          },
+          {
+            "cpu": 0.012,
+            "total": 0.012
+          },
+          {
+            "cpu": 0.012,
+            "total": 0.012
+          },
+          {
+            "cpu": 0.012,
+            "total": 0.012
+          },
+          {
+            "cpu": 0.012,
+            "total": 0.012
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.002,
+            "total": 0.002
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.002,
+            "total": 0.002
+          },
+          {
+            "cpu": 0.002,
+            "total": 0.002
+          },
+          {
+            "cpu": 0.002,
+            "total": 0.002
+          }
+        ]
+      },
+      "beforeMs": 0.012,
+      "afterMs": 0.002,
+      "beforeCpuMs": 0.012,
+      "afterCpuMs": 0.002,
+      "counters": {
+        "before": {
+          "pixelReads": 16,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 1
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgl",
+      "scenario": "text-row-update",
+      "iterationsPerSample": 75,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.56,
+            "total": 0.56
+          },
+          {
+            "cpu": 0.4533333333333333,
+            "total": 0.4533333333333333
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.4533333333333333,
+            "total": 0.4533333333333333
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.4533333333333333,
+            "total": 0.4533333333333333
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.6533333333333333,
+            "total": 0.6533333333333333
+          },
+          {
+            "cpu": 0.64,
+            "total": 0.64
+          },
+          {
+            "cpu": 0.6266666666666667,
+            "total": 0.6266666666666667
+          },
+          {
+            "cpu": 0.6266666666666667,
+            "total": 0.6266666666666667
+          },
+          {
+            "cpu": 0.6266666666666667,
+            "total": 0.6266666666666667
+          },
+          {
+            "cpu": 0.6266666666666667,
+            "total": 0.6266666666666667
+          },
+          {
+            "cpu": 0.6266666666666667,
+            "total": 0.6266666666666667
+          }
+        ]
+      },
+      "beforeMs": 0.4533333333333333,
+      "afterMs": 0.6266666666666667,
+      "beforeCpuMs": 0.4533333333333333,
+      "afterCpuMs": 0.6266666666666667,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgl",
+      "scenario": "full-text-redraw",
+      "iterationsPerSample": 100,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.47,
+            "total": 0.47
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.51,
+            "total": 0.51
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.42
+          },
+          {
+            "cpu": 0.41,
+            "total": 0.41
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.63,
+            "total": 0.63
+          },
+          {
+            "cpu": 0.62,
+            "total": 0.62
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          }
+        ]
+      },
+      "beforeMs": 0.44,
+      "afterMs": 0.45,
+      "beforeCpuMs": 0.44,
+      "afterCpuMs": 0.45,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgl",
+      "scenario": "full-16-images-redraw",
+      "iterationsPerSample": 100,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.48,
+            "total": 0.48
+          },
+          {
+            "cpu": 0.47,
+            "total": 0.47
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.42
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.42
+          },
+          {
+            "cpu": 0.41,
+            "total": 0.41
+          },
+          {
+            "cpu": 0.41,
+            "total": 0.41
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.42
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.45,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.46,
+            "total": 0.46
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.45
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.45
+          }
+        ]
+      },
+      "beforeMs": 0.42,
+      "afterMs": 0.45,
+      "beforeCpuMs": 0.42,
+      "afterCpuMs": 0.45,
+      "counters": {
+        "before": {
+          "pixelReads": 32,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgl",
+      "scenario": "placeholder-redraw",
+      "iterationsPerSample": 75,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.64,
+            "total": 0.64
+          },
+          {
+            "cpu": 0.56,
+            "total": 0.56
+          },
+          {
+            "cpu": 0.5733333333333334,
+            "total": 0.5733333333333334
+          },
+          {
+            "cpu": 0.56,
+            "total": 0.56
+          },
+          {
+            "cpu": 0.4533333333333333,
+            "total": 0.4533333333333333
+          },
+          {
+            "cpu": 0.4666666666666667,
+            "total": 0.4666666666666667
+          },
+          {
+            "cpu": 0.4666666666666667,
+            "total": 0.4666666666666667
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.4533333333333333,
+            "total": 0.4533333333333333
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          },
+          {
+            "cpu": 0.4533333333333333,
+            "total": 0.4533333333333333
+          },
+          {
+            "cpu": 0.4533333333333333,
+            "total": 0.4533333333333333
+          },
+          {
+            "cpu": 0.4533333333333333,
+            "total": 0.4533333333333333
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.44
+          }
+        ]
+      },
+      "beforeMs": 0.56,
+      "afterMs": 0.4533333333333333,
+      "beforeCpuMs": 0.56,
+      "afterCpuMs": 0.4533333333333333,
+      "counters": {
+        "before": {
+          "pixelReads": 2,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgl",
+      "scenario": "replace-one-of-16",
+      "iterationsPerSample": 100,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.65,
+            "total": 0.65
+          },
+          {
+            "cpu": 0.62,
+            "total": 0.62
+          },
+          {
+            "cpu": 0.66,
+            "total": 0.66
+          },
+          {
+            "cpu": 0.57,
+            "total": 0.57
+          },
+          {
+            "cpu": 0.58,
+            "total": 0.58
+          },
+          {
+            "cpu": 0.58,
+            "total": 0.58
+          },
+          {
+            "cpu": 0.6,
+            "total": 0.6
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.51,
+            "total": 0.51
+          },
+          {
+            "cpu": 0.43,
+            "total": 0.43
+          },
+          {
+            "cpu": 0.43,
+            "total": 0.43
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.42
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.42
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.42
+          },
+          {
+            "cpu": 0.41,
+            "total": 0.41
+          }
+        ]
+      },
+      "beforeMs": 0.6,
+      "afterMs": 0.42,
+      "beforeCpuMs": 0.6,
+      "afterCpuMs": 0.42,
+      "counters": {
+        "before": {
+          "pixelReads": 32,
+          "uploads": 16,
+          "textureCreates": 16,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 1,
+          "uploads": 1,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgpu",
+      "scenario": "idle-text",
+      "iterationsPerSample": 300,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.006666666666666667,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.006666666666666667,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.006666666666666667,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.006666666666666667,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.006666666666666667,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.006666666666666667,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.006666666666666667,
+            "total": 0.006666666666666667
+          },
+          {
+            "cpu": 0.0033333333333333335,
+            "total": 0.0033333333333333335
+          }
+        ]
+      },
+      "beforeMs": 0.0033333333333333335,
+      "afterMs": 0.006666666666666667,
+      "beforeCpuMs": 0.0033333333333333335,
+      "afterCpuMs": 0.006666666666666667,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 1
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgpu",
+      "scenario": "idle-16-images",
+      "iterationsPerSample": 1000,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.014,
+            "total": 0.014
+          },
+          {
+            "cpu": 0.013,
+            "total": 0.013
+          },
+          {
+            "cpu": 0.011,
+            "total": 0.011
+          },
+          {
+            "cpu": 0.013,
+            "total": 0.013
+          },
+          {
+            "cpu": 0.012,
+            "total": 0.014
+          },
+          {
+            "cpu": 0.013,
+            "total": 0.013
+          },
+          {
+            "cpu": 0.014,
+            "total": 0.016
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.005,
+            "total": 0.005
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.005
+          },
+          {
+            "cpu": 0.004,
+            "total": 0.004
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          },
+          {
+            "cpu": 0.004,
+            "total": 0.004
+          },
+          {
+            "cpu": 0.003,
+            "total": 0.003
+          }
+        ]
+      },
+      "beforeMs": 0.013,
+      "afterMs": 0.004,
+      "beforeCpuMs": 0.013,
+      "afterCpuMs": 0.003,
+      "counters": {
+        "before": {
+          "pixelReads": 16,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 1
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgpu",
+      "scenario": "text-row-update",
+      "iterationsPerSample": 60,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.5666666666666667,
+            "total": 0.6333333333333333
+          },
+          {
+            "cpu": 0.5666666666666667,
+            "total": 0.5833333333333334
+          },
+          {
+            "cpu": 0.5666666666666667,
+            "total": 0.6333333333333333
+          },
+          {
+            "cpu": 0.5833333333333334,
+            "total": 0.5833333333333334
+          },
+          {
+            "cpu": 0.5666666666666667,
+            "total": 0.6333333333333333
+          },
+          {
+            "cpu": 0.5666666666666667,
+            "total": 0.5666666666666667
+          },
+          {
+            "cpu": 0.5166666666666667,
+            "total": 0.6
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.7666666666666667,
+            "total": 0.7833333333333333
+          },
+          {
+            "cpu": 0.5666666666666667,
+            "total": 0.6333333333333333
+          },
+          {
+            "cpu": 0.48333333333333334,
+            "total": 0.48333333333333334
+          },
+          {
+            "cpu": 0.4666666666666667,
+            "total": 0.5333333333333333
+          },
+          {
+            "cpu": 0.48333333333333334,
+            "total": 0.48333333333333334
+          },
+          {
+            "cpu": 0.4666666666666667,
+            "total": 0.55
+          },
+          {
+            "cpu": 0.4666666666666667,
+            "total": 0.4666666666666667
+          }
+        ]
+      },
+      "beforeMs": 0.6,
+      "afterMs": 0.5333333333333333,
+      "beforeCpuMs": 0.5666666666666667,
+      "afterCpuMs": 0.48333333333333334,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgpu",
+      "scenario": "full-text-redraw",
+      "iterationsPerSample": 100,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.46,
+            "total": 0.5
+          },
+          {
+            "cpu": 0.46,
+            "total": 0.5
+          },
+          {
+            "cpu": 0.43,
+            "total": 0.46
+          },
+          {
+            "cpu": 0.43,
+            "total": 0.47
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.46
+          },
+          {
+            "cpu": 0.42,
+            "total": 0.46
+          },
+          {
+            "cpu": 0.43,
+            "total": 0.46
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.46,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.46,
+            "total": 0.5
+          },
+          {
+            "cpu": 0.46,
+            "total": 0.49
+          }
+        ]
+      },
+      "beforeMs": 0.46,
+      "afterMs": 0.49,
+      "beforeCpuMs": 0.43,
+      "afterCpuMs": 0.45,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgpu",
+      "scenario": "full-16-images-redraw",
+      "iterationsPerSample": 60,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.6833333333333333,
+            "total": 0.75
+          },
+          {
+            "cpu": 0.55,
+            "total": 0.6333333333333333
+          },
+          {
+            "cpu": 0.48333333333333334,
+            "total": 0.5333333333333333
+          },
+          {
+            "cpu": 0.48333333333333334,
+            "total": 0.5666666666666667
+          },
+          {
+            "cpu": 0.5,
+            "total": 0.55
+          },
+          {
+            "cpu": 0.5,
+            "total": 0.5666666666666667
+          },
+          {
+            "cpu": 0.5,
+            "total": 0.5333333333333333
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.4666666666666667,
+            "total": 0.5333333333333333
+          },
+          {
+            "cpu": 0.4666666666666667,
+            "total": 0.4666666666666667
+          },
+          {
+            "cpu": 0.48333333333333334,
+            "total": 0.55
+          },
+          {
+            "cpu": 0.4666666666666667,
+            "total": 0.5
+          },
+          {
+            "cpu": 0.48333333333333334,
+            "total": 0.5666666666666667
+          },
+          {
+            "cpu": 0.48333333333333334,
+            "total": 0.5166666666666667
+          },
+          {
+            "cpu": 0.48333333333333334,
+            "total": 0.55
+          }
+        ]
+      },
+      "beforeMs": 0.5666666666666667,
+      "afterMs": 0.5333333333333333,
+      "beforeCpuMs": 0.5,
+      "afterCpuMs": 0.48333333333333334,
+      "counters": {
+        "before": {
+          "pixelReads": 32,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgpu",
+      "scenario": "placeholder-redraw",
+      "iterationsPerSample": 100,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.45,
+            "total": 0.5
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.48
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          },
+          {
+            "cpu": 0.44,
+            "total": 0.48
+          },
+          {
+            "cpu": 0.45,
+            "total": 0.49
+          }
+        ]
+      },
+      "beforeMs": 0.49,
+      "afterMs": 0.49,
+      "beforeCpuMs": 0.45,
+      "afterCpuMs": 0.45,
+      "counters": {
+        "before": {
+          "pixelReads": 2,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    },
+    {
+      "backend": "webgpu",
+      "scenario": "replace-one-of-16",
+      "iterationsPerSample": 60,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.6333333333333333,
+            "total": 0.7
+          },
+          {
+            "cpu": 0.5833333333333334,
+            "total": 0.6666666666666666
+          },
+          {
+            "cpu": 0.6166666666666667,
+            "total": 0.8
+          },
+          {
+            "cpu": 0.6,
+            "total": 0.7
+          },
+          {
+            "cpu": 0.6666666666666666,
+            "total": 0.7833333333333333
+          },
+          {
+            "cpu": 0.5833333333333334,
+            "total": 0.6833333333333333
+          },
+          {
+            "cpu": 0.6666666666666666,
+            "total": 0.7666666666666667
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.55,
+            "total": 0.65
+          },
+          {
+            "cpu": 0.5333333333333333,
+            "total": 0.55
+          },
+          {
+            "cpu": 0.5333333333333333,
+            "total": 0.55
+          },
+          {
+            "cpu": 0.5333333333333333,
+            "total": 0.6166666666666667
+          },
+          {
+            "cpu": 0.5333333333333333,
+            "total": 0.55
+          },
+          {
+            "cpu": 0.5166666666666667,
+            "total": 0.6
+          },
+          {
+            "cpu": 0.5333333333333333,
+            "total": 0.5833333333333334
+          }
+        ]
+      },
+      "beforeMs": 0.7,
+      "afterMs": 0.5833333333333334,
+      "beforeCpuMs": 0.6166666666666667,
+      "afterCpuMs": 0.5333333333333333,
+      "counters": {
+        "before": {
+          "pixelReads": 32,
+          "uploads": 16,
+          "textureCreates": 16,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 1,
+          "uploads": 1,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      }
+    }
+  ],
+  "errors": []
+}

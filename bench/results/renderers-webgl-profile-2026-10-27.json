@@ -1,0 +1,155 @@
+{
+  "metadata": {
+    "before": "5d75d88bc158ff486f1027d42b55f1469cd68072",
+    "after": "working",
+    "workingDiff": "diff --git a/lib/renderer-webgl.test.ts b/lib/renderer-webgl.test.ts\nindex 025e0bd..8a429b0 100644\n--- a/lib/renderer-webgl.test.ts\n+++ b/lib/renderer-webgl.test.ts\n@@ -506,6 +506,29 @@ describe('WebGL2Renderer', () => {\n       expect(args[3]).toBe(20 * 5);\n     });\n \n+    test('empty resolved image frames use one text pass, including a block cursor', async () => {\n+      for (const visible of [false, true]) {\n+        const r = await WebGL2Renderer.create(document.createElement('canvas'), {\n+          cursorStyle: 'block',\n+        });\n+        r.resize(20, 5);\n+        const stub = getStub();\n+        stub.calls.length = 0;\n+        r.render({\n+          getLine: () => null,\n+          getViewport: () => [],\n+          getCursor: () => ({ x: 0, y: 0, visible }),\n+          getDimensions: () => ({ cols: 20, rows: 5 }),\n+          isRowDirty: () => false,\n+          clearDirty: () => {},\n+          getImageFrame: () => ({ revision: 1, placements: [], pixels: () => null }),\n+        } as any);\n+        expect(stub.countCalls('drawArraysInstanced')).toBe(1);\n+        expect(stub.countCalls('getUniformLocation')).toBe(0);\n+        r.destroy();\n+      }\n+    });\n+\n     test('render() binds gridUBO and paletteUBO via bindBufferBase', async () => {\n       const canvas = document.createElement('canvas');\n       const r = await WebGL2Renderer.create(canvas, {});\ndiff --git a/lib/renderer-webgl.ts b/lib/renderer-webgl.ts\nindex 183be51..fd0d193 100644\n--- a/lib/renderer-webgl.ts\n+++ b/lib/renderer-webgl.ts\n@@ -121,7 +121,7 @@ const uint FLAG_USE_THEME_FG = 1u << 12;\n const uint FLAG_USE_THEME_BG = 1u << 13;\n const uint FLAG_IS_CURSOR_CELL = 1u << 14;\n const uint FLAG_COLOR_GLYPH = 1u << 15;\n-uniform int uTextPass; // 0: combined legacy, 1: backgrounds, 2: glyphs\n+uniform int uTextPass; // 0: combined, 1: backgrounds, 2: glyphs, 3: cursor\n uniform highp usampler2D uCellTex;\n uniform highp sampler2D uAtlasTex;\n uniform highp sampler2D uKittyAtlas;\n@@ -478,6 +478,7 @@ export class WebGL2Renderer implements Renderer {\n   private cursorProgram?: WebGLProgram;\n   private kittyProgram?: WebGLProgram;\n   private textProgramUniforms = {\n+    textPass: null as WebGLUniformLocation | null,\n     cellTex: null as WebGLUniformLocation | null,\n     atlasTex: null as WebGLUniformLocation | null,\n   };\n@@ -602,6 +603,7 @@ export class WebGL2Renderer implements Renderer {\n     gl.uniformBlockBinding(prog, palIdx, 1);\n     gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'KittyAtlasUBO'), 2);\n     // Texture-sampler uniform locations.\n+    this.textProgramUniforms.textPass = gl.getUniformLocation(prog, 'uTextPass');\n     this.textProgramUniforms.cellTex = gl.getUniformLocation(prog, 'uCellTex');\n     this.textProgramUniforms.atlasTex = gl.getUniformLocation(prog, 'uAtlasTex');\n     // Bind sampler texture units (0 = cellTex, 1 = atlasTex, 2 = kitty atlas).\n@@ -932,10 +934,14 @@ export class WebGL2Renderer implements Renderer {\n         gl.bindTexture(gl.TEXTURE_2D, this.atlas.glTexture());\n         gl.activeTexture(gl.TEXTURE2);\n         gl.bindTexture(gl.TEXTURE_2D, this.kittyAtlas.glTexture());\n-        gl.uniform1i(gl.getUniformLocation(this.textProgram, 'uTextPass'), textPass);\n-        gl.enable(gl.BLEND);\n-        gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);\n-        gl.blendEquation(gl.FUNC_ADD);\n+        gl.uniform1i(this.textProgramUniforms.textPass, textPass);\n+        if (textPass === 0) {\n+          gl.disable(gl.BLEND);\n+        } else {\n+          gl.enable(gl.BLEND);\n+          gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);\n+          gl.blendEquation(gl.FUNC_ADD);\n+        }\n         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.cols * this.rows);\n       }\n     };\n@@ -956,7 +962,9 @@ export class WebGL2Renderer implements Renderer {\n         gl.disable(gl.BLEND);\n       }\n     };\n-    if (this.imageFrame) {\n+    // Empty image frames are normal for text-only terminals. Keep their text\n+    // in one opaque pass; split passes are needed only for image compositing.\n+    if (this.imageFrame && directPlacements.length > 0) {\n       drawImages(0);\n       drawText(1);\n       drawImages(1);\n",
+    "wasmHash": "55e6a47a56f92a3459d2d38f307e6382cddb626507b59372e3f75f48cb74e0ec",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Safari/605.1.15",
+    "dpr": 2,
+    "date": "2026-10-27T21:31:54.427Z",
+    "repetitions": 7,
+    "warmupMs": 250,
+    "cols": 80,
+    "rows": 24,
+    "fontSize": 14
+  },
+  "cases": [
+    {
+      "backend": "webgl",
+      "scenario": "text-row-update",
+      "iterationsPerSample": 250,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.404,
+            "total": 0.404,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.36,
+            "total": 0.36,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.36,
+            "total": 0.36,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.36,
+            "total": 0.36,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.364,
+            "total": 0.364,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.356,
+            "total": 0.356,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.36,
+            "total": 0.36,
+            "visibility": "visible"
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.352,
+            "total": 0.356,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.352,
+            "total": 0.352,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.36,
+            "total": 0.36,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.356,
+            "total": 0.356,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.356,
+            "total": 0.356,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.356,
+            "total": 0.356,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.356,
+            "total": 0.356,
+            "visibility": "visible"
+          }
+        ]
+      },
+      "beforeMs": 0.36,
+      "afterMs": 0.356,
+      "beforeCpuMs": 0.36,
+      "afterCpuMs": 0.356,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      },
+      "profile": {
+        "before": {
+          "total": {
+            "cpu": 0.502,
+            "total": 0.502,
+            "visibility": "visible"
+          },
+          "inclusiveMsPerOp": {
+            "write": 0.002,
+            "getImageFrame": 0.002,
+            "getViewport": 0.391,
+            "update": 0,
+            "clearDirty": 0.001,
+            "encodeCells": 0.483
+          }
+        },
+        "after": {
+          "total": {
+            "cpu": 0.499,
+            "total": 0.499,
+            "visibility": "visible"
+          },
+          "inclusiveMsPerOp": {
+            "write": 0,
+            "getImageFrame": 0,
+            "getViewport": 0.374,
+            "update": 0,
+            "clearDirty": 0.001,
+            "encodeCells": 0.492
+          }
+        }
+      }
+    }
+  ],
+  "errors": []
+}

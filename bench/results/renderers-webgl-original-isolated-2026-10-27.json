@@ -1,0 +1,153 @@
+{
+  "metadata": {
+    "before": "efd00b1ab06d4badea73aa0c878ae721556ad1a7",
+    "after": "5d75d88bc158ff486f1027d42b55f1469cd68072",
+    "wasmHash": "55e6a47a56f92a3459d2d38f307e6382cddb626507b59372e3f75f48cb74e0ec",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Safari/605.1.15",
+    "dpr": 2,
+    "date": "2026-10-27T21:38:21.334Z",
+    "repetitions": 7,
+    "warmupMs": 250,
+    "cols": 80,
+    "rows": 24,
+    "fontSize": 14
+  },
+  "cases": [
+    {
+      "backend": "webgl",
+      "scenario": "text-row-update",
+      "iterationsPerSample": 50,
+      "metrics": {
+        "width": 9,
+        "height": 20,
+        "baseline": 15
+      },
+      "samples": {
+        "before": [
+          {
+            "cpu": 0.36,
+            "total": 0.36,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.32,
+            "total": 0.32,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.32,
+            "total": 0.32,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.32,
+            "total": 0.32,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.32,
+            "total": 0.32,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.32,
+            "total": 0.32,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.32,
+            "total": 0.32,
+            "visibility": "visible"
+          }
+        ],
+        "after": [
+          {
+            "cpu": 0.32,
+            "total": 0.32,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.3,
+            "total": 0.3,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.3,
+            "total": 0.3,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.32,
+            "total": 0.32,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.32,
+            "total": 0.32,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.3,
+            "total": 0.3,
+            "visibility": "visible"
+          },
+          {
+            "cpu": 0.3,
+            "total": 0.3,
+            "visibility": "visible"
+          }
+        ]
+      },
+      "beforeMs": 0.32,
+      "afterMs": 0.3,
+      "beforeCpuMs": 0.32,
+      "afterCpuMs": 0.3,
+      "counters": {
+        "before": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 3
+        },
+        "after": {
+          "pixelReads": 0,
+          "uploads": 0,
+          "textureCreates": 0,
+          "placementWalks": 0
+        }
+      },
+      "profile": {
+        "before": {
+          "total": {
+            "cpu": 0.504,
+            "total": 0.504,
+            "visibility": "visible"
+          },
+          "inclusiveMsPerOp": {
+            "write": 0.002,
+            "getViewport": 0.392,
+            "update": 0.002,
+            "clearDirty": 0.002,
+            "encodeCells": 0.492
+          }
+        },
+        "after": {
+          "total": {
+            "cpu": 0.508,
+            "total": 0.508,
+            "visibility": "visible"
+          },
+          "inclusiveMsPerOp": {
+            "write": 0.001,
+            "getImageFrame": 0,
+            "getViewport": 0.389,
+            "update": 0.001,
+            "clearDirty": 0,
+            "encodeCells": 0.498
+          }
+        }
+      }
+    }
+  ],
+  "errors": []
+}
