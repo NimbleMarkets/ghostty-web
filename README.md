@@ -110,16 +110,45 @@ decoded from base64 to UTF-8.
 
 Subscriptions may be created before `open()`. The terminal answers OSC 7501
 support queries only while at least one listener is subscribed. Reports arrive
-synchronously during `write()`, after WASM parsing finishes. The host application
-owns the status records: replace each record by `id`, remove a cleared id and its
+synchronously during `write()`, after WASM parsing finishes. Support replies list
+the accepted states and kinds (OSC 7501 revision 0.4). The host application
+owns the status records: inherit an omitted `app` from the nearest ancestor,
+replace each record by `id`, remove a cleared id and its
 descendants, and clear everything for a `clear` report with an empty id. Both RIS
 and `term.reset()` emit that full clear. The host must also apply the protocol's
 process-exit lifetime rules; the browser terminal cannot detect PTY process exits.
 
-The Ghostty submodule is pinned to `a4aacd918ba9e79929ff608034c60a4341773ef0`
-(October 6, 2026), which adds the public libghostty-vt program-status callback.
-Rebuilding requires Zig **0.16.0**; use
+The Ghostty submodule is pinned to **v1.4.0**,
+`83fb95624b0439ee660c2679b43b38c8b63769cd` (October 27, 2026).
+Rebuilding requires Zig **0.17.0**; use
 `ZIG=/absolute/path/to/zig bun run build` if your system compiler differs.
+
+### Upstream v1.4.0 sync
+
+Compared with our previous October 6 pin (`a4aacd918`), this release brings:
+
+| Change                                                                                           | Availability in ghostty-web                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OSC 7501 revision 0.4: capability lists in support replies, stricter record IDs                  | Active through `onProgramStatus`; the host owns ancestor `app` inheritance.                                                                                                                  |
+| CSI 19 t screen-size reports and DECXCPR extended cursor reports                                 | Handled by WASM through existing response routing. CSI 19 t uses the text-area dimensions.                                                                                                   |
+| DECSTR soft reset, tab-stop clearing, pending-wrap, grapheme reflow, selection and history fixes | Included in the updated terminal core.                                                                                                                                                       |
+| Unified render-state image iterator                                                              | New upstream API resolves fixed, relative and Unicode-placeholder Kitty placements, with geometry, layers and placement generations. Our renderer still uses its existing graphics bindings. |
+| Kitty animation tick                                                                             | New upstream API advances frames and returns the next redraw deadline; browser animation scheduling is not wired up.                                                                         |
+| Kitty graphics in snapshots                                                                      | Upstream snapshots now preserve images, placements and animation state, with progressive pixel loading. No public TypeScript snapshot wrapper yet.                                           |
+| Prompt-based viewport navigation                                                                 | Upstream adds a prompt-delta scroll mode; no public TypeScript method yet.                                                                                                                   |
+| CSI 8 t window-resize callback                                                                   | Upstream exposes resize requests to the embedder; no browser callback is installed.                                                                                                          |
+| Bounded VT parsing                                                                               | `ghostty_terminal_vt_write_until` replaces `ghostty_terminal_vt_write_until_ground`, adding APC, DCS and OSC boundaries. Our normal write path is unchanged.                                 |
+
+The existing browser graphics/shared-memory and recycled-row patch applies
+unchanged. The build now uses Zig 0.17.0 and `-Doptimize=small`; CI and the Nix
+compiler pin follow that version. `ghostty-vt.wasm` and `dist/` are generated,
+git-ignored outputs, rebuilt locally and in CI.
+
+See the [upstream comparison](https://github.com/ghostty-org/ghostty/compare/a4aacd918ba9e79929ff608034c60a4341773ef0...v1.4.0)
+and [v1.4.0 C API headers](https://github.com/ghostty-org/ghostty/tree/v1.4.0/include/ghostty/vt)
+for the complete API changes. The upstream OSC command enum also renames
+`CONTEXT_SIGNAL` to `HIERARCHICAL_CONTEXT` without changing its numeric value;
+our TypeScript bindings do not use that enum member.
 
 ### Renderer HUD
 

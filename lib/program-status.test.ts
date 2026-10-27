@@ -4,6 +4,8 @@ import { Terminal } from './terminal';
 import type { ProgramStatusReport } from './types';
 
 const query = '\x1b]7501;?\x1b\\';
+const supportReply =
+  '\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\';
 const terminals: Terminal[] = [];
 
 async function open(ghostty?: Ghostty) {
@@ -27,12 +29,12 @@ describe('OSC 7501', () => {
     const replies: string[] = [];
     term.onData((data) => replies.push(data));
     term.write(query);
-    expect(replies).toEqual([query]);
+    expect(replies).toEqual([supportReply]);
     expect(reports).toEqual([]);
     term.reset();
     expect(reports.map((r) => r.state)).toEqual(['clear']);
     term.write(query);
-    expect(replies).toEqual([query, query]);
+    expect(replies).toEqual([supportReply, supportReply]);
     subscription.dispose();
     subscription.dispose();
     term.write(query);
@@ -93,7 +95,7 @@ describe('OSC 7501', () => {
     first.dispose();
     a.onData((data) => replies.push(data));
     a.write(query);
-    expect(replies).toEqual([query]);
+    expect(replies).toEqual([supportReply]);
     b.write('\x1b]7501;state=working\x07');
     expect(reports).toEqual([]);
     second.dispose();
@@ -109,6 +111,9 @@ describe('OSC 7501', () => {
     const reports: ProgramStatusReport[] = [];
     term.onProgramStatus((report) => reports.push(report));
     term.write('\x1b]7501;state=bogus\x07');
+    for (const id of ['a@b', 'a b', 'a%20b', '/root', 'a//b']) {
+      term.write(`\x1b]7501;state=clear:id=${id}\x07`);
+    }
     expect(reports).toEqual([]);
     const message = 'Ready ✓';
     term.write(`\x1b]7501;state=idle:msg=${Buffer.from(message).toString('base64')}\x1b\\`);

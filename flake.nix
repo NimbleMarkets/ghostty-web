@@ -15,7 +15,7 @@
           inherit system;
           overlays = [ zig-overlay.overlays.default ];
         };
-        zig = pkgs.zigpkgs."0.16.0";
+        zig = pkgs.zigpkgs."0.17.0";
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [

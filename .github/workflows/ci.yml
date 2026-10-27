@@ -69,7 +69,7 @@ jobs:
 
       - uses: ./.github/actions/setup-zig
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - name: Build WASM
         run: ./scripts/build-wasm.sh
@@ -94,7 +94,7 @@ jobs:
 
       - uses: ./.github/actions/setup-zig
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - name: Build WASM
         run: ./scripts/build-wasm.sh

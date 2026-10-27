@@ -3582,7 +3582,7 @@ describe('Write PTY response routing', () => {
     t.free();
   });
 
-  test('XTWINOPS size queries (CSI 14/16/18 t) round-trip after setCellPixelSize', async () => {
+  test('XTWINOPS size queries (CSI 14/16/18/19 t) round-trip after setCellPixelSize', async () => {
     const { Ghostty } = await import('./ghostty');
     const g = await Ghostty.load();
     const t = g.createTerminal(80, 24);
@@ -3599,6 +3599,8 @@ describe('Write PTY response routing', () => {
     expect(t.readResponse()).toBe('\x1b[6;16;8t');
     t.write('\x1b[18t'); // rows / cols — \e[8;<rows>;<cols>t
     expect(t.readResponse()).toBe('\x1b[8;24;80t');
+    t.write('\x1b[19t'); // screen size falls back to text area size
+    expect(t.readResponse()).toBe('\x1b[9;24;80t');
 
     t.free();
   });

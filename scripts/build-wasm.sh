@@ -9,7 +9,7 @@ ZIG=${ZIG:-zig}
 if ! command -v "$ZIG" &> /dev/null; then
     echo "❌ Error: Zig not found"
     echo ""
-    echo "Use the version pinned by ghostty/build.zig.zon (currently 0.16.0)."
+    echo "Use the version pinned by ghostty/build.zig.zon (currently 0.17.0)."
     echo "  macOS:   brew install zig (may not match)"
     echo "  Nix:     nix develop"
     echo "  Manual:  https://ziglang.org/download/"
@@ -66,7 +66,7 @@ fi
 # Build WASM
 echo "⚙️  Building WASM (takes ~20 seconds)..."
 cd ghostty
-"$ZIG" build -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall
+"$ZIG" build -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=small
 cd ..
 
 # Copy to project root
