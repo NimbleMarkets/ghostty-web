@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- Honor Ghostty-resolved Kitty image layers, source crops, pixel offsets, and
+  scrollback placement across Canvas2D, WebGL, and WebGPU.
+- Keep WebGL text-only frames in a single opaque pass even when the image API
+  returns an empty frame, and cache the text-pass shader uniform location.
+
 - Include descenders, primary font line bounds, and emoji fallback ink in cell
   height and baseline measurements, while keeping column width based on the
   monospace advance. Measuring only the ink in M clipped the top of joined
@@ -46,6 +51,14 @@
 
 ### Added
 
+- Play Kitty image animations using Ghostty animation deadlines, respecting
+  synchronized output and cancelling scheduled work when the terminal is disposed.
+- Export `ImageFrame` and `RenderImage`, with `GhosttyTerminal.getImageFrame()`
+  and `tickImageAnimations()` for resolved image snapshots and animation updates.
+- Add a browser compositing and animation check in `demo/kitty-renderer-check.html`
+  and a paired renderer benchmark harness in `bench/renderers.ts`, including
+  isolated workload profiling and saved Safari measurements.
+
 - `installRendererHud(terminal, opts?)` and `parseRendererFromURL()` — lift
   the demo's renderer-info HUD (active backend + live FPS, click-to-cycle,
   `Alt+Shift+R` cycling) into the public API. The default cycle covers all
@@ -53,6 +66,13 @@
   customize.
 
 ### Changed
+
+- Update the Ghostty submodule to v1.4.0 and the build toolchain to Zig 0.17.0.
+- Use per-image generations to refresh only changed Kitty image data, reuse
+  same-size GPU textures, coalesce compatible image strips, and evict offscreen
+  images with 64 MiB cache budgets. Resolved placements remove the legacy GPU
+  path's 256-image limit; custom render buffers retain the legacy fallback.
+- Replace JavaScript APC revision scanning with Ghostty render-state image data.
 
 - The HUD's badge id changed from `booba-renderer-hud` to
   `ghostty-renderer-hud`. Consumers that targeted the old id by selector
