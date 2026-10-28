@@ -1,3 +1,4 @@
+import { drawBoxDrawing } from './box-drawing';
 import { DEFAULT_FONT_FAMILY } from './fonts';
 /**
  * Canvas Renderer for Terminal Display
@@ -909,9 +910,18 @@ export class CanvasRenderer implements Renderer {
     // reason. Only takes the fast path for simple (non-grapheme) cells.
     if (
       cell.grapheme_len === 0 &&
-      this.renderBlockElement(cell.codepoint, cellX, cellY, cellWidth)
+      (drawBoxDrawing(
+        this.ctx,
+        char,
+        cellX,
+        cellY,
+        cellWidth,
+        this.metrics.height,
+        this.fontSize
+      ) ||
+        this.renderBlockElement(cell.codepoint, cellX, cellY, cellWidth))
     ) {
-      // handled by renderBlockElement
+      // handled by cell geometry
     } else {
       this.ctx.fillText(char, textX, textY);
     }

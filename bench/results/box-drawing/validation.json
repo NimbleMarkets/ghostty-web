@@ -1,0 +1,1530 @@
+{
+  "browser": "156.0.8078.73",
+  "platform": "macOS arm64",
+  "cases": [
+    {
+      "font": "booba default",
+      "size": 12,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.201171875,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 12,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.201171875,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 12,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.201171875,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 14,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4013671875,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 14,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4013671875,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 14,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4013671875,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 15,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.00146484375,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 15,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.00146484375,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 15,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.00146484375,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 18,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8017578125,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 18,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8017578125,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 18,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8017578125,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 24,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.40234375,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 24,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.40234375,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 24,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.40234375,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 12,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.201171875,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 12,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.201171875,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 12,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.201171875,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 14,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4013671875,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 14,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4013671875,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 14,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4013671875,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 15,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.00146484375,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 15,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.00146484375,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 15,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.00146484375,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 18,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8017578125,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 18,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8017578125,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 18,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8017578125,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 24,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.40234375,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 24,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.40234375,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 24,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.40234375,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 12,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.201171875,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 12,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.201171875,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 12,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.201171875,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 14,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4013671875,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 14,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4013671875,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 14,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4013671875,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 15,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.00146484375,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 15,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.00146484375,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 15,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.00146484375,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 18,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8017578125,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 18,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8017578125,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 18,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8017578125,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 24,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.40234375,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 24,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.40234375,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "booba default",
+      "size": 24,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.40234375,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 12,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.224609375,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 12,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.224609375,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 12,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.224609375,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 14,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4287109375,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 14,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4287109375,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 14,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4287109375,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 15,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.03076171875,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 15,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.03076171875,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 15,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.03076171875,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 18,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8369140625,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 18,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8369140625,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 18,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8369140625,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 24,
+      "dpr": 1,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.44921875,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 24,
+      "dpr": 1,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.44921875,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 24,
+      "dpr": 1,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.44921875,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 12,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.224609375,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 12,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.224609375,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 12,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.224609375,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 14,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4287109375,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 14,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4287109375,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 14,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4287109375,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 15,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.03076171875,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 15,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.03076171875,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 15,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.03076171875,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 18,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8369140625,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 18,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8369140625,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 18,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8369140625,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 24,
+      "dpr": 1.25,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.44921875,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 24,
+      "dpr": 1.25,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.44921875,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 24,
+      "dpr": 1.25,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.44921875,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 12,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.224609375,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 12,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.224609375,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 12,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 8,
+        "height": 19,
+        "baseline": 14,
+        "advanceWidth": 7.224609375,
+        "ascent": 13,
+        "descent": 4
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 14,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4287109375,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 14,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4287109375,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 14,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 9,
+        "height": 22,
+        "baseline": 16,
+        "advanceWidth": 8.4287109375,
+        "ascent": 15,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 15,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.03076171875,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 15,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.03076171875,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 15,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 10,
+        "height": 23,
+        "baseline": 17,
+        "advanceWidth": 9.03076171875,
+        "ascent": 16,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 18,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8369140625,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 18,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8369140625,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 18,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 11,
+        "height": 26,
+        "baseline": 20,
+        "advanceWidth": 10.8369140625,
+        "ascent": 19,
+        "descent": 5
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 24,
+      "dpr": 2,
+      "renderer": "CanvasRenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.44921875,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 24,
+      "dpr": 2,
+      "renderer": "WebGL2Renderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.44921875,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    },
+    {
+      "font": "Menlo",
+      "size": 24,
+      "dpr": 2,
+      "renderer": "WebGPURenderer",
+      "metrics": {
+        "width": 15,
+        "height": 31,
+        "baseline": 24,
+        "advanceWidth": 14.44921875,
+        "ascent": 23,
+        "descent": 6
+      },
+      "continuous": true,
+      "ordinaryTextAndEmojiPixelsUnchanged": true
+    }
+  ],
+  "booba default resolved fonts": {
+    "latin": [
+      {
+        "familyName": "Courier",
+        "postScriptName": "Courier",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ],
+    "horizontal": [
+      {
+        "familyName": "Menlo",
+        "postScriptName": "Menlo-Regular",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ],
+    "vertical": [
+      {
+        "familyName": "Menlo",
+        "postScriptName": "Menlo-Regular",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ],
+    "rounded": [
+      {
+        "familyName": "Menlo",
+        "postScriptName": "Menlo-Regular",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ],
+    "emoji": [
+      {
+        "familyName": "Apple Color Emoji",
+        "postScriptName": "AppleColorEmoji",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ]
+  },
+  "Menlo resolved fonts": {
+    "latin": [
+      {
+        "familyName": "Menlo",
+        "postScriptName": "Menlo-Regular",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ],
+    "horizontal": [
+      {
+        "familyName": "Menlo",
+        "postScriptName": "Menlo-Regular",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ],
+    "vertical": [
+      {
+        "familyName": "Menlo",
+        "postScriptName": "Menlo-Regular",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ],
+    "rounded": [
+      {
+        "familyName": "Menlo",
+        "postScriptName": "Menlo-Regular",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ],
+    "emoji": [
+      {
+        "familyName": "Apple Color Emoji",
+        "postScriptName": "AppleColorEmoji",
+        "isCustomFont": false,
+        "glyphCount": 1
+      }
+    ]
+  }
+}

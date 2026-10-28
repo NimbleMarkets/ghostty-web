@@ -262,7 +262,8 @@ fn fsMain(in: VOut) -> @location(0) vec4<f32> {
     f32(cell.atlasSize & 0xffffu),
     f32((cell.atlasSize >> 16u) & 0xffffu),
   );
-  let texCoord = (auv + in.uv * asz) / f32(grid.atlasSize);
+  // Keep cell-edge samples inside this slot at fractional device pixel ratios.
+  let texCoord = (auv + clamp(in.uv * asz, vec2<f32>(0.5), asz - vec2<f32>(0.5))) / f32(grid.atlasSize);
   // textureSampleLevel (not textureSample) so this remains valid after
   // upstream non-uniform branches (block-element, kitty placeholder) make
   // the surrounding control flow non-uniform. Chrome's WGSL validator

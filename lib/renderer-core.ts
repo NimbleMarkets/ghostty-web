@@ -8,6 +8,7 @@
  */
 
 import type { RowBidiMapper } from './bidi';
+import { drawBoxDrawing } from './box-drawing';
 import type { ITheme } from './interfaces';
 import { KITTY_PLACEHOLDER, diacriticToInt } from './kitty_diacritics';
 import type { FontMetrics, IRenderable, IScrollbackProvider, LinkRange } from './renderer-types';
@@ -390,7 +391,9 @@ export abstract class GlyphAtlasBase {
     // rather than baked into the rasterization, so faint and non-faint glyphs
     // share the same atlas slot (the cache key drops the FAINT bit too).
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(grapheme, 0, baseline);
+    if (!drawBoxDrawing(ctx, grapheme, 0, 0, w, h, this.fontSize)) {
+      ctx.fillText(grapheme, 0, baseline);
+    }
 
     const img = ctx.getImageData(0, 0, w, h);
     // A color font ignores fillStyle: keep such a glyph's colors, which the

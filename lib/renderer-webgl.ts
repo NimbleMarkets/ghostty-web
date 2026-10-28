@@ -183,7 +183,9 @@ void main() {
   }
   vec2 auv = vec2(float(atlasUV & 0xffffu), float((atlasUV >> 16) & 0xffffu));
   vec2 asz = vec2(float(atlasSize & 0xffffu), float((atlasSize >> 16) & 0xffffu));
-  vec2 texCoord = (auv + vUv * asz) / float(grid.atlasSize);
+  // At fractional DPR a cell-edge fragment can interpolate to exactly 1.0.
+  // Keep nearest sampling inside this slot, never its packed neighbor.
+  vec2 texCoord = (auv + clamp(vUv * asz, vec2(0.5), asz - vec2(0.5))) / float(grid.atlasSize);
   vec4 texel = textureLod(uAtlasTex, texCoord, 0.0);
   float fade = (flags & FLAG_FAINT) != 0u ? 0.5 : 1.0;
   // A color glyph (emoji) is premultiplied RGBA drawn as it is; any other

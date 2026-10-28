@@ -1,0 +1,110 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Box drawing continuity</title>
+<style>
+  body {
+    background: #222;
+    color: white;
+    font: 14px system-ui;
+  }
+  #terminal {
+    width: max-content;
+  }
+  .probe {
+    white-space: pre;
+  }
+</style>
+<h1>Box drawing continuity</h1>
+<div id="terminal"></div>
+<div id="fonts"></div>
+<script type="module">
+  const p = new URLSearchParams(location.search);
+  const api = await import(
+    p.has('before')
+      ? '/.vite/box-drawing/lib/index.ts'
+      : p.has('bundled')
+        ? '/dist/ghostty-web.js'
+        : '/lib/index.ts'
+  );
+  const ghostty = await api.Ghostty.load('/ghostty-vt.wasm');
+  const fontFamily =
+    p.get('font') || '"JetBrains Mono", "Iosevka", "Cascadia Code", ui-monospace, monospace';
+  const fontSize = +(p.get('size') || 14);
+  const term = new api.Terminal({
+    ghostty,
+    cols: 32,
+    rows: 18,
+    fontFamily,
+    fontSize,
+    renderer: p.get('renderer') || 'canvas2d',
+    cursorBlink: false,
+    theme: { foreground: '#ffffff', background: '#000000' },
+  });
+  await term.open(document.querySelector('#terminal'));
+  term.write(
+    '\x1b[?25l' +
+      [
+        '╭────────────────────╮',
+        '│ Rounded border     │',
+        '╰────────────────────╯',
+        '┌────────────────────┐',
+        '│ Square border      │',
+        '└────────────────────┘',
+        '┏━━━━━━━━━━━━━━━━━━━━┓',
+        '┃ Heavy border       ┃',
+        '┗━━━━━━━━━━━━━━━━━━━━┛',
+        '╔════════════════════╗',
+        '║ Double border      ║',
+        '╚════════════════════╝',
+        '├─┬─┼─┴─┤ ┣━┳━╋━┻━┫',
+        '╠═╦═╬═╩═╣',
+        'Mimi 0123456789 @Wgjpq',
+        '😀 🐱 🚀 café 中文',
+        '\x1b[1;3;31m╭──╮\x1b[0m \x1b[2m┌──┐\x1b[0m',
+      ].join('\r\n')
+  );
+  for (const [id, text] of [
+    ['latin', 'M'],
+    ['horizontal', '─'],
+    ['vertical', '│'],
+    ['rounded', '╭'],
+    ['emoji', '😀'],
+  ]) {
+    const el = document.createElement('span');
+    el.id = id;
+    el.className = 'probe';
+    el.textContent = text;
+    el.style.font = `${fontSize}px ${fontFamily}`;
+    document.querySelector('#fonts').append(el);
+  }
+  await new Promise((r) => setTimeout(r, 250));
+  const ctx = document.createElement('canvas').getContext('2d');
+  ctx.font = `${fontSize}px ${fontFamily}`;
+  window.result = {
+    metrics: term.renderer.getMetrics(),
+    backend: term.renderer.constructor.name,
+    fontFamily,
+    fontSize,
+    dpr: devicePixelRatio,
+    glyphs: Object.fromEntries(
+      ['M', '─', '│', '╭', '😀'].map((c) => {
+        const m = ctx.measureText(c);
+        return [
+          c,
+          Object.fromEntries(
+            [
+              'width',
+              'actualBoundingBoxLeft',
+              'actualBoundingBoxRight',
+              'actualBoundingBoxAscent',
+              'actualBoundingBoxDescent',
+              'fontBoundingBoxAscent',
+              'fontBoundingBoxDescent',
+            ].map((k) => [k, m[k]])
+          ),
+        ];
+      })
+    ),
+  };
+  window.term = term;
+</script>
