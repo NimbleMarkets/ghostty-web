@@ -1,3 +1,4 @@
+import { DEFAULT_FONT_FAMILY, loadFontFaces } from './fonts';
 /**
  * Terminal - Main terminal emulator class
  *
@@ -189,7 +190,8 @@ export class Terminal implements ITerminalCore {
       theme: options.theme ?? {},
       scrollback: options.scrollback ?? 10000,
       fontSize: options.fontSize ?? 15,
-      fontFamily: options.fontFamily ?? 'monospace',
+      fontFaces: options.fontFaces ?? [],
+      fontFamily: options.fontFamily ?? DEFAULT_FONT_FAMILY,
       allowTransparency: options.allowTransparency ?? false,
       convertEol: options.convertEol ?? false,
       disableStdin: options.disableStdin ?? false,
@@ -276,6 +278,26 @@ export class Terminal implements ITerminalCore {
    * Handle font changes (fontSize or fontFamily)
    * Updates canvas size to match new font metrics and forces a full re-render
    */
+  /** Final CSS cell metrics, including unrounded glyph advance and ink bounds. */
+  public getFontMetrics() {
+    return this.renderer ? { ...this.renderer.getMetrics() } : undefined;
+  }
+
+  private dprQuery?: MediaQueryList;
+  private readonly onDprChange = (): void => {
+    if (this.isDisposed) return;
+    this.renderer?.remeasureFont();
+    this.handleFontChange();
+    this.watchDpr();
+  };
+
+  private watchDpr(): void {
+    this.dprQuery?.removeEventListener('change', this.onDprChange);
+    if (typeof window.matchMedia !== 'function') return;
+    this.dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    this.dprQuery.addEventListener('change', this.onDprChange);
+  }
+
   private handleFontChange(): void {
     if (!this.renderer || !this.wasmTerm || !this.canvas) return;
 
@@ -412,6 +434,8 @@ export class Terminal implements ITerminalCore {
     this.element = parent;
 
     try {
+      await loadFontFaces(this.options.fontFaces);
+      if (this.isDisposed) throw new Error('Terminal has been disposed');
       // Make parent focusable if it isn't already
       if (!parent.hasAttribute('tabindex')) {
         parent.setAttribute('tabindex', '0');
@@ -735,6 +759,7 @@ export class Terminal implements ITerminalCore {
       // isOpen) — at this point all renderer-dependent components are wired,
       // so concurrent assertOpen() callers will see a fully-initialized term.
       this.isOpen = true;
+      this.watchDpr();
 
       // Run one synchronous render+cursor-poll to mirror the prior
       // loop's first iteration. Some downstream callers
@@ -1362,6 +1387,7 @@ export class Terminal implements ITerminalCore {
     }
 
     this.isDisposed = true;
+    this.dprQuery?.removeEventListener('change', this.onDprChange);
     this.isOpen = false;
 
     // Stop render loop and clear write queue

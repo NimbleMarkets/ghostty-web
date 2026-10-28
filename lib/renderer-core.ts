@@ -136,7 +136,7 @@ export function measureFont(fontSize: number, fontFamily: string): FontMetrics {
   );
   const height = Math.ceil(ascent) + Math.ceil(descent) + 2;
   const baseline = Math.ceil(ascent) + 1;
-  return { width, height, baseline };
+  return { width, height, baseline, advanceWidth: m.width, ascent, descent };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { DEFAULT_FONT_FAMILY } from './fonts';
 /**
  * Canvas Renderer for Terminal Display
  *
@@ -264,7 +265,7 @@ export class CanvasRenderer implements Renderer {
 
     // Apply options
     this.fontSize = options.fontSize ?? 15;
-    this.fontFamily = options.fontFamily ?? 'monospace';
+    this.fontFamily = options.fontFamily ?? DEFAULT_FONT_FAMILY;
     this.cursorStyle = options.cursorStyle ?? 'block';
     this.cursorBlink = options.cursorBlink ?? false;
     this.theme = { ...DEFAULT_THEME, ...options.theme };
@@ -309,6 +310,7 @@ export class CanvasRenderer implements Renderer {
    * Remeasure font metrics (call after font loads or changes)
    */
   public remeasureFont(): void {
+    this.devicePixelRatio = window.devicePixelRatio || 1;
     this.metrics = this.measureFont();
     this.invalidateNext = true;
   }

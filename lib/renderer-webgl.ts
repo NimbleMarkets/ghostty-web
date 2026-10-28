@@ -1,3 +1,4 @@
+import { DEFAULT_FONT_FAMILY } from './fonts';
 /**
  * WebGL2 renderer.
  *
@@ -497,7 +498,7 @@ export class WebGL2Renderer implements Renderer {
   private constructor(canvas: HTMLCanvasElement, opts: RendererOptions) {
     this.canvas = canvas;
     this.fontSize = opts.fontSize ?? 15;
-    this.fontFamily = opts.fontFamily ?? 'monospace';
+    this.fontFamily = opts.fontFamily ?? DEFAULT_FONT_FAMILY;
     this.cursorStyle = opts.cursorStyle ?? 'block';
     this.dpr =
       opts.devicePixelRatio ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1) ?? 1;
@@ -1069,6 +1070,7 @@ export class WebGL2Renderer implements Renderer {
   }
 
   remeasureFont(): void {
+    this.dpr = window.devicePixelRatio || 1;
     this.metrics = this.measureFont();
     this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     this.invalidateNext = true;

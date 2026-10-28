@@ -61,7 +61,14 @@ describe('measureFont: fallback glyph bounds', () => {
         expect(metrics.width).toBe(10);
         expect(metrics.baseline - 15).toBeGreaterThanOrEqual(1);
         expect(metrics.height - metrics.baseline - 3.75).toBeGreaterThanOrEqual(1);
-        expect(metrics).toEqual({ width: 10, height: 21, baseline: 16 });
+        expect(metrics).toEqual({
+          width: 10,
+          height: 21,
+          baseline: 16,
+          advanceWidth: 9.0015,
+          ascent: 15,
+          descent: 4,
+        });
       }
     );
   });
@@ -80,7 +87,7 @@ describe('measureFont: fallback glyph bounds', () => {
 
   test('retains the size-based fallback when the browser has no ink or font bounds', () => {
     withMetrics({ width: 9 }, {}, () => {
-      expect(measureFont(15, 'monospace')).toEqual({ width: 9, height: 17, baseline: 13 });
+      expect(measureFont(15, 'monospace')).toMatchObject({ width: 9, height: 17, baseline: 13 });
     });
   });
 });

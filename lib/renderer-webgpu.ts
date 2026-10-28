@@ -1,3 +1,4 @@
+import { DEFAULT_FONT_FAMILY } from './fonts';
 /**
  * WebGPU renderer. Implementation grows across Tasks 6–16:
  *
@@ -666,7 +667,7 @@ export class WebGPURenderer implements Renderer {
     this.device = device;
     this.kittyTextures = new WebGPUKittyTextureCache(device);
     this.fontSize = opts.fontSize ?? 15;
-    this.fontFamily = opts.fontFamily ?? 'monospace';
+    this.fontFamily = opts.fontFamily ?? DEFAULT_FONT_FAMILY;
     this.cursorStyle = opts.cursorStyle ?? 'block';
     this.dpr = opts.devicePixelRatio ?? window.devicePixelRatio ?? 1;
     this.theme = { ...DEFAULT_THEME, ...opts.theme };
@@ -1338,6 +1339,7 @@ export class WebGPURenderer implements Renderer {
   }
 
   remeasureFont(): void {
+    this.dpr = window.devicePixelRatio || 1;
     this.metrics = this.measureFont();
     this.atlas?.reset(this.metrics.width, this.metrics.height, this.fontSize, this.fontFamily);
     this.invalidateNext = true;

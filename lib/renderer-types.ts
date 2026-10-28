@@ -34,6 +34,9 @@ export interface RendererOptions {
 }
 
 export interface FontMetrics {
+  advanceWidth?: number;
+  ascent?: number;
+  descent?: number;
   width: number;
   height: number;
   baseline: number;

@@ -13,7 +13,18 @@ export interface ITerminalOptions {
   theme?: ITheme;
   scrollback?: number; // Default: 1000
   fontSize?: number; // Default: 15
-  fontFamily?: string; // Default: 'monospace'
+  /** Default: '"JetBrains Mono", "Cascadia Code", "Iosevka", "Source Code Pro", "ui-monospace", "SF Mono", Menlo, Consolas, monospace'. */
+  fontFamily?: string;
+  /** Faces loaded before initial measurement. After 3 seconds, use the fallback stack.
+   * src accepts URLs or CSS url()/local() sources. Set before open().
+   */
+  fontFaces?: Array<{
+    family: string;
+    src: string | string[];
+    weight?: string | number;
+    style?: string;
+    display?: 'auto' | 'block' | 'swap' | 'fallback' | 'optional';
+  }>;
   allowTransparency?: boolean;
 
   // Phase 1 additions

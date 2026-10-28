@@ -251,3 +251,41 @@ At Coder we're big fans of Ghostty, so kudos to that team for all the amazing wo
 ## License
 
 [MIT](./LICENSE)
+
+### Fonts and display scaling
+
+The default size is 15 CSS pixels. The default family is
+`"JetBrains Mono", "Cascadia Code", "Iosevka", "Source Code Pro", "ui-monospace", "SF Mono", Menlo, Consolas, monospace`.
+Installed fonts determine which face is selected; no font is downloaded by default.
+Existing `fontFamily` and `fontSize` overrides continue to work.
+
+For predictable selection, serve an OFL JetBrains Mono WOFF2 asset with your app:
+
+```typescript
+const term = new Terminal({
+  fontFamily: '"JetBrains Mono", monospace',
+  fontFaces: [
+    {
+      family: 'JetBrains Mono',
+      src: '/fonts/JetBrainsMono-Regular.woff2',
+      weight: 400,
+      style: 'normal',
+      display: 'swap',
+    },
+  ],
+});
+await term.open(container);
+```
+
+Copy the font and its OFL license into your public assets first.
+`fontFaces` accepts URL strings, CSS `url(...)` or `local(...)` sources, or an
+array of sources in fallback order. Configure it before `open()`. Initial
+measurement and paint wait for loading, up to three seconds. Failed or timed-out
+faces fall back to the family stack; timed-out loads are not registered later.
+Remote assets must permit cross-origin font loading.
+
+Cell width and height round up to integer CSS pixels. Fractional DPR still
+produces fractional device-pixel cell boundaries: renderers scale the backing
+canvas while retaining the CSS grid. Font size, family, and display DPR changes
+refresh metrics. `term.getFontMetrics()` returns cell width, height, baseline,
+unrounded `advanceWidth`, `ascent`, and `descent` after opening.
